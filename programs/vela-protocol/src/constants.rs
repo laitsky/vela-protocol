@@ -1,0 +1,4 @@
+pub const MIN_FREQUENCY_SECONDS: u64 = 3600;
+pub const USDC_DECIMALS: u8 = 6;
+pub const CREDENTIAL_DECIMALS: u8 = 0;
+pub const CREDENTIAL_METADATA_SPACE: usize = 250;

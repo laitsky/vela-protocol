@@ -1,0 +1,153 @@
+use anchor_lang::{
+    prelude::*,
+    solana_program::program::invoke,
+};
+use anchor_spl::{
+    associated_token,
+    token::{revoke, Revoke, Token, TokenAccount},
+};
+use solana_instruction::Instruction as SplInstruction;
+use solana_program_error::ProgramError as SplProgramError;
+use solana_pubkey::Pubkey as SplPubkey;
+use spl_token_2022::instruction::burn;
+
+use crate::{
+    errors::VelaError,
+    state::{MandateStatus, VelaMandate, VelaPlan},
+};
+
+#[derive(Accounts)]
+pub struct Cancel<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    /// CHECK: Used for mandate and ATA validation.
+    pub subscriber: UncheckedAccount<'info>,
+
+    pub plan: Account<'info, VelaPlan>,
+
+    #[account(mut)]
+    pub mandate: Account<'info, VelaMandate>,
+
+    #[account(mut)]
+    /// CHECK: ATA address is validated against subscriber + credential mint in the handler.
+    pub subscriber_credential_account: UncheckedAccount<'info>,
+
+    #[account(mut, address = plan.credential_mint)]
+    /// CHECK: Credential mint ownership is validated in the handler.
+    pub credential_mint: UncheckedAccount<'info>,
+
+    /// CHECK: Must be the Token-2022 program.
+    pub token_2022_program: UncheckedAccount<'info>,
+
+    #[account(mut)]
+    pub subscriber_token_account: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
+}
+
+pub fn handler(ctx: Context<Cancel>) -> Result<()> {
+    require_keys_eq!(
+        ctx.accounts.token_2022_program.key(),
+        anchor_pubkey(spl_token_2022::id())
+    );
+    require_keys_eq!(ctx.accounts.mandate.plan, ctx.accounts.plan.key());
+    require!(
+        ctx.accounts.mandate.subscriber == ctx.accounts.subscriber.key(),
+        VelaError::UnauthorizedCancel
+    );
+    require!(
+        ctx.accounts.authority.key() == ctx.accounts.subscriber.key(),
+        VelaError::UnauthorizedCancel
+    );
+    require!(
+        ctx.accounts.subscriber_token_account.owner == ctx.accounts.subscriber.key(),
+        VelaError::UnauthorizedCancel
+    );
+    require!(
+        ctx.accounts.mandate.status == MandateStatus::Active,
+        VelaError::MandateNotActive
+    );
+
+    let credential_ata = associated_token::get_associated_token_address_with_program_id(
+        &ctx.accounts.subscriber.key(),
+        &ctx.accounts.credential_mint.key(),
+        &ctx.accounts.token_2022_program.key(),
+    );
+    require_keys_eq!(
+        ctx.accounts.subscriber_credential_account.key(),
+        credential_ata
+    );
+
+    let burn_ix = burn(
+        &spl_token_2022::id(),
+        &spl_pubkey(ctx.accounts.subscriber_credential_account.key()),
+        &spl_pubkey(ctx.accounts.credential_mint.key()),
+        &spl_pubkey(ctx.accounts.authority.key()),
+        &[],
+        1,
+    )
+    .map_err(map_interface_error)?;
+    invoke(
+        &convert_instruction(burn_ix),
+        &[
+            ctx.accounts.subscriber_credential_account.to_account_info(),
+            ctx.accounts.credential_mint.to_account_info(),
+            ctx.accounts.authority.to_account_info(),
+        ],
+    )?;
+
+    let revoke_ctx = CpiContext::new(
+        ctx.accounts.token_program.to_account_info(),
+        Revoke {
+            source: ctx.accounts.subscriber_token_account.to_account_info(),
+            authority: ctx.accounts.authority.to_account_info(),
+        },
+    );
+    revoke(revoke_ctx)?;
+
+    ctx.accounts.mandate.status = MandateStatus::Cancelled;
+
+    Ok(())
+}
+
+fn spl_pubkey(key: Pubkey) -> SplPubkey {
+    SplPubkey::from(key.to_bytes())
+}
+
+fn anchor_pubkey(key: SplPubkey) -> Pubkey {
+    Pubkey::new_from_array(key.to_bytes())
+}
+
+fn convert_instruction(ix: SplInstruction) -> anchor_lang::solana_program::instruction::Instruction {
+    anchor_lang::solana_program::instruction::Instruction {
+        program_id: anchor_pubkey(ix.program_id),
+        accounts: ix
+            .accounts
+            .into_iter()
+            .map(|meta| {
+                if meta.is_writable {
+                    anchor_lang::solana_program::instruction::AccountMeta::new(
+                        anchor_pubkey(meta.pubkey),
+                        meta.is_signer,
+                    )
+                } else {
+                    anchor_lang::solana_program::instruction::AccountMeta::new_readonly(
+                        anchor_pubkey(meta.pubkey),
+                        meta.is_signer,
+                    )
+                }
+            })
+            .collect(),
+        data: ix.data,
+    }
+}
+
+fn map_interface_error(error: SplProgramError) -> Error {
+    match error {
+        SplProgramError::Custom(code) => {
+            Error::from(anchor_lang::prelude::ProgramError::Custom(code))
+        }
+        _ => Error::from(anchor_lang::prelude::ProgramError::InvalidInstructionData),
+    }
+}
