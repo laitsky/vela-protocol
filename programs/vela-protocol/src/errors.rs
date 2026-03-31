@@ -76,4 +76,19 @@ pub enum VelaError {
 
     #[msg("Computation offset must match the protocol-derived request identity")]
     InvalidComputationOffset,
+
+    #[msg("Wrapped USDC mint has already been initialized")]
+    WrappedMintAlreadyInitialized,
+
+    #[msg("Transfer not authorized -- no valid PullApproval and not a wrap/unwrap operation")]
+    TransferNotAuthorized,
+
+    #[msg("Wrapping vault mismatch -- vault address does not match ProtocolConfig")]
+    VaultMismatch,
+
+    #[msg("SPL USDC mint mismatch -- provided mint is not the expected USDC mint")]
+    UsdcMintMismatch,
+
+    #[msg("Wrapped USDC mint not yet initialized in ProtocolConfig")]
+    WrappedMintNotInitialized,
 }
