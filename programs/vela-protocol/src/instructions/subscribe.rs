@@ -164,8 +164,14 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
         let total_duration = ctx
             .accounts
             .plan
-            .frequency
-            .checked_mul(ctx.accounts.plan.max_pulls)
+            .trial_period
+            .checked_add(
+                ctx.accounts
+                    .plan
+                    .frequency
+                    .checked_mul(ctx.accounts.plan.max_pulls)
+                    .ok_or(VelaError::Overflow)?,
+            )
             .ok_or(VelaError::Overflow)?;
         let total_duration = i64::try_from(total_duration).map_err(|_| VelaError::Overflow)?;
         clock

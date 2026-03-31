@@ -31,4 +31,7 @@ pub enum VelaError {
 
     #[msg("Pull amount exceeds plan amount")]
     AmountExceedsPlanAmount,
+
+    #[msg("Plan max_pulls must be at least 1")]
+    MaxPullsTooLow,
 }

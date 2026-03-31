@@ -70,3 +70,17 @@ fn test_create_plan_rejects_low_frequency() {
         error.err,
     );
 }
+
+#[test]
+fn test_create_plan_rejects_zero_max_pulls() {
+    let mut harness = TestHarness::new();
+    let error = harness
+        .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 0, 0)
+        .expect_err("create_plan should reject zero max_pulls");
+
+    assert!(
+        format!("{:?}", error.err).contains("Custom(6010)"),
+        "expected MaxPullsTooLow custom error, got {:?}",
+        error.err,
+    );
+}

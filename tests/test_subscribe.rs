@@ -106,6 +106,48 @@ fn test_subscribe_success() {
 }
 
 #[test]
+fn test_subscribe_trial_period_extends_expiry_from_first_bill() {
+    let mut harness = TestHarness::new();
+    let subscriber = harness.create_wallet();
+    let amount = 25_000_000;
+    let max_pulls = 4;
+    let frequency = MIN_FREQUENCY_SECONDS;
+    let trial_period = MIN_FREQUENCY_SECONDS * 2;
+    let addresses = harness.derive_plan_addresses(0);
+
+    harness
+        .send_create_plan(amount, frequency, trial_period, max_pulls, 0)
+        .expect("create_plan should succeed");
+
+    let usdc_mint = harness.create_spl_mint(&subscriber, USDC_DECIMALS);
+    let subscriber_token_account = harness.create_spl_token_account(
+        &subscriber,
+        &usdc_mint,
+        &Pubkey::new_from_array(subscriber.pubkey().to_bytes()),
+    );
+    harness.mint_spl_tokens(&subscriber, &usdc_mint, &subscriber_token_account, amount * max_pulls + amount);
+
+    let now = harness.current_timestamp();
+    let plan: VelaPlan = harness.fetch_anchor_account(&addresses.plan);
+
+    harness
+        .send_subscribe(&subscriber, plan.plan_id, &subscriber_token_account, &usdc_mint)
+        .expect("subscribe should succeed");
+
+    let mandate_address = harness.derive_mandate_address(
+        &Pubkey::new_from_array(subscriber.pubkey().to_bytes()),
+        &addresses.plan,
+    );
+    let mandate: VelaMandate = harness.fetch_anchor_account(&mandate_address);
+
+    assert_eq!(mandate.next_payment_due, now + trial_period as i64);
+    assert_eq!(
+        mandate.expiry,
+        now + trial_period as i64 + (plan.frequency * plan.max_pulls) as i64
+    );
+}
+
+#[test]
 fn test_subscribe_inactive_plan() {
     let (mut harness, subscriber, mut plan, plan_address, _credential_mint, subscriber_token_account) =
         setup_subscription_fixture();

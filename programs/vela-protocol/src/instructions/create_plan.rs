@@ -80,6 +80,7 @@ pub fn handler(
         frequency >= MIN_FREQUENCY_SECONDS,
         VelaError::FrequencyTooLow
     );
+    require!(max_pulls > 0, VelaError::MaxPullsTooLow);
 
     let token_2022_program_id = spl_token_2022::id();
     require_keys_eq!(
