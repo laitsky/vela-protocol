@@ -22,6 +22,7 @@ use solana_signer::Signer;
 use solana_transaction::versioned::VersionedTransaction;
 use spl_associated_token_account::get_associated_token_address_with_program_id;
 use spl_token::state::{Account as SplTokenAccount, Mint as SplMint};
+use vela_protocol::state::{BillingEvent, PullApproval};
 
 pub const AIRDROP_LAMPORTS: u64 = 10_000_000_000;
 
@@ -122,6 +123,26 @@ impl TestHarness {
             &to_address(*mint),
             &token_2022_address(),
         ))
+    }
+
+    pub fn derive_pull_approval_address(&self, mandate: &Pubkey) -> Pubkey {
+        Pubkey::find_program_address(
+            &[PullApproval::SEED_PREFIX, mandate.as_ref()],
+            &vela_protocol::ID,
+        )
+        .0
+    }
+
+    pub fn derive_billing_event_address(&self, mandate: &Pubkey, pulls_executed: u64) -> Pubkey {
+        Pubkey::find_program_address(
+            &[
+                BillingEvent::SEED_PREFIX,
+                mandate.as_ref(),
+                pulls_executed.to_le_bytes().as_ref(),
+            ],
+            &vela_protocol::ID,
+        )
+        .0
     }
 
     pub fn send_create_plan(
@@ -247,28 +268,102 @@ impl TestHarness {
         usdc_mint: &Pubkey,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let addresses = self.derive_plan_addresses(plan_id);
-        let accounts = vela_protocol::accounts::ExecutePull {
-            payer: to_anchor_pubkey(payer.pubkey()),
-            subscriber: *subscriber,
-            merchant: self.merchant_pubkey(),
-            plan: addresses.plan,
-            mandate: self.derive_mandate_address(subscriber, &addresses.plan),
-            subscriber_token_account: *subscriber_token_account,
-            merchant_token_account: *merchant_token_account,
-            usdc_mint: *usdc_mint,
-            token_program: Pubkey::new_from_array(spl_token::id().to_bytes()),
-        };
+        let mandate = self.derive_mandate_address(subscriber, &addresses.plan);
+        let mut accounts = vec![
+            AccountMeta::new(to_address(to_anchor_pubkey(payer.pubkey())), true),
+            AccountMeta::new_readonly(to_address(*subscriber), false),
+            AccountMeta::new_readonly(to_address(self.merchant_pubkey()), false),
+            AccountMeta::new_readonly(to_address(addresses.plan), false),
+            AccountMeta::new(to_address(mandate), false),
+            AccountMeta::new(to_address(*subscriber_token_account), false),
+            AccountMeta::new(to_address(*merchant_token_account), false),
+            AccountMeta::new_readonly(to_address(*usdc_mint), false),
+            AccountMeta::new_readonly(Address::from(spl_token::id().to_bytes()), false),
+        ];
+        accounts.push(AccountMeta::new(
+            to_address(self.derive_pull_approval_address(&mandate)),
+            false,
+        ));
 
         let instruction = Instruction {
             program_id: self.program_id,
-            accounts: accounts
-                .to_account_metas(None)
-                .into_iter()
-                .map(convert_account_meta)
-                .collect(),
+            accounts,
             data: vela_protocol::instruction::ExecutePull {}.data(),
         };
         self.send_instruction(&instruction, &[payer], Some(&payer.pubkey()))
+    }
+
+    pub fn create_pull_approval(
+        &mut self,
+        mandate: &Pubkey,
+        valid_until: i64,
+        approved: bool,
+    ) -> Pubkey {
+        let approval_pda = self.derive_pull_approval_address(mandate);
+        let approval = PullApproval {
+            mandate: *mandate,
+            valid_until,
+            approved,
+            created_at: self.current_timestamp(),
+            bump: 255,
+        };
+        let mut data = Vec::new();
+        approval
+            .try_serialize(&mut data)
+            .expect("approval should serialize");
+        self.svm
+            .set_account(
+                to_address(approval_pda),
+                Account {
+                    lamports: 1_000_000,
+                    data,
+                    owner: self.program_id,
+                    executable: false,
+                    rent_epoch: 0,
+                },
+            )
+            .expect("approval account should be created");
+        approval_pda
+    }
+
+    pub fn create_billing_event(
+        &mut self,
+        mandate: &Pubkey,
+        merchant: &Pubkey,
+        subscriber: &Pubkey,
+        plan_id: u64,
+        pulls_executed: u64,
+        encrypted_blob: [[u8; 32]; 8],
+        nonce: u128,
+    ) -> Pubkey {
+        let billing_event_pda = self.derive_billing_event_address(mandate, pulls_executed);
+        let billing_event = BillingEvent {
+            mandate: *mandate,
+            merchant: *merchant,
+            subscriber: *subscriber,
+            plan_id,
+            encrypted_blob,
+            nonce,
+            created_at: self.current_timestamp(),
+            bump: 255,
+        };
+        let mut data = Vec::new();
+        billing_event
+            .try_serialize(&mut data)
+            .expect("billing event should serialize");
+        self.svm
+            .set_account(
+                to_address(billing_event_pda),
+                Account {
+                    lamports: 1_000_000,
+                    data,
+                    owner: self.program_id,
+                    executable: false,
+                    rent_epoch: 0,
+                },
+            )
+            .expect("billing event account should be created");
+        billing_event_pda
     }
 
     pub fn send_cancel(

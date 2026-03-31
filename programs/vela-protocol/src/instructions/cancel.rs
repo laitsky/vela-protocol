@@ -1,7 +1,4 @@
-use anchor_lang::{
-    prelude::*,
-    solana_program::program::invoke,
-};
+use anchor_lang::{prelude::*, solana_program::program::invoke};
 use anchor_spl::{
     associated_token,
     token::{revoke, Revoke, Token, TokenAccount},
@@ -119,7 +116,9 @@ fn anchor_pubkey(key: SplPubkey) -> Pubkey {
     Pubkey::new_from_array(key.to_bytes())
 }
 
-fn convert_instruction(ix: SplInstruction) -> anchor_lang::solana_program::instruction::Instruction {
+fn convert_instruction(
+    ix: SplInstruction,
+) -> anchor_lang::solana_program::instruction::Instruction {
     anchor_lang::solana_program::instruction::Instruction {
         program_id: anchor_pubkey(ix.program_id),
         accounts: ix

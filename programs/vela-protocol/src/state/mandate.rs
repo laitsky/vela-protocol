@@ -12,13 +12,17 @@ pub struct VelaMandate {
     pub max_pulls: u64,
     pub pulls_executed: u64,
     pub next_payment_due: i64,
+    pub last_pull_at: i64,
+    pub last_billing_recorded_pull: u64,
+    pub validation_request_nonce: u64,
+    pub billing_request_nonce: u64,
     pub status: MandateStatus,
     pub bump: u8,
 }
 
 impl VelaMandate {
     pub const SEED_PREFIX: &'static [u8] = b"mandate";
-    pub const SIZE: usize = 8 + 32 + 32 + 32 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 1 + 1;
+    pub const SIZE: usize = 8 + 32 + 32 + 32 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 1 + 1;
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]

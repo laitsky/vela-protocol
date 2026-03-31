@@ -34,4 +34,46 @@ pub enum VelaError {
 
     #[msg("Plan max_pulls must be at least 1")]
     MaxPullsTooLow,
+
+    #[msg("No valid PullApproval PDA exists -- Arcium validation required")]
+    ApprovalNotGranted,
+
+    #[msg("PullApproval has expired (past valid_until timestamp)")]
+    ApprovalExpired,
+
+    #[msg("Arcium computation was aborted or produced invalid output")]
+    AbortedComputation,
+
+    #[msg("Arcium cluster not configured in ProtocolConfig")]
+    ClusterNotSet,
+
+    #[msg("Only the protocol admin can perform this action")]
+    UnauthorizedAdmin,
+
+    #[msg("PullApproval already exists for this billing period")]
+    ApprovalAlreadyExists,
+
+    #[msg("Arcium is unavailable -- pull blocked (fail-closed per D-01)")]
+    ArciumUnavailable,
+
+    #[msg("Encrypted input payload length does not match the circuit interface")]
+    InvalidCiphertextInput,
+
+    #[msg("The previous pull is missing its billing record; finalize billing before executing again")]
+    PendingBillingRecord,
+
+    #[msg("BillingEvent already exists for this pull execution")]
+    BillingEventAlreadyExists,
+
+    #[msg("Arcium account set does not match the configured canonical PDAs")]
+    InvalidArciumAccount,
+
+    #[msg("ProtocolConfig contains an invalid or inconsistent Arcium cluster configuration")]
+    InvalidProtocolConfig,
+
+    #[msg("The supplied Arcium callback does not match the queued Vela request")]
+    InvalidCallbackBinding,
+
+    #[msg("Computation offset must match the protocol-derived request identity")]
+    InvalidComputationOffset,
 }

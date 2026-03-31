@@ -1,6 +1,9 @@
 use anchor_lang::{
     prelude::*,
-    solana_program::{program::{invoke, invoke_signed}, system_instruction},
+    solana_program::{
+        program::{invoke, invoke_signed},
+        system_instruction,
+    },
 };
 use solana_instruction::Instruction as SplInstruction;
 use solana_program_error::ProgramError as SplProgramError;
@@ -125,8 +128,8 @@ pub fn handler(
         ExtensionType::NonTransferable,
         ExtensionType::MetadataPointer,
     ];
-    let mint_len =
-        ExtensionType::try_calculate_account_len::<Mint>(&mint_extensions).map_err(map_interface_error)?;
+    let mint_len = ExtensionType::try_calculate_account_len::<Mint>(&mint_extensions)
+        .map_err(map_interface_error)?;
     let funded_mint_len = mint_len
         .checked_add(token_metadata.tlv_size_of().map_err(map_interface_error)?)
         .ok_or(VelaError::Overflow)?;
@@ -163,8 +166,11 @@ pub fn handler(
 
     invoke(
         &convert_instruction(
-            initialize_non_transferable_mint(&token_2022_program_id, &spl_pubkey(&credential_mint_key))
-                .map_err(map_interface_error)?,
+            initialize_non_transferable_mint(
+                &token_2022_program_id,
+                &spl_pubkey(&credential_mint_key),
+            )
+            .map_err(map_interface_error)?,
         ),
         &[ctx.accounts.credential_mint.to_account_info()],
     )?;
@@ -196,18 +202,16 @@ pub fn handler(
         &[ctx.accounts.credential_mint.to_account_info()],
     )?;
 
-    let metadata_ix = convert_instruction(
-        spl_token_metadata_interface::instruction::initialize(
-            &token_2022_program_id,
-            &spl_pubkey(&credential_mint_key),
-            &spl_pubkey(&plan_key),
-            &spl_pubkey(&credential_mint_key),
-            &spl_pubkey(&plan_key),
-            credential_name,
-            credential_symbol,
-            credential_uri,
-        ),
-    );
+    let metadata_ix = convert_instruction(spl_token_metadata_interface::instruction::initialize(
+        &token_2022_program_id,
+        &spl_pubkey(&credential_mint_key),
+        &spl_pubkey(&plan_key),
+        &spl_pubkey(&credential_mint_key),
+        &spl_pubkey(&plan_key),
+        credential_name,
+        credential_symbol,
+        credential_uri,
+    ));
     invoke_signed(
         &metadata_ix,
         &[
@@ -266,7 +270,9 @@ fn anchor_pubkey(key: SplPubkey) -> Pubkey {
     Pubkey::new_from_array(key.to_bytes())
 }
 
-fn convert_instruction(ix: SplInstruction) -> anchor_lang::solana_program::instruction::Instruction {
+fn convert_instruction(
+    ix: SplInstruction,
+) -> anchor_lang::solana_program::instruction::Instruction {
     anchor_lang::solana_program::instruction::Instruction {
         program_id: anchor_pubkey(ix.program_id),
         accounts: ix

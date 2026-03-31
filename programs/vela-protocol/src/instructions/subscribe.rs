@@ -1,7 +1,4 @@
-use anchor_lang::{
-    prelude::*,
-    solana_program::program::invoke_signed,
-};
+use anchor_lang::{prelude::*, solana_program::program::invoke_signed};
 use anchor_spl::{
     associated_token::{self, AssociatedToken},
     token::{approve, Approve, Mint, Token, TokenAccount},
@@ -204,6 +201,10 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
         max_pulls: ctx.accounts.plan.max_pulls,
         pulls_executed: 0,
         next_payment_due,
+        last_pull_at: 0,
+        last_billing_recorded_pull: 0,
+        validation_request_nonce: 0,
+        billing_request_nonce: 0,
         status: MandateStatus::Active,
         bump: ctx.bumps.mandate,
     });
@@ -219,7 +220,9 @@ fn anchor_pubkey(key: SplPubkey) -> Pubkey {
     Pubkey::new_from_array(key.to_bytes())
 }
 
-fn convert_instruction(ix: SplInstruction) -> anchor_lang::solana_program::instruction::Instruction {
+fn convert_instruction(
+    ix: SplInstruction,
+) -> anchor_lang::solana_program::instruction::Instruction {
     anchor_lang::solana_program::instruction::Instruction {
         program_id: anchor_pubkey(ix.program_id),
         accounts: ix

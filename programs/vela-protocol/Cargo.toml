@@ -3,6 +3,7 @@ name = "vela-protocol"
 version = "0.1.0"
 description = "Created with Anchor"
 edition = "2021"
+build = "build.rs"
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -14,7 +15,7 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build", "arcium-anchor/idl-build"]
 anchor-debug = []
 custom-heap = []
 custom-panic = []
@@ -23,6 +24,9 @@ custom-panic = []
 [dependencies]
 anchor-lang = { version = "=0.32.1", features = ["init-if-needed"] }
 anchor-spl = "=0.32.1"
+arcium-anchor = "0.9.3"
+arcium-macros = "0.9.3"
+arcium-client = { version = "0.9.3", default-features = false }
 spl-token-2022 = { version = "10.0.0", features = ["no-entrypoint"] }
 spl-token-metadata-interface = "0.8.0"
 spl-pod = "=0.7.1"
@@ -47,6 +51,9 @@ solana-system-interface = { version = "=2.0.0", features = ["bincode"] }
 solana-transaction = { version = "=3.1.0", features = ["verify"] }
 spl-token = "*"
 spl-associated-token-account = "*"
+
+[build-dependencies]
+serde_json = "1"
 
 [[test]]
 name = "test_create_plan"
@@ -75,6 +82,22 @@ path = "../../tests/test_cu_profiling.rs"
 [[test]]
 name = "test_credential"
 path = "../../tests/test_credential.rs"
+
+[[test]]
+name = "test_arcium_validation"
+path = "../../tests/test_arcium_validation.rs"
+
+[[test]]
+name = "test_fail_closed"
+path = "../../tests/test_fail_closed.rs"
+
+[[test]]
+name = "test_pull_approval"
+path = "../../tests/test_pull_approval.rs"
+
+[[test]]
+name = "test_billing_event"
+path = "../../tests/test_billing_event.rs"
 
 
 [lints.rust]

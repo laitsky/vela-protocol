@@ -60,6 +60,7 @@ fn test_cu_execute_pull() {
     let mandate: vela_protocol::state::VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
 
     harness.set_clock_timestamp(mandate.next_payment_due);
+    harness.create_pull_approval(&fixture.mandate, mandate.next_payment_due, true);
     let meta = harness
         .send_execute_pull(
             &fixture.subscriber,
@@ -132,6 +133,7 @@ fn test_cu_full_lifecycle() {
     let mandate_account: vela_protocol::state::VelaMandate = harness.fetch_anchor_account(&mandate);
 
     harness.set_clock_timestamp(mandate_account.next_payment_due);
+    harness.create_pull_approval(&mandate, mandate_account.next_payment_due, true);
     let execute_meta = harness
         .send_execute_pull(
             &subscriber,

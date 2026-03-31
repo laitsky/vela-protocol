@@ -39,6 +39,12 @@ fn assert_custom_error(
     );
 }
 
+fn finalize_billing_for_current_pull(harness: &mut TestHarness, mandate_pubkey: &Pubkey) {
+    let mut mandate: VelaMandate = harness.fetch_anchor_account(mandate_pubkey);
+    mandate.last_billing_recorded_pull = mandate.pulls_executed;
+    harness.overwrite_anchor_account(mandate_pubkey, &mandate);
+}
+
 #[test]
 fn test_expired_mandate_pull_fails() {
     let (mut harness, fixture, plan, mandate) =
@@ -46,6 +52,7 @@ fn test_expired_mandate_pull_fails() {
     let subscriber = subscriber_pubkey(&fixture);
 
     harness.set_clock_timestamp(mandate.next_payment_due);
+    harness.create_pull_approval(&fixture.mandate, mandate.next_payment_due, true);
     harness
         .send_execute_pull(
             &fixture.subscriber,
@@ -57,8 +64,14 @@ fn test_expired_mandate_pull_fails() {
         )
         .expect("first pull should succeed");
 
+    finalize_billing_for_current_pull(&mut harness, &fixture.mandate);
     let mandate_after_first: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
     harness.set_clock_timestamp(mandate_after_first.next_payment_due);
+    harness.create_pull_approval(
+        &fixture.mandate,
+        mandate_after_first.next_payment_due,
+        true,
+    );
     harness
         .send_execute_pull(
             &fixture.subscriber,
@@ -116,6 +129,7 @@ fn test_double_pull_same_period_fails() {
     let subscriber = subscriber_pubkey(&fixture);
 
     harness.set_clock_timestamp(mandate.next_payment_due);
+    harness.create_pull_approval(&fixture.mandate, mandate.next_payment_due, true);
     harness
         .send_execute_pull(
             &fixture.subscriber,
@@ -127,6 +141,13 @@ fn test_double_pull_same_period_fails() {
         )
         .expect("first pull should succeed");
 
+    finalize_billing_for_current_pull(&mut harness, &fixture.mandate);
+    let mandate_after_first: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
+    harness.create_pull_approval(
+        &fixture.mandate,
+        mandate_after_first.next_payment_due,
+        true,
+    );
     let error = harness
         .send_execute_pull(
             &fixture.subscriber,

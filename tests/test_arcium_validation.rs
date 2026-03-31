@@ -16,6 +16,7 @@ use solana_message::{Message, VersionedMessage};
 use solana_signer::Signer;
 use solana_transaction::versioned::VersionedTransaction;
 use vela_protocol::instruction::{InitConfig, InitValidateMandateCompDef, UpdateConfig};
+use vela_protocol::instructions::arcium_accounts::derive_cluster_pubkey;
 use vela_protocol::state::ClusterType;
 
 /// ARCM-01: Test that the init_validate_mandate_comp_def instruction can be invoked.
@@ -51,8 +52,8 @@ fn test_config_init() {
     let admin = harness.create_wallet();
     let program_id = to_anchor_pubkey(harness.program_id);
 
-    // Random cluster pubkey for testing
-    let cluster_pubkey = Pubkey::new_unique();
+    let cluster_offset = 456;
+    let cluster_pubkey = derive_cluster_pubkey(cluster_offset as u32);
 
     // Derive the config PDA
     let config_pda = derive_config_pda(&program_id);
@@ -69,7 +70,7 @@ fn test_config_init() {
         ix: vela_protocol::instructions::init_config::InitConfigIx {
             cluster_pubkey,
             cluster_type: ClusterType::Cerberus,
-            cluster_offset: 456,
+            cluster_offset,
         },
     }
     .data();
@@ -110,7 +111,7 @@ fn test_config_init() {
         "cluster_type should be Cerberus"
     );
     assert_eq!(
-        config.cluster_offset, 456,
+        config.cluster_offset, cluster_offset,
         "cluster_offset should be 456 (devnet default)"
     );
     assert!(config.bump != 0, "bump should be non-zero");
@@ -126,7 +127,7 @@ fn test_config_update_by_admin() {
     let program_id = to_anchor_pubkey(harness.program_id);
 
     // First initialize the config
-    let cluster_pubkey_initial = Pubkey::new_unique();
+    let cluster_pubkey_initial = derive_cluster_pubkey(456);
     let config_pda = derive_config_pda(&program_id);
 
     // Initialize
@@ -162,7 +163,8 @@ fn test_config_update_by_admin() {
         .expect("init_config should succeed");
 
     // Now update the config
-    let new_cluster_pubkey = Pubkey::new_unique();
+    let new_cluster_offset = 999;
+    let new_cluster_pubkey = derive_cluster_pubkey(new_cluster_offset as u32);
 
     let update_accounts = vela_protocol::accounts::UpdateConfig {
         admin: to_anchor_pubkey(admin.pubkey()),
@@ -173,7 +175,7 @@ fn test_config_update_by_admin() {
         ix: vela_protocol::instructions::init_config::UpdateConfigIx {
             cluster_pubkey: new_cluster_pubkey,
             cluster_type: ClusterType::Manticore,
-            cluster_offset: 999,
+            cluster_offset: new_cluster_offset,
         },
     }
     .data();
@@ -206,7 +208,10 @@ fn test_config_update_by_admin() {
         ClusterType::Manticore,
         "cluster_type should be Manticore"
     );
-    assert_eq!(config.cluster_offset, 999, "cluster_offset should be 999");
+    assert_eq!(
+        config.cluster_offset, new_cluster_offset,
+        "cluster_offset should be 999"
+    );
 
     println!("test_config_update_by_admin passed: ProtocolConfig updated correctly");
 }
@@ -230,7 +235,7 @@ fn test_config_update_by_non_admin_fails() {
 
     let init_instruction_data = InitConfig {
         ix: vela_protocol::instructions::init_config::InitConfigIx {
-            cluster_pubkey: Pubkey::new_unique(),
+            cluster_pubkey: derive_cluster_pubkey(456),
             cluster_type: ClusterType::Cerberus,
             cluster_offset: 456,
         },
@@ -261,7 +266,7 @@ fn test_config_update_by_non_admin_fails() {
 
     let update_instruction_data = UpdateConfig {
         ix: vela_protocol::instructions::init_config::UpdateConfigIx {
-            cluster_pubkey: Pubkey::new_unique(),
+            cluster_pubkey: derive_cluster_pubkey(999),
             cluster_type: ClusterType::Manticore,
             cluster_offset: 999,
         },
@@ -287,6 +292,51 @@ fn test_config_update_by_non_admin_fails() {
     assert!(result.is_err(), "update_config with non-admin should fail");
 
     println!("test_config_update_by_non_admin_fails passed: non-admin correctly rejected");
+}
+
+/// ARCM-02: Config init should reject a cluster pubkey that does not match the configured offset.
+#[test]
+fn test_config_init_rejects_mismatched_cluster_pubkey() {
+    let mut harness = TestHarness::new();
+    let admin = harness.create_wallet();
+    let program_id = to_anchor_pubkey(harness.program_id);
+    let config_pda = derive_config_pda(&program_id);
+
+    let accounts = vela_protocol::accounts::InitConfig {
+        admin: to_anchor_pubkey(admin.pubkey()),
+        config: config_pda,
+        system_program: anchor_lang::system_program::ID,
+    };
+
+    let bad_cluster_pubkey = Pubkey::new_unique();
+    assert_ne!(bad_cluster_pubkey, derive_cluster_pubkey(456));
+
+    let instruction_data = InitConfig {
+        ix: vela_protocol::instructions::init_config::InitConfigIx {
+            cluster_pubkey: bad_cluster_pubkey,
+            cluster_type: ClusterType::Cerberus,
+            cluster_offset: 456,
+        },
+    }
+    .data();
+
+    let instruction = Instruction {
+        program_id: harness.program_id,
+        accounts: accounts_to_meta(accounts.to_account_metas(None)),
+        data: instruction_data,
+    };
+
+    let blockhash = harness.svm.latest_blockhash();
+    let message = Message::new_with_blockhash(&[instruction], Some(&admin.pubkey()), &blockhash);
+    let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&admin])
+        .expect("transaction should sign");
+
+    let result = harness.svm.send_transaction(tx);
+    assert!(
+        result.is_err(),
+        "init_config should fail when cluster_pubkey does not match cluster_offset: {:?}",
+        result
+    );
 }
 
 /// ARCM-02: Structural verification that the encrypted-ixs crate compiles.

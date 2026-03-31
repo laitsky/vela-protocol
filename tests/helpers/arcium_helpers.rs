@@ -41,7 +41,7 @@ pub fn create_mock_protocol_config(
         .try_serialize(&mut data)
         .expect("config should serialize");
 
-    svm.set_account(
+    let _ = svm.set_account(
         Address::from(config_pda.to_bytes()),
         Account {
             lamports: u64::MAX / 2,
