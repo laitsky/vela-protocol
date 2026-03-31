@@ -1,11 +1,10 @@
+#[path = "arcium_helpers.rs"]
+pub mod arcium_helpers;
+
 use std::path::{Path, PathBuf};
 
 use anchor_lang::{
-    prelude::Pubkey,
-    AccountSerialize,
-    AccountDeserialize,
-    InstructionData,
-    ToAccountMetas,
+    prelude::Pubkey, AccountDeserialize, AccountSerialize, InstructionData, ToAccountMetas,
 };
 use litesvm::{
     types::{FailedTransactionMetadata, TransactionMetadata},
@@ -13,8 +12,8 @@ use litesvm::{
 };
 use litesvm_token::{CreateAccount, CreateMint, MintTo};
 use solana_account::Account;
-use solana_clock::Clock;
 use solana_address::Address;
+use solana_clock::Clock;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_message::{Message, VersionedMessage};
@@ -78,7 +77,10 @@ impl TestHarness {
     pub fn derive_plan_addresses(&self, plan_id: u64) -> PlanAddresses {
         let merchant = self.merchant_pubkey();
         let (merchant_state, _) = Pubkey::find_program_address(
-            &[vela_protocol::state::MerchantState::SEED_PREFIX, merchant.as_ref()],
+            &[
+                vela_protocol::state::MerchantState::SEED_PREFIX,
+                merchant.as_ref(),
+            ],
             &vela_protocol::ID,
         );
         let plan_id_bytes = plan_id.to_le_bytes();
@@ -140,11 +142,9 @@ impl TestHarness {
         let blockhash = self.svm.latest_blockhash();
         let message =
             Message::new_with_blockhash(&[instruction], Some(&self.merchant.pubkey()), &blockhash);
-        let tx = VersionedTransaction::try_new(
-            VersionedMessage::Legacy(message),
-            &[&self.merchant],
-        )
-        .expect("transaction should sign");
+        let tx =
+            VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&self.merchant])
+                .expect("transaction should sign");
 
         self.svm.send_transaction(tx)
     }
@@ -200,12 +200,12 @@ impl TestHarness {
         usdc_mint: &Pubkey,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let addresses = self.derive_plan_addresses(plan_id);
-        let mandate = self.derive_mandate_address(
+        let mandate =
+            self.derive_mandate_address(&to_anchor_pubkey(subscriber.pubkey()), &addresses.plan);
+        let credential_ata = self.derive_credential_ata(
             &to_anchor_pubkey(subscriber.pubkey()),
-            &addresses.plan,
+            &addresses.credential_mint,
         );
-        let credential_ata =
-            self.derive_credential_ata(&to_anchor_pubkey(subscriber.pubkey()), &addresses.credential_mint);
 
         let accounts = vela_protocol::accounts::Subscribe {
             subscriber: to_anchor_pubkey(subscriber.pubkey()),
@@ -493,7 +493,9 @@ pub struct SubscriptionFixture {
     pub merchant_token_account: Pubkey,
 }
 
-fn convert_account_meta(meta: anchor_lang::solana_program::instruction::AccountMeta) -> AccountMeta {
+pub fn convert_account_meta(
+    meta: anchor_lang::solana_program::instruction::AccountMeta,
+) -> AccountMeta {
     if meta.is_writable {
         AccountMeta::new(to_address(meta.pubkey), meta.is_signer)
     } else {
@@ -501,15 +503,14 @@ fn convert_account_meta(meta: anchor_lang::solana_program::instruction::AccountM
     }
 }
 
-fn to_address(pubkey: Pubkey) -> Address {
+pub fn to_address(pubkey: Pubkey) -> Address {
     Address::from(pubkey.to_bytes())
 }
 
-fn to_anchor_pubkey(address: Address) -> Pubkey {
+pub fn to_anchor_pubkey(address: Address) -> Pubkey {
     Pubkey::new_from_array(address.to_bytes())
 }
 
 fn program_so_path() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/deploy/vela_protocol.so")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/deploy/vela_protocol.so")
 }
