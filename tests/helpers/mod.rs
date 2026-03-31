@@ -145,6 +145,46 @@ impl TestHarness {
         .0
     }
 
+    /// Derives the mint authority PDA (seeds: [b"mint-authority"]).
+    pub fn derive_mint_authority(&self) -> (Pubkey, u8) {
+        Pubkey::find_program_address(&[b"mint-authority"], &vela_protocol::ID)
+    }
+
+    /// Derives the ExtraAccountMetaList PDA for the given mint (seeds: [b"extra-account-metas", mint]).
+    pub fn derive_extra_account_meta_list(&self, mint: &Pubkey) -> (Pubkey, u8) {
+        Pubkey::find_program_address(
+            &[b"extra-account-metas", mint.as_ref()],
+            &vela_protocol::ID,
+        )
+    }
+
+    /// Derives the ProtocolConfig PDA.
+    pub fn derive_config(&self) -> Pubkey {
+        Pubkey::find_program_address(
+            &[vela_protocol::state::ProtocolConfig::SEED_PREFIX],
+            &vela_protocol::ID,
+        )
+        .0
+    }
+
+    /// Derives a Token-2022 ATA for the given owner and mint.
+    pub fn derive_token_2022_ata(&self, owner: &Pubkey, mint: &Pubkey) -> Pubkey {
+        to_anchor_pubkey(get_associated_token_address_with_program_id(
+            &to_address(*owner),
+            &to_address(*mint),
+            &token_2022_address(),
+        ))
+    }
+
+    /// Derives an SPL Token ATA for the given owner and mint.
+    pub fn derive_spl_ata(&self, owner: &Pubkey, mint: &Pubkey) -> Pubkey {
+        to_anchor_pubkey(get_associated_token_address_with_program_id(
+            &to_address(*owner),
+            &to_address(*mint),
+            &spl_token_address(),
+        ))
+    }
+
     pub fn send_create_plan(
         &mut self,
         amount: u64,
@@ -213,12 +253,12 @@ impl TestHarness {
         .expect("mint_to should succeed");
     }
 
+    /// Send the subscribe instruction. The new subscribe no longer requires a USDC token account
+    /// or delegate approval -- subscribers wrap SPL USDC separately (D-12, D-14).
     pub fn send_subscribe(
         &mut self,
         subscriber: &Keypair,
         plan_id: u64,
-        subscriber_token_account: &Pubkey,
-        usdc_mint: &Pubkey,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let addresses = self.derive_plan_addresses(plan_id);
         let mandate =
@@ -233,8 +273,6 @@ impl TestHarness {
             merchant: self.merchant_pubkey(),
             plan: addresses.plan,
             mandate,
-            subscriber_token_account: *subscriber_token_account,
-            usdc_mint: *usdc_mint,
             credential_mint: addresses.credential_mint,
             subscriber_credential_account: credential_ata,
             token_program: Pubkey::new_from_array(spl_token::id().to_bytes()),
@@ -258,32 +296,47 @@ impl TestHarness {
         self.send_instruction(&instruction, &[subscriber], Some(&subscriber.pubkey()))
     }
 
-    pub fn send_execute_pull(
+    /// Send execute_pull using Token-2022 wrapped USDC accounts.
+    /// The pull_approval PDA is passed as a remaining account for the transfer hook.
+    pub fn send_execute_pull_wrapped(
         &mut self,
         payer: &Keypair,
         subscriber: &Pubkey,
         plan_id: u64,
-        subscriber_token_account: &Pubkey,
-        merchant_token_account: &Pubkey,
-        usdc_mint: &Pubkey,
+        subscriber_wrapped_account: &Pubkey,
+        merchant_wrapped_account: &Pubkey,
+        wrapped_usdc_mint: &Pubkey,
+        wrapping_vault: &Pubkey,
+        config: &Pubkey,
+        extra_account_meta_list: &Pubkey,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let addresses = self.derive_plan_addresses(plan_id);
         let mandate = self.derive_mandate_address(subscriber, &addresses.plan);
+        let pull_approval = self.derive_pull_approval_address(&mandate);
+        let token_2022_id = Address::from(spl_token_2022::id().to_bytes());
+
+        // Core accounts for execute_pull instruction
         let mut accounts = vec![
             AccountMeta::new(to_address(to_anchor_pubkey(payer.pubkey())), true),
             AccountMeta::new_readonly(to_address(*subscriber), false),
             AccountMeta::new_readonly(to_address(self.merchant_pubkey()), false),
             AccountMeta::new_readonly(to_address(addresses.plan), false),
             AccountMeta::new(to_address(mandate), false),
-            AccountMeta::new(to_address(*subscriber_token_account), false),
-            AccountMeta::new(to_address(*merchant_token_account), false),
-            AccountMeta::new_readonly(to_address(*usdc_mint), false),
-            AccountMeta::new_readonly(Address::from(spl_token::id().to_bytes()), false),
+            AccountMeta::new(to_address(*subscriber_wrapped_account), false),
+            AccountMeta::new(to_address(*merchant_wrapped_account), false),
+            AccountMeta::new_readonly(to_address(*wrapped_usdc_mint), false),
+            AccountMeta::new(to_address(pull_approval), false),
+            AccountMeta::new_readonly(token_2022_id, false),
         ];
-        accounts.push(AccountMeta::new(
-            to_address(self.derive_pull_approval_address(&mandate)),
-            false,
-        ));
+
+        // Remaining accounts for Token-2022 transfer hook resolution:
+        // The transfer hook Execute CPI expects: extra_account_meta_list, wrapping_vault, config, pull_approval
+        // NOTE: Token-2022 resolves hook accounts from ExtraAccountMetaList automatically;
+        // the PullApproval is passed as an additional remaining account per the D-05 pattern.
+        accounts.push(AccountMeta::new_readonly(to_address(*extra_account_meta_list), false));
+        accounts.push(AccountMeta::new_readonly(to_address(*wrapping_vault), false));
+        accounts.push(AccountMeta::new_readonly(to_address(*config), false));
+        accounts.push(AccountMeta::new(to_address(pull_approval), false));
 
         let instruction = Instruction {
             program_id: self.program_id,
@@ -293,17 +346,91 @@ impl TestHarness {
         self.send_instruction(&instruction, &[payer], Some(&payer.pubkey()))
     }
 
+    /// Legacy send_execute_pull for SPL Token (used by tests that bypass Token-2022).
+    /// NOTE: This is kept for backward compatibility with tests that inject mock approval state.
+    pub fn send_execute_pull(
+        &mut self,
+        payer: &Keypair,
+        subscriber: &Pubkey,
+        plan_id: u64,
+        subscriber_token_account: &Pubkey,
+        merchant_token_account: &Pubkey,
+        usdc_mint: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        // Delegate to wrapped version with Token-2022 accounts.
+        // These field names are preserved for call-site compatibility; the actual accounts
+        // are now Token-2022 accounts passed to the rewritten ExecutePull instruction.
+        self.send_execute_pull_t22(
+            payer,
+            subscriber,
+            plan_id,
+            subscriber_token_account, // now subscriber_wrapped_account
+            merchant_token_account,   // now merchant_wrapped_account
+            usdc_mint,                // now wrapped_usdc_mint
+        )
+    }
+
+    /// Send execute_pull with Token-2022 accounts (minimal version without hook remaining accounts).
+    /// Used by tests that inject the approval directly (bypassing the transfer hook chain).
+    pub fn send_execute_pull_t22(
+        &mut self,
+        payer: &Keypair,
+        subscriber: &Pubkey,
+        plan_id: u64,
+        subscriber_wrapped_account: &Pubkey,
+        merchant_wrapped_account: &Pubkey,
+        wrapped_usdc_mint: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let addresses = self.derive_plan_addresses(plan_id);
+        let mandate = self.derive_mandate_address(subscriber, &addresses.plan);
+        let token_2022_id = Address::from(spl_token_2022::id().to_bytes());
+
+        let pull_approval = self.derive_pull_approval_address(&mandate);
+        let accounts = vec![
+            AccountMeta::new(to_address(to_anchor_pubkey(payer.pubkey())), true),
+            AccountMeta::new_readonly(to_address(*subscriber), false),
+            AccountMeta::new_readonly(to_address(self.merchant_pubkey()), false),
+            AccountMeta::new_readonly(to_address(addresses.plan), false),
+            AccountMeta::new(to_address(mandate), false),
+            AccountMeta::new(to_address(*subscriber_wrapped_account), false),
+            AccountMeta::new(to_address(*merchant_wrapped_account), false),
+            AccountMeta::new_readonly(to_address(*wrapped_usdc_mint), false),
+            AccountMeta::new(to_address(pull_approval), false),
+            AccountMeta::new_readonly(token_2022_id, false),
+        ];
+
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts,
+            data: vela_protocol::instruction::ExecutePull {}.data(),
+        };
+        self.send_instruction(&instruction, &[payer], Some(&payer.pubkey()))
+    }
+
+    /// Create a PullApproval account with all fields including approved_amount.
     pub fn create_pull_approval(
         &mut self,
         mandate: &Pubkey,
         valid_until: i64,
         approved: bool,
     ) -> Pubkey {
+        self.create_pull_approval_with_amount(mandate, valid_until, approved, u64::MAX)
+    }
+
+    /// Create a PullApproval account with an explicit approved_amount.
+    pub fn create_pull_approval_with_amount(
+        &mut self,
+        mandate: &Pubkey,
+        valid_until: i64,
+        approved: bool,
+        approved_amount: u64,
+    ) -> Pubkey {
         let approval_pda = self.derive_pull_approval_address(mandate);
         let approval = PullApproval {
             mandate: *mandate,
             valid_until,
             approved,
+            approved_amount,
             created_at: self.current_timestamp(),
             bump: 255,
         };
@@ -416,6 +543,9 @@ impl TestHarness {
         self.svm.get_sysvar::<Clock>().unix_timestamp
     }
 
+    /// Create a subscription fixture using the new subscribe (no delegate approval).
+    /// Returns the SubscriptionFixture with wrapped USDC token accounts populated via
+    /// direct account injection (no actual wrap instruction -- tests mock the state).
     pub fn subscribe_fixture(
         &mut self,
         amount: u64,
@@ -428,19 +558,17 @@ impl TestHarness {
         self.send_create_plan(amount, frequency, trial_period, max_pulls, 0)
             .expect("create_plan should succeed");
 
+        // Create a mock SPL USDC mint (used for the wrapping vault backing)
         let usdc_mint = self.create_spl_mint(&subscriber, 6);
+        let merchant_pubkey = self.merchant_pubkey();
+
+        // For tests that use the fixture: create SPL token accounts for bookkeeping
         let subscriber_token_account =
             self.create_spl_token_account(&subscriber, &usdc_mint, &subscriber_pubkey);
-        let merchant_pubkey = self.merchant_pubkey();
         let merchant_token_account =
             self.create_spl_token_account(&subscriber, &usdc_mint, &merchant_pubkey);
-        self.mint_spl_tokens(
-            &subscriber,
-            &usdc_mint,
-            &subscriber_token_account,
-            amount * max_pulls + amount,
-        );
-        self.send_subscribe(&subscriber, 0, &subscriber_token_account, &usdc_mint)
+
+        self.send_subscribe(&subscriber, 0)
             .expect("subscribe should succeed");
 
         let plan_addresses = self.derive_plan_addresses(0);
@@ -503,6 +631,76 @@ impl TestHarness {
             .get_account(&to_address(*pubkey))
             .expect("account should exist")
             .owner
+    }
+
+    /// Inject a Token-2022 token account directly into LiteSVM state.
+    /// Uses SPL Token account binary layout (identical to Token-2022 base account).
+    /// The account is owned by the Token-2022 program. Used for testing instructions
+    /// that require Token-2022 accounts without going through the full wrap flow.
+    pub fn inject_token_2022_account(
+        &mut self,
+        pubkey: &Pubkey,
+        mint: &Pubkey,
+        owner: &Pubkey,
+        amount: u64,
+    ) {
+        // SPL Token and Token-2022 base account layouts are binary-compatible (165 bytes).
+        // We pack using spl_token types but set the program owner to Token-2022.
+        use spl_token::solana_program::program_option::COption;
+        use spl_token::state::{Account as SplAccount, AccountState};
+        let account_state = SplAccount {
+            mint: to_address(*mint),
+            owner: to_address(*owner),
+            amount,
+            delegate: COption::None,
+            state: AccountState::Initialized,
+            is_native: COption::None,
+            delegated_amount: 0,
+            close_authority: COption::None,
+        };
+        let mut data = vec![0u8; SplAccount::LEN];
+        SplAccount::pack(account_state, &mut data).expect("account should pack");
+        self.svm
+            .set_account(
+                to_address(*pubkey),
+                Account {
+                    lamports: 2_039_280, // rent-exempt for 165 bytes
+                    data,
+                    owner: token_2022_address(),
+                    executable: false,
+                    rent_epoch: 0,
+                },
+            )
+            .expect("token-2022 account should be created");
+    }
+
+    /// Inject a Token-2022 mint into LiteSVM state.
+    /// Uses SPL Token mint binary layout (compatible with Token-2022 for basic mints).
+    /// Used for testing without actually initializing the full wrapped USDC mint.
+    pub fn inject_token_2022_mint(&mut self, pubkey: &Pubkey, authority: &Pubkey, supply: u64) {
+        use spl_token::solana_program::program_option::COption;
+        use spl_token::state::Mint as SplMintState;
+        let mint_state = SplMintState {
+            mint_authority: COption::Some(to_address(*authority)),
+            supply,
+            decimals: 6,
+            is_initialized: true,
+            freeze_authority: COption::None,
+        };
+        let mut data = vec![0u8; SplMintState::LEN];
+        SplMintState::pack(mint_state, &mut data).expect("mint should pack");
+        self.svm
+            .set_account(
+                to_address(*pubkey),
+                Account {
+                    lamports: 1_461_600,
+                    data,
+                    owner: token_2022_address(),
+                    executable: false,
+                    rent_epoch: 0,
+                },
+            )
+            .expect("token-2022 mint should be created");
     }
 
     pub fn send_instructions(
@@ -572,6 +770,10 @@ impl TestHarness {
 
 pub fn token_2022_address() -> Address {
     Address::from(spl_token_2022::id().to_bytes())
+}
+
+pub fn spl_token_address() -> Address {
+    Address::from(spl_token::id().to_bytes())
 }
 
 fn token_2022_anchor_id() -> Pubkey {

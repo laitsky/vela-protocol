@@ -2,34 +2,67 @@
 mod helpers;
 
 use helpers::{SubscriptionFixture, TestHarness};
+use solana_keypair::Keypair;
 use solana_signer::Signer;
 use vela_protocol::{
     constants::MIN_FREQUENCY_SECONDS,
     state::{VelaMandate, VelaPlan},
 };
+use anchor_lang::prelude::Pubkey;
 
-fn setup_fixture() -> (TestHarness, SubscriptionFixture, VelaPlan, VelaMandate) {
+fn setup_fixture() -> (TestHarness, SubscriptionFixture, VelaPlan, VelaMandate, Pubkey, Pubkey, Pubkey) {
     let mut harness = TestHarness::new();
     let fixture = harness.subscribe_fixture(25_000_000, MIN_FREQUENCY_SECONDS, 0, 2);
     let plan: VelaPlan = harness.fetch_anchor_account(&fixture.plan);
     let mandate: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
-    (harness, fixture, plan, mandate)
+
+    let wrapped_mint = Keypair::new();
+    let wrapped_mint_pubkey = helpers::to_anchor_pubkey(wrapped_mint.pubkey());
+    let (mint_authority, _) = harness.derive_mint_authority();
+    harness.inject_token_2022_mint(&wrapped_mint_pubkey, &mint_authority, 1_000_000_000);
+
+    let subscriber_wrapped = Keypair::new();
+    let subscriber_wrapped_pubkey = helpers::to_anchor_pubkey(subscriber_wrapped.pubkey());
+    harness.inject_token_2022_account(
+        &subscriber_wrapped_pubkey,
+        &wrapped_mint_pubkey,
+        &fixture.mandate,
+        plan.amount * 10,
+    );
+
+    let merchant_wrapped = Keypair::new();
+    let merchant_wrapped_pubkey = helpers::to_anchor_pubkey(merchant_wrapped.pubkey());
+    harness.inject_token_2022_account(
+        &merchant_wrapped_pubkey,
+        &wrapped_mint_pubkey,
+        &harness.merchant_pubkey(),
+        0,
+    );
+
+    (harness, fixture, plan, mandate, subscriber_wrapped_pubkey, merchant_wrapped_pubkey, wrapped_mint_pubkey)
 }
 
 #[test]
 fn test_pull_with_valid_approval() {
-    let (mut harness, fixture, plan, mandate_before) = setup_fixture();
+    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) = setup_fixture();
+    let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
+
     harness.set_clock_timestamp(mandate_before.next_payment_due);
-    let approval = harness.create_pull_approval(&fixture.mandate, mandate_before.next_payment_due, true);
+    let approval = harness.create_pull_approval_with_amount(
+        &fixture.mandate,
+        mandate_before.next_payment_due,
+        true,
+        plan.amount,
+    );
 
     harness
         .send_execute_pull(
             &fixture.subscriber,
-            &anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes()),
+            &subscriber,
             plan.plan_id,
-            &fixture.subscriber_token_account,
-            &fixture.merchant_token_account,
-            &fixture.usdc_mint,
+            &sub_wrapped,
+            &merch_wrapped,
+            &wrapped_mint,
         )
         .expect("execute_pull should consume a valid approval");
 
@@ -41,18 +74,26 @@ fn test_pull_with_valid_approval() {
 
 #[test]
 fn test_pull_with_expired_approval_fails() {
-    let (mut harness, fixture, plan, mandate_before) = setup_fixture();
+    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) = setup_fixture();
+    let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
+
+    // Set clock past valid_until so approval is expired
     harness.set_clock_timestamp(mandate_before.next_payment_due + 1);
-    harness.create_pull_approval(&fixture.mandate, mandate_before.next_payment_due, true);
+    harness.create_pull_approval_with_amount(
+        &fixture.mandate,
+        mandate_before.next_payment_due,
+        true,
+        plan.amount,
+    );
 
     let error = harness
         .send_execute_pull(
             &fixture.subscriber,
-            &anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes()),
+            &subscriber,
             plan.plan_id,
-            &fixture.subscriber_token_account,
-            &fixture.merchant_token_account,
-            &fixture.usdc_mint,
+            &sub_wrapped,
+            &merch_wrapped,
+            &wrapped_mint,
         )
         .expect_err("expired approvals should be rejected");
 

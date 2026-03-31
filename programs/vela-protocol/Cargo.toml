@@ -100,6 +100,14 @@ path = "../../tests/test_pull_approval.rs"
 name = "test_billing_event"
 path = "../../tests/test_billing_event.rs"
 
+[[test]]
+name = "test_transfer_hook"
+path = "../../tests/test_transfer_hook.rs"
+
+[[test]]
+name = "test_wrap_unwrap"
+path = "../../tests/test_wrap_unwrap.rs"
+
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

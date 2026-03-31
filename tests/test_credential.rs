@@ -119,41 +119,15 @@ fn test_credential_per_plan_mint() {
     let plan_b = harness.derive_plan_addresses(1);
     assert_ne!(plan_a.credential_mint, plan_b.credential_mint);
 
-    let usdc_mint = harness.create_spl_mint(&subscriber_one, 6);
-    let subscriber_one_plan_a =
-        harness.create_spl_token_account(&subscriber_one, &usdc_mint, &subscriber_one_pubkey);
-    let subscriber_one_plan_b =
-        harness.create_spl_token_account(&subscriber_one, &usdc_mint, &subscriber_one_pubkey);
-    let subscriber_two_plan_a =
-        harness.create_spl_token_account(&subscriber_two, &usdc_mint, &subscriber_two_pubkey);
-
-    harness.mint_spl_tokens(
-        &subscriber_one,
-        &usdc_mint,
-        &subscriber_one_plan_a,
-        25_000_000 * 5,
-    );
-    harness.mint_spl_tokens(
-        &subscriber_one,
-        &usdc_mint,
-        &subscriber_one_plan_b,
-        50_000_000 * 5,
-    );
-    harness.mint_spl_tokens(
-        &subscriber_one,
-        &usdc_mint,
-        &subscriber_two_plan_a,
-        25_000_000 * 5,
-    );
-
+    // Subscribe three different subscribers/plans (no USDC accounts needed anymore)
     harness
-        .send_subscribe(&subscriber_one, 0, &subscriber_one_plan_a, &usdc_mint)
+        .send_subscribe(&subscriber_one, 0)
         .expect("first subscriber should join plan A");
     harness
-        .send_subscribe(&subscriber_one, 1, &subscriber_one_plan_b, &usdc_mint)
+        .send_subscribe(&subscriber_one, 1)
         .expect("first subscriber should join plan B");
     harness
-        .send_subscribe(&subscriber_two, 0, &subscriber_two_plan_a, &usdc_mint)
+        .send_subscribe(&subscriber_two, 0)
         .expect("second subscriber should join plan A");
 
     let plan_a_credential_one =

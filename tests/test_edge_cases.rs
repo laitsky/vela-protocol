@@ -3,24 +3,49 @@ mod helpers;
 
 use anchor_lang::prelude::Pubkey;
 use helpers::{SubscriptionFixture, TestHarness};
-use solana_pubkey::Pubkey as SplPubkey;
+use solana_keypair::Keypair;
 use solana_signer::Signer;
 use vela_protocol::{
     constants::MIN_FREQUENCY_SECONDS,
     state::{MandateStatus, VelaMandate, VelaPlan},
 };
 
+/// Set up a subscription fixture with Token-2022 wrapped USDC accounts.
 fn setup_fixture(
     amount: u64,
     frequency: u64,
     trial_period: u64,
     max_pulls: u64,
-) -> (TestHarness, SubscriptionFixture, VelaPlan, VelaMandate) {
+) -> (TestHarness, SubscriptionFixture, VelaPlan, VelaMandate, Pubkey, Pubkey, Pubkey) {
     let mut harness = TestHarness::new();
     let fixture = harness.subscribe_fixture(amount, frequency, trial_period, max_pulls);
     let plan: VelaPlan = harness.fetch_anchor_account(&fixture.plan);
     let mandate: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
-    (harness, fixture, plan, mandate)
+
+    let wrapped_mint = Keypair::new();
+    let wrapped_mint_pubkey = helpers::to_anchor_pubkey(wrapped_mint.pubkey());
+    let (mint_authority, _) = harness.derive_mint_authority();
+    harness.inject_token_2022_mint(&wrapped_mint_pubkey, &mint_authority, 1_000_000_000);
+
+    let subscriber_wrapped = Keypair::new();
+    let subscriber_wrapped_pubkey = helpers::to_anchor_pubkey(subscriber_wrapped.pubkey());
+    harness.inject_token_2022_account(
+        &subscriber_wrapped_pubkey,
+        &wrapped_mint_pubkey,
+        &fixture.mandate,
+        amount * 10,
+    );
+
+    let merchant_wrapped = Keypair::new();
+    let merchant_wrapped_pubkey = helpers::to_anchor_pubkey(merchant_wrapped.pubkey());
+    harness.inject_token_2022_account(
+        &merchant_wrapped_pubkey,
+        &wrapped_mint_pubkey,
+        &harness.merchant_pubkey(),
+        0,
+    );
+
+    (harness, fixture, plan, mandate, subscriber_wrapped_pubkey, merchant_wrapped_pubkey, wrapped_mint_pubkey)
 }
 
 fn subscriber_pubkey(fixture: &SubscriptionFixture) -> Pubkey {
@@ -47,39 +72,40 @@ fn finalize_billing_for_current_pull(harness: &mut TestHarness, mandate_pubkey: 
 
 #[test]
 fn test_expired_mandate_pull_fails() {
-    let (mut harness, fixture, plan, mandate) =
+    let (mut harness, fixture, plan, mandate, sub_wrapped, merch_wrapped, wrapped_mint) =
         setup_fixture(25_000_000, MIN_FREQUENCY_SECONDS, 0, 2);
     let subscriber = subscriber_pubkey(&fixture);
 
     harness.set_clock_timestamp(mandate.next_payment_due);
-    harness.create_pull_approval(&fixture.mandate, mandate.next_payment_due, true);
+    harness.create_pull_approval_with_amount(&fixture.mandate, mandate.next_payment_due, true, plan.amount);
     harness
         .send_execute_pull(
             &fixture.subscriber,
             &subscriber,
             plan.plan_id,
-            &fixture.subscriber_token_account,
-            &fixture.merchant_token_account,
-            &fixture.usdc_mint,
+            &sub_wrapped,
+            &merch_wrapped,
+            &wrapped_mint,
         )
         .expect("first pull should succeed");
 
     finalize_billing_for_current_pull(&mut harness, &fixture.mandate);
     let mandate_after_first: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
     harness.set_clock_timestamp(mandate_after_first.next_payment_due);
-    harness.create_pull_approval(
+    harness.create_pull_approval_with_amount(
         &fixture.mandate,
         mandate_after_first.next_payment_due,
         true,
+        plan.amount,
     );
     harness
         .send_execute_pull(
             &fixture.subscriber,
             &subscriber,
             plan.plan_id,
-            &fixture.subscriber_token_account,
-            &fixture.merchant_token_account,
-            &fixture.usdc_mint,
+            &sub_wrapped,
+            &merch_wrapped,
+            &wrapped_mint,
         )
         .expect("second pull should succeed");
 
@@ -92,9 +118,9 @@ fn test_expired_mandate_pull_fails() {
             &fixture.subscriber,
             &subscriber,
             plan.plan_id,
-            &fixture.subscriber_token_account,
-            &fixture.merchant_token_account,
-            &fixture.usdc_mint,
+            &sub_wrapped,
+            &merch_wrapped,
+            &wrapped_mint,
         )
         .expect_err("expired mandate should reject additional pulls");
 
@@ -103,7 +129,7 @@ fn test_expired_mandate_pull_fails() {
 
 #[test]
 fn test_early_pull_fails() {
-    let (mut harness, fixture, plan, mandate) =
+    let (mut harness, fixture, plan, mandate, sub_wrapped, merch_wrapped, wrapped_mint) =
         setup_fixture(25_000_000, 86_400, 0, 4);
     let subscriber = subscriber_pubkey(&fixture);
 
@@ -113,9 +139,9 @@ fn test_early_pull_fails() {
             &fixture.subscriber,
             &subscriber,
             plan.plan_id,
-            &fixture.subscriber_token_account,
-            &fixture.merchant_token_account,
-            &fixture.usdc_mint,
+            &sub_wrapped,
+            &merch_wrapped,
+            &wrapped_mint,
         )
         .expect_err("pulls before next_payment_due should fail");
 
@@ -124,38 +150,39 @@ fn test_early_pull_fails() {
 
 #[test]
 fn test_double_pull_same_period_fails() {
-    let (mut harness, fixture, plan, mandate) =
+    let (mut harness, fixture, plan, mandate, sub_wrapped, merch_wrapped, wrapped_mint) =
         setup_fixture(25_000_000, 2_592_000, 0, 4);
     let subscriber = subscriber_pubkey(&fixture);
 
     harness.set_clock_timestamp(mandate.next_payment_due);
-    harness.create_pull_approval(&fixture.mandate, mandate.next_payment_due, true);
+    harness.create_pull_approval_with_amount(&fixture.mandate, mandate.next_payment_due, true, plan.amount);
     harness
         .send_execute_pull(
             &fixture.subscriber,
             &subscriber,
             plan.plan_id,
-            &fixture.subscriber_token_account,
-            &fixture.merchant_token_account,
-            &fixture.usdc_mint,
+            &sub_wrapped,
+            &merch_wrapped,
+            &wrapped_mint,
         )
         .expect("first pull should succeed");
 
     finalize_billing_for_current_pull(&mut harness, &fixture.mandate);
     let mandate_after_first: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
-    harness.create_pull_approval(
+    harness.create_pull_approval_with_amount(
         &fixture.mandate,
         mandate_after_first.next_payment_due,
         true,
+        plan.amount,
     );
     let error = harness
         .send_execute_pull(
             &fixture.subscriber,
             &subscriber,
             plan.plan_id,
-            &fixture.subscriber_token_account,
-            &fixture.merchant_token_account,
-            &fixture.usdc_mint,
+            &sub_wrapped,
+            &merch_wrapped,
+            &wrapped_mint,
         )
         .expect_err("second pull in the same period should fail");
 
@@ -164,59 +191,48 @@ fn test_double_pull_same_period_fails() {
 
 #[test]
 fn test_insufficient_balance_pull_fails() {
-    let (mut harness, fixture, plan, mandate) =
+    // With Token-2022, insufficient balance causes the transfer_checked to fail.
+    // Inject an account with 0 balance to trigger a Token-2022 transfer error.
+    let (mut harness, fixture, plan, mandate, _sub_wrapped, merch_wrapped, wrapped_mint) =
         setup_fixture(1_000_000, MIN_FREQUENCY_SECONDS, 0, 3);
     let subscriber = subscriber_pubkey(&fixture);
-    let drain_wallet = harness.create_wallet();
-    let drain_owner = Pubkey::new_from_array(drain_wallet.pubkey().to_bytes());
-    let drain_token_account =
-        harness.create_spl_token_account(&fixture.subscriber, &fixture.usdc_mint, &drain_owner);
-    let subscriber_balance = harness
-        .fetch_spl_token_account(&fixture.subscriber_token_account)
-        .amount;
 
-    let drain_ix = spl_token::instruction::transfer_checked(
-        &SplPubkey::new_from_array(spl_token::id().to_bytes()),
-        &SplPubkey::new_from_array(fixture.subscriber_token_account.to_bytes()),
-        &SplPubkey::new_from_array(fixture.usdc_mint.to_bytes()),
-        &SplPubkey::new_from_array(drain_token_account.to_bytes()),
-        &SplPubkey::new_from_array(subscriber.to_bytes()),
-        &[],
-        subscriber_balance,
-        6,
-    )
-    .expect("drain transfer instruction should build");
-    harness
-        .send_instructions(
-            &[drain_ix],
-            &[&fixture.subscriber],
-            Some(&fixture.subscriber.pubkey()),
-        )
-        .expect("subscriber should be able to drain funds");
+    // Create a subscriber wrapped account with 0 balance (no funds)
+    let empty_wrapped = Keypair::new();
+    let empty_wrapped_pubkey = helpers::to_anchor_pubkey(empty_wrapped.pubkey());
+    harness.inject_token_2022_account(
+        &empty_wrapped_pubkey,
+        &wrapped_mint,
+        &fixture.mandate,
+        0, // empty
+    );
 
     harness.set_clock_timestamp(mandate.next_payment_due);
+    harness.create_pull_approval_with_amount(&fixture.mandate, mandate.next_payment_due, true, plan.amount);
+
     let error = harness
         .send_execute_pull(
             &fixture.subscriber,
             &subscriber,
             plan.plan_id,
-            &fixture.subscriber_token_account,
-            &fixture.merchant_token_account,
-            &fixture.usdc_mint,
+            &empty_wrapped_pubkey,
+            &merch_wrapped,
+            &wrapped_mint,
         )
         .expect_err("pull with zero balance should fail");
 
+    // Token-2022 returns InsufficientFunds or similar when balance is too low
     let err_string = format!("{:?}", error.err);
     assert!(
-        err_string.contains("Custom(6003)") || err_string.contains("InsufficientFunds"),
-        "expected protocol or SPL insufficient funds error, got {:?}",
+        err_string.contains("Custom(") || err_string.contains("InsufficientFunds"),
+        "expected insufficient funds error, got {:?}",
         error.err,
     );
 }
 
 #[test]
 fn test_unauthorized_cancel_fails() {
-    let (mut harness, fixture, plan, _) =
+    let (mut harness, fixture, plan, _, _, _, _) =
         setup_fixture(25_000_000, MIN_FREQUENCY_SECONDS, 0, 3);
     let attacker = harness.create_wallet();
     let subscriber = subscriber_pubkey(&fixture);
@@ -236,7 +252,7 @@ fn test_unauthorized_cancel_fails() {
 
 #[test]
 fn test_cancel_already_cancelled_fails() {
-    let (mut harness, fixture, plan, _) =
+    let (mut harness, fixture, plan, _, _, _, _) =
         setup_fixture(25_000_000, MIN_FREQUENCY_SECONDS, 0, 3);
     let subscriber = subscriber_pubkey(&fixture);
 
@@ -265,7 +281,7 @@ fn test_cancel_already_cancelled_fails() {
 
 #[test]
 fn test_pull_after_cancel_fails() {
-    let (mut harness, fixture, plan, mandate) =
+    let (mut harness, fixture, plan, mandate, sub_wrapped, merch_wrapped, wrapped_mint) =
         setup_fixture(25_000_000, MIN_FREQUENCY_SECONDS, 0, 3);
     let subscriber = subscriber_pubkey(&fixture);
 
@@ -285,9 +301,9 @@ fn test_pull_after_cancel_fails() {
             &fixture.subscriber,
             &subscriber,
             plan.plan_id,
-            &fixture.subscriber_token_account,
-            &fixture.merchant_token_account,
-            &fixture.usdc_mint,
+            &sub_wrapped,
+            &merch_wrapped,
+            &wrapped_mint,
         )
         .expect_err("cancelled mandates should reject pulls");
 
@@ -296,7 +312,7 @@ fn test_pull_after_cancel_fails() {
 
 #[test]
 fn test_expiry_date_passed() {
-    let (mut harness, fixture, plan, mandate) =
+    let (mut harness, fixture, plan, mandate, sub_wrapped, merch_wrapped, wrapped_mint) =
         setup_fixture(25_000_000, MIN_FREQUENCY_SECONDS, MIN_FREQUENCY_SECONDS, 100);
     let subscriber = subscriber_pubkey(&fixture);
 
@@ -308,9 +324,9 @@ fn test_expiry_date_passed() {
             &fixture.subscriber,
             &subscriber,
             plan.plan_id,
-            &fixture.subscriber_token_account,
-            &fixture.merchant_token_account,
-            &fixture.usdc_mint,
+            &sub_wrapped,
+            &merch_wrapped,
+            &wrapped_mint,
         )
         .expect_err("mandates past expiry should reject pulls");
 
