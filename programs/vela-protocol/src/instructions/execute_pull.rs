@@ -1,5 +1,8 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{transfer_checked, Mint, Token, TokenAccount, TransferChecked};
+use anchor_spl::{
+    token_2022::Token2022,
+    token_interface::{transfer_checked, Mint, TokenAccount, TransferChecked},
+};
 
 use crate::{
     constants::USDC_DECIMALS,
@@ -12,10 +15,10 @@ pub struct ExecutePull<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    /// CHECK: Used for mandate PDA derivation and token ownership checks.
+    /// CHECK: Used for mandate PDA derivation only.
     pub subscriber: UncheckedAccount<'info>,
 
-    /// CHECK: Used for plan PDA validation and token ownership checks.
+    /// CHECK: Used for plan PDA validation only.
     pub merchant: UncheckedAccount<'info>,
 
     #[account(
@@ -39,26 +42,32 @@ pub struct ExecutePull<'info> {
     )]
     pub mandate: Account<'info, VelaMandate>,
 
+    /// Subscriber's Token-2022 wrapped USDC account (source of the transfer).
     #[account(
         mut,
-        constraint = subscriber_token_account.owner == subscriber.key(),
-        constraint = subscriber_token_account.mint == usdc_mint.key()
+        token::mint = wrapped_usdc_mint,
+        token::authority = mandate,
+        token::token_program = token_2022_program,
     )]
-    pub subscriber_token_account: Account<'info, TokenAccount>,
+    pub subscriber_wrapped_account: InterfaceAccount<'info, TokenAccount>,
 
+    /// Merchant's Token-2022 wrapped USDC account (destination of the transfer).
     #[account(
         mut,
-        constraint = merchant_token_account.owner == merchant.key(),
-        constraint = merchant_token_account.mint == usdc_mint.key()
+        token::mint = wrapped_usdc_mint,
+        token::authority = merchant,
+        token::token_program = token_2022_program,
     )]
-    pub merchant_token_account: Account<'info, TokenAccount>,
+    pub merchant_wrapped_account: InterfaceAccount<'info, TokenAccount>,
 
-    pub usdc_mint: Account<'info, Mint>,
-    pub token_program: Program<'info, Token>,
+    /// The Token-2022 wrapped USDC mint (triggers the transfer hook on transfer_checked).
+    pub wrapped_usdc_mint: InterfaceAccount<'info, Mint>,
 
     /// CHECK: The handler validates the PDA derivation, ownership, and deserializes PullApproval manually.
     #[account(mut)]
     pub pull_approval: UncheckedAccount<'info>,
+
+    pub token_2022_program: Program<'info, Token2022>,
 }
 
 pub fn handler(ctx: Context<ExecutePull>) -> Result<()> {
@@ -94,15 +103,10 @@ pub fn handler(ctx: Context<ExecutePull>) -> Result<()> {
         ctx.accounts.mandate.amount == ctx.accounts.plan.amount,
         VelaError::AmountExceedsPlanAmount
     );
-    require!(
-        ctx.accounts.subscriber_token_account.amount >= ctx.accounts.plan.amount,
-        VelaError::InsufficientBalance
-    );
-    require!(
-        ctx.accounts.usdc_mint.decimals == USDC_DECIMALS,
-        VelaError::AmountExceedsPlanAmount
-    );
 
+    // Validate PullApproval PDA derivation and existence.
+    // The actual approval validation (approved, valid_until, approved_amount) happens in the
+    // transfer hook when Token-2022 fires the Execute CPI during transfer_checked below.
     let (expected_approval, _) = Pubkey::find_program_address(
         &[PullApproval::SEED_PREFIX, ctx.accounts.mandate.key().as_ref()],
         &crate::ID,
@@ -121,6 +125,9 @@ pub fn handler(ctx: Context<ExecutePull>) -> Result<()> {
         return Err(VelaError::ApprovalNotGranted.into());
     }
 
+    // Pre-validate the approval before invoking Token-2022 transfer_checked (belt-and-suspenders).
+    // Token-2022 will also invoke the transfer hook which re-validates, but we check here to
+    // produce cleaner error messages and avoid partially-charged hook compute.
     let approval_data = ctx.accounts.pull_approval.try_borrow_data()?;
     let mut approval_slice: &[u8] = &approval_data;
     let approval = PullApproval::try_deserialize(&mut approval_slice)
@@ -132,6 +139,9 @@ pub fn handler(ctx: Context<ExecutePull>) -> Result<()> {
         VelaError::ApprovalExpired
     );
 
+    // Execute the Token-2022 transfer_checked. This triggers the transfer hook (execute CPI),
+    // which validates the PullApproval PDA. The mandate PDA signs the transfer as the
+    // authority over the subscriber's wrapped USDC account.
     let subscriber_key = ctx.accounts.subscriber.key();
     let plan_key = ctx.accounts.plan.key();
     let mandate_bump = [ctx.accounts.mandate.bump];
@@ -141,14 +151,14 @@ pub fn handler(ctx: Context<ExecutePull>) -> Result<()> {
         plan_key.as_ref(),
         &mandate_bump,
     ];
-
     let signer_seed_groups = [signer_seeds];
+
     let transfer_ctx = CpiContext::new_with_signer(
-        ctx.accounts.token_program.to_account_info(),
+        ctx.accounts.token_2022_program.to_account_info(),
         TransferChecked {
-            from: ctx.accounts.subscriber_token_account.to_account_info(),
-            mint: ctx.accounts.usdc_mint.to_account_info(),
-            to: ctx.accounts.merchant_token_account.to_account_info(),
+            from: ctx.accounts.subscriber_wrapped_account.to_account_info(),
+            mint: ctx.accounts.wrapped_usdc_mint.to_account_info(),
+            to: ctx.accounts.merchant_wrapped_account.to_account_info(),
             authority: ctx.accounts.mandate.to_account_info(),
         },
         &signer_seed_groups,
@@ -170,6 +180,7 @@ pub fn handler(ctx: Context<ExecutePull>) -> Result<()> {
         mandate.status = MandateStatus::Expired;
     }
 
+    // Close PullApproval PDA and refund lamports to payer.
     let approval_info = ctx.accounts.pull_approval.to_account_info();
     let payer_info = ctx.accounts.payer.to_account_info();
     let refund = approval_info.lamports();

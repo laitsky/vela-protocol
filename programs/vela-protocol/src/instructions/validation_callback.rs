@@ -57,6 +57,7 @@ pub fn validate_mandate_callback(
     approval.mandate = ctx.accounts.mandate.key();
     approval.valid_until = ctx.accounts.mandate.next_payment_due;
     approval.approved = result;
+    approval.approved_amount = ctx.accounts.mandate.amount;
     approval.created_at = Clock::get()?.unix_timestamp;
     approval.bump = ctx.bumps.pull_approval;
 

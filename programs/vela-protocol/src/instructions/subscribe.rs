@@ -1,7 +1,7 @@
 use anchor_lang::{prelude::*, solana_program::program::invoke_signed};
 use anchor_spl::{
     associated_token::{self, AssociatedToken},
-    token::{approve, Approve, Mint, Token, TokenAccount},
+    token::Token,
 };
 use solana_instruction::Instruction as SplInstruction;
 use solana_program_error::ProgramError as SplProgramError;
@@ -9,7 +9,6 @@ use solana_pubkey::Pubkey as SplPubkey;
 use spl_token_2022::instruction::mint_to;
 
 use crate::{
-    constants::USDC_DECIMALS,
     errors::VelaError,
     state::{MandateStatus, PlanStatus, VelaMandate, VelaPlan},
 };
@@ -45,15 +44,6 @@ pub struct Subscribe<'info> {
     )]
     pub mandate: Account<'info, VelaMandate>,
 
-    #[account(
-        mut,
-        constraint = subscriber_token_account.owner == subscriber.key(),
-        constraint = subscriber_token_account.mint == usdc_mint.key()
-    )]
-    pub subscriber_token_account: Account<'info, TokenAccount>,
-
-    pub usdc_mint: Account<'info, Mint>,
-
     #[account(mut, address = plan.credential_mint)]
     /// CHECK: Credential mint PDA ownership is validated in the handler.
     pub credential_mint: UncheckedAccount<'info>,
@@ -77,10 +67,6 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
         ctx.accounts.plan.status == PlanStatus::Active,
         VelaError::PlanNotActive
     );
-    require!(
-        ctx.accounts.usdc_mint.decimals == USDC_DECIMALS,
-        VelaError::AmountExceedsPlanAmount
-    );
     require_keys_eq!(
         ctx.accounts.token_2022_program.key(),
         anchor_pubkey(spl_token_2022::id())
@@ -96,22 +82,10 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
         credential_ata
     );
 
-    let lifetime_amount = ctx
-        .accounts
-        .plan
-        .amount
-        .checked_mul(ctx.accounts.plan.max_pulls)
-        .ok_or(VelaError::Overflow)?;
-
-    let approve_ctx = CpiContext::new(
-        ctx.accounts.token_program.to_account_info(),
-        Approve {
-            to: ctx.accounts.subscriber_token_account.to_account_info(),
-            delegate: ctx.accounts.mandate.to_account_info(),
-            authority: ctx.accounts.subscriber.to_account_info(),
-        },
-    );
-    approve(approve_ctx, lifetime_amount)?;
+    // No delegate approval needed -- subscribers no longer approve a delegate authority.
+    // The mandate PDA is the authority over the subscriber's wrapped USDC account, and
+    // transfer hook validation enforces all billing constraints (D-12, D-14).
+    // Subscribers must wrap SPL USDC before executing pulls (use SDK wrapAndSubscribe).
 
     let ata_ctx = CpiContext::new(
         ctx.accounts.associated_token_program.to_account_info(),
