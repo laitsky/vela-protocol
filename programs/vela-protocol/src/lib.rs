@@ -8,13 +8,34 @@ pub mod state;
 
 use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
-    Cancel, CreatePlan, ExecutePull, InitConfig, InitRecordBillingCompDef,
-    InitValidateMandateCompDef, RecordBillingEventCallback, RequestBillingRecord,
-    RequestValidation, Subscribe, UpdateConfig, ValidateMandateCallback,
+    Cancel, CreatePlan, ExecutePull, InitConfig, InitExtraAccountMetaList, InitRecordBillingCompDef,
+    InitValidateMandateCompDef, InitWrappedMint, RecordBillingEventCallback, RequestBillingRecord,
+    RequestValidation, Subscribe, TransferHook, Unwrap, UpdateConfig, ValidateMandateCallback,
+    Wrap,
 };
 use arcium_anchor::prelude::SignedComputationOutputs;
 use crate::instructions::billing_callback::RecordBillingEventOutput;
 use crate::instructions::validation_callback::ValidateMandateOutput;
+
+mod __client_accounts_init_extra_account_meta_list {
+    pub use crate::instructions::__client_accounts_init_extra_account_meta_list::*;
+}
+
+mod __client_accounts_init_wrapped_mint {
+    pub use crate::instructions::__client_accounts_init_wrapped_mint::*;
+}
+
+mod __client_accounts_transfer_hook {
+    pub use crate::instructions::__client_accounts_transfer_hook::*;
+}
+
+mod __client_accounts_unwrap {
+    pub use crate::instructions::__client_accounts_unwrap::*;
+}
+
+mod __client_accounts_wrap {
+    pub use crate::instructions::__client_accounts_wrap::*;
+}
 
 mod __client_accounts_record_billing_event_callback {
     pub use crate::instructions::__client_accounts_record_billing_event_callback::*;
@@ -143,5 +164,44 @@ pub mod vela_protocol {
         output: SignedComputationOutputs<RecordBillingEventOutput>,
     ) -> Result<()> {
         instructions::billing_callback::record_billing_event_callback(ctx, output)
+    }
+
+    pub fn init_wrapped_mint(ctx: Context<InitWrappedMint>) -> Result<()> {
+        instructions::init_wrapped_mint::handler(ctx)
+    }
+
+    pub fn init_extra_account_meta_list(ctx: Context<InitExtraAccountMetaList>) -> Result<()> {
+        instructions::init_extra_account_meta_list::handler(ctx)
+    }
+
+    #[allow(deprecated)]
+    #[interface(spl_transfer_hook_interface::execute)]
+    pub fn transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
+        instructions::transfer_hook::handler(ctx, amount)
+    }
+
+    pub fn wrap(ctx: Context<Wrap>, amount: u64) -> Result<()> {
+        instructions::wrap::handler(ctx, amount)
+    }
+
+    pub fn unwrap_tokens(ctx: Context<Unwrap>, amount: u64) -> Result<()> {
+        instructions::unwrap::handler(ctx, amount)
+    }
+
+    pub fn fallback<'info>(
+        program_id: &Pubkey,
+        accounts: &'info [AccountInfo<'info>],
+        data: &[u8],
+    ) -> Result<()> {
+        use spl_transfer_hook_interface::instruction::TransferHookInstruction;
+        let instruction = TransferHookInstruction::unpack(data)
+            .map_err(|_| anchor_lang::error::Error::from(anchor_lang::prelude::ProgramError::InvalidInstructionData))?;
+        match instruction {
+            TransferHookInstruction::Execute { amount } => {
+                let amount_bytes = amount.to_le_bytes();
+                __private::__global::transfer_hook(program_id, accounts, &amount_bytes)
+            }
+            _ => Err(anchor_lang::error::Error::from(anchor_lang::prelude::ProgramError::InvalidInstructionData)),
+        }
     }
 }
