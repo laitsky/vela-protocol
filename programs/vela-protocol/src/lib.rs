@@ -8,15 +8,23 @@ pub mod state;
 
 use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
-    Cancel, CreatePlan, ExecutePull, InitConfig, InitKeeperConfig, InitRecordBillingCompDef,
-    InitValidateMandateCompDef, InitWrappedMint, RecordBillingEventCallback, RequestBillingRecord,
-    RequestValidation, Subscribe, Unwrap, UpdateConfig, UpdateKeeperConfig, ValidateMandateCallback,
-    Wrap,
+    Cancel, CreatePlan, CreateUsagePlan, ExecutePull, InitConfig, InitKeeperConfig,
+    InitRecordBillingCompDef, InitValidateMandateCompDef, InitWrappedMint,
+    RecordBillingEventCallback, RequestBillingRecord, RequestValidation, SubmitUsageReport,
+    Subscribe, Unwrap, UpdateConfig, UpdateKeeperConfig, ValidateMandateCallback, Wrap,
 };
-use crate::state::KeeperMode;
+use crate::state::{KeeperMode, PricingTier};
 use arcium_anchor::prelude::SignedComputationOutputs;
 use crate::instructions::billing_callback::RecordBillingEventOutput;
 use crate::instructions::validation_callback::ValidateMandateOutput;
+
+mod __client_accounts_create_usage_plan {
+    pub use crate::instructions::__client_accounts_create_usage_plan::*;
+}
+
+mod __client_accounts_submit_usage_report {
+    pub use crate::instructions::__client_accounts_submit_usage_report::*;
+}
 
 mod __client_accounts_init_wrapped_mint {
     pub use crate::instructions::__client_accounts_init_wrapped_mint::*;
@@ -104,6 +112,42 @@ pub mod vela_protocol {
         max_pulls: u64,
     ) -> Result<()> {
         instructions::create_plan::handler(ctx, amount, frequency, trial_period, max_pulls)
+    }
+
+    pub fn create_usage_plan(
+        ctx: Context<CreateUsagePlan>,
+        plan_id: u64,
+        unit_name: [u8; 32],
+        tiers: Vec<PricingTier>,
+        max_charge_per_period: u64,
+        settlement_frequency: u64,
+    ) -> Result<()> {
+        instructions::create_usage_plan::handler(
+            ctx,
+            plan_id,
+            unit_name,
+            tiers,
+            max_charge_per_period,
+            settlement_frequency,
+        )
+    }
+
+    pub fn submit_usage_report(
+        ctx: Context<SubmitUsageReport>,
+        period_start: i64,
+        period_end: i64,
+        encrypted_usage: [[u8; 32]; 4],
+        nonce: u128,
+        pub_key: [u8; 32],
+    ) -> Result<()> {
+        instructions::submit_usage_report::handler(
+            ctx,
+            period_start,
+            period_end,
+            encrypted_usage,
+            nonce,
+            pub_key,
+        )
     }
 
     pub fn execute_pull<'a, 'b, 'c, 'info>(

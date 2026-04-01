@@ -2,6 +2,7 @@ pub mod arcium_accounts;
 pub mod billing_callback;
 pub mod cancel;
 pub mod create_plan;
+pub mod create_usage_plan;
 pub mod execute_pull;
 pub mod init_comp_defs;
 pub mod init_config;
@@ -9,6 +10,7 @@ pub mod init_keeper_config;
 pub mod init_wrapped_mint;
 pub mod request_billing_record;
 pub mod request_validation;
+pub mod submit_usage_report;
 pub mod subscribe;
 pub mod unwrap;
 pub mod update_keeper_config;
@@ -33,6 +35,14 @@ pub mod __client_accounts_unwrap {
 
 pub mod __client_accounts_wrap {
     pub use super::wrap::__client_accounts_wrap::*;
+}
+
+pub mod __client_accounts_create_usage_plan {
+    pub use super::create_usage_plan::__client_accounts_create_usage_plan::*;
+}
+
+pub mod __client_accounts_submit_usage_report {
+    pub use super::submit_usage_report::__client_accounts_submit_usage_report::*;
 }
 
 pub mod __client_accounts_record_billing_event_callback {
@@ -86,6 +96,8 @@ pub mod __client_accounts_validate_mandate_callback {
 pub use billing_callback::RecordBillingEventCallback;
 pub use cancel::Cancel;
 pub use create_plan::CreatePlan;
+pub use create_usage_plan::CreateUsagePlan;
+pub use submit_usage_report::SubmitUsageReport;
 pub use execute_pull::ExecutePull;
 pub use init_comp_defs::{InitRecordBillingCompDef, InitValidateMandateCompDef};
 pub use init_config::{InitConfig, InitConfigIx, UpdateConfig, UpdateConfigIx};

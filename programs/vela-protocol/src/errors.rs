@@ -106,4 +106,25 @@ pub enum VelaError {
 
     #[msg("At least one field must be provided for update")]
     NoUpdateProvided,
+
+    #[msg("Usage plan requires 1-5 pricing tiers")]
+    InvalidTierCount,
+
+    #[msg("Operation requires a different billing type")]
+    BillingTypeMismatch,
+
+    #[msg("Invalid period boundaries")]
+    InvalidPeriod,
+
+    #[msg("Usage report period must align with mandate next_payment_due")]
+    PeriodMismatch,
+
+    #[msg("Amount must be greater than zero")]
+    InvalidAmount,
+
+    #[msg("Settlement frequency must be greater than zero")]
+    InvalidFrequency,
+
+    #[msg("Tier boundaries must be monotonically increasing")]
+    InvalidTierBoundary,
 }
