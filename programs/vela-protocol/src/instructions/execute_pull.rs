@@ -16,7 +16,8 @@ use crate::{
         EXTRA_ACCOUNT_METAS_SEED, TRANSFER_HOOK_PROGRAM_ID, USDC_DECIMALS,
     },
     errors::VelaError,
-    state::{KeeperConfig, MandateStatus, PlanStatus, ProtocolConfig, PullApproval, VelaMandate, VelaPlan},
+    instructions::plan_account::{load_plan_account, require_plan_billing_type, LoadedPlanAccount},
+    state::{BillingType, KeeperConfig, MandateStatus, PlanStatus, ProtocolConfig, PullApproval, VelaMandate},
 };
 
 #[derive(Accounts)]
@@ -35,17 +36,10 @@ pub struct ExecutePull<'info> {
         bump = keeper_config.bump,
         constraint = keeper_config.keeper_authority == payer.key() @ VelaError::UnauthorizedKeeper
     )]
-    pub keeper_config: Account<'info, KeeperConfig>,
+    pub keeper_config: Box<Account<'info, KeeperConfig>>,
 
-    #[account(
-        seeds = [
-            VelaPlan::SEED_PREFIX,
-            merchant.key().as_ref(),
-            plan.plan_id.to_le_bytes().as_ref()
-        ],
-        bump = plan.bump
-    )]
-    pub plan: Account<'info, VelaPlan>,
+    /// CHECK: Deserialized and validated manually to support both flat and usage plans.
+    pub plan: UncheckedAccount<'info>,
 
     #[account(
         mut,
@@ -56,7 +50,7 @@ pub struct ExecutePull<'info> {
         ],
         bump = mandate.bump
     )]
-    pub mandate: Account<'info, VelaMandate>,
+    pub mandate: Box<Account<'info, VelaMandate>>,
 
     /// Subscriber's Token-2022 wrapped USDC account (source of the transfer).
     #[account(
@@ -65,7 +59,7 @@ pub struct ExecutePull<'info> {
         token::authority = mandate,
         token::token_program = token_2022_program,
     )]
-    pub subscriber_wrapped_account: InterfaceAccount<'info, TokenAccount>,
+    pub subscriber_wrapped_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// Merchant's Token-2022 wrapped USDC account (destination of the transfer).
     #[account(
@@ -74,14 +68,14 @@ pub struct ExecutePull<'info> {
         token::authority = merchant,
         token::token_program = token_2022_program,
     )]
-    pub merchant_wrapped_account: InterfaceAccount<'info, TokenAccount>,
+    pub merchant_wrapped_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// The Token-2022 wrapped USDC mint charged by the billing transfer.
     #[account(
         mut,
         address = protocol_config.wrapped_usdc_mint,
     )]
-    pub wrapped_usdc_mint: InterfaceAccount<'info, Mint>,
+    pub wrapped_usdc_mint: Box<InterfaceAccount<'info, Mint>>,
 
     /// CHECK: The handler validates the PDA derivation, ownership, and deserializes PullApproval manually.
     #[account(mut)]
@@ -91,13 +85,13 @@ pub struct ExecutePull<'info> {
         seeds = [ProtocolConfig::SEED_PREFIX],
         bump = protocol_config.bump,
     )]
-    pub protocol_config: Account<'info, ProtocolConfig>,
+    pub protocol_config: Box<Account<'info, ProtocolConfig>>,
 
     #[account(
         mut,
         address = protocol_config.wrapping_vault,
     )]
-    pub wrapping_vault: Account<'info, SplTokenAccount>,
+    pub wrapping_vault: Box<Account<'info, SplTokenAccount>>,
 
     /// CHECK: Dedicated transfer-hook validator program.
     #[account(
@@ -123,14 +117,15 @@ pub struct ExecutePull<'info> {
 pub fn handler<'a, 'b, 'c, 'info>(
     ctx: Context<'a, 'b, 'c, 'info, ExecutePull<'info>>,
 ) -> Result<()> {
-    require!(
-        ctx.accounts.plan.status == PlanStatus::Active,
-        VelaError::PlanNotActive
-    );
+    let plan = load_plan_account(&ctx.accounts.plan.to_account_info())?;
+    require_plan_billing_type(&plan, &ctx.accounts.mandate.billing_type)?;
+    require!(*plan.status() == PlanStatus::Active, VelaError::PlanNotActive);
     require!(
         ctx.accounts.mandate.status == MandateStatus::Active,
         VelaError::MandateNotActive
     );
+    require_keys_eq!(ctx.accounts.plan.key(), ctx.accounts.mandate.plan);
+    require_keys_eq!(plan.merchant(), ctx.accounts.merchant.key());
     require!(
         ctx.accounts.mandate.last_billing_recorded_pull == ctx.accounts.mandate.pulls_executed,
         VelaError::PendingBillingRecord
@@ -153,8 +148,13 @@ pub fn handler<'a, 'b, 'c, 'info>(
     );
     require_eq!(
         ctx.accounts.mandate.amount,
-        ctx.accounts.plan.amount,
+        plan.mandate_amount(),
         VelaError::AmountExceedsPlanAmount
+    );
+    require_eq!(
+        ctx.accounts.mandate.frequency,
+        plan.mandate_frequency(),
+        VelaError::InvalidFrequency
     );
 
     // Validate PullApproval PDA derivation and existence.
@@ -193,10 +193,22 @@ pub fn handler<'a, 'b, 'c, 'info>(
         clock.unix_timestamp <= approval.valid_until,
         VelaError::ApprovalExpired
     );
-    require!(
-        ctx.accounts.plan.amount <= approval.approved_amount,
-        VelaError::AmountExceedsPlanAmount
-    );
+    let charge_amount = match &plan {
+        LoadedPlanAccount::Flat(plan) => {
+            require!(
+                plan.amount <= approval.approved_amount,
+                VelaError::AmountExceedsPlanAmount
+            );
+            plan.amount
+        }
+        LoadedPlanAccount::Usage(_) => {
+            require!(
+                approval.approved_amount <= ctx.accounts.mandate.amount,
+                VelaError::AmountExceedsPlanAmount
+            );
+            approval.approved_amount
+        }
+    };
 
     // Settle the billing move as an actual Token-2022 transfer_checked.
     // The wrapped mint points at the dedicated `vela-transfer-hook` program, so the hook fires
@@ -222,7 +234,7 @@ pub fn handler<'a, 'b, 'c, 'info>(
         &spl_pubkey(destination_info.key),
         &spl_pubkey(authority_info.key),
         &[],
-        ctx.accounts.plan.amount,
+        charge_amount,
         USDC_DECIMALS,
     )
     .map_err(map_spl_error)?;
@@ -253,17 +265,22 @@ pub fn handler<'a, 'b, 'c, 'info>(
         &mandate_signer_seed_groups,
     )?;
 
+    let mandate_frequency =
+        i64::try_from(ctx.accounts.mandate.frequency).map_err(|_| VelaError::Overflow)?;
+    let is_usage_mandate = ctx.accounts.mandate.billing_type == BillingType::Usage;
     let mandate = &mut ctx.accounts.mandate;
     mandate.pulls_executed = mandate
         .pulls_executed
         .checked_add(1)
         .ok_or(VelaError::Overflow)?;
-    let frequency = i64::try_from(ctx.accounts.plan.frequency).map_err(|_| VelaError::Overflow)?;
     mandate.next_payment_due = mandate
         .next_payment_due
-        .checked_add(frequency)
+        .checked_add(mandate_frequency)
         .ok_or(VelaError::Overflow)?;
     mandate.last_pull_at = clock.unix_timestamp;
+    if is_usage_mandate {
+        mandate.last_billing_recorded_pull = mandate.pulls_executed;
+    }
     if mandate.pulls_executed >= mandate.max_pulls {
         mandate.status = MandateStatus::Expired;
     }

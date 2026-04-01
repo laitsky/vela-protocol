@@ -8,6 +8,7 @@ pub mod init_comp_defs;
 pub mod init_config;
 pub mod init_keeper_config;
 pub mod init_wrapped_mint;
+pub mod plan_account;
 pub mod request_billing_record;
 pub mod request_usage_computation;
 pub mod request_validation;

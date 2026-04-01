@@ -17,7 +17,7 @@ use arcium_client::idl::arcium::{
 const USAGE_CHARGE_CIRCUIT: &str = "usage_charge";
 const TIERED_PRICING_CIRCUIT: &str = "tiered_pricing";
 const USAGE_COMPUTATION_CALLBACK_DISCRIMINATOR: [u8; 8] =
-    [142, 61, 235, 201, 87, 19, 44, 183];
+    [201, 76, 6, 25, 189, 59, 96, 63];
 
 pub fn request_usage_computation(
     ctx: Context<RequestUsageComputation>,
@@ -79,11 +79,11 @@ pub fn request_usage_computation(
         TIERED_PRICING_CIRCUIT
     };
 
-    // Validate expected ciphertext lengths:
-    // usage_charge: 1 usage_units field, so ciphertext.len() == 3 (units, rate, max_charge)
-    // tiered_pricing: ciphertext.len() == 4 (usage, tier_boundaries[5], tier_rates[5], tier_count + max_charge)
-    // We accept >= 1 ciphertext -- precise validation will fail at circuit level if wrong
-    require!(!ciphertext.is_empty(), VelaError::InvalidCiphertextInput);
+    let expected_ciphertext_len = if usage_plan.tier_count == 1 { 3 } else { 13 };
+    require!(
+        ciphertext.len() == expected_ciphertext_len,
+        VelaError::InvalidCiphertextInput
+    );
 
     validate_queue_accounts(
         &ctx.accounts.mxe_account,
@@ -111,6 +111,7 @@ pub fn request_usage_computation(
     approval.mandate = Pubkey::default();
     approval.valid_until = 0;
     approval.approved = false;
+    approval.approved_amount = 0;
     approval.created_at = 0;
     approval.bump = ctx.bumps.pull_approval;
 

@@ -11,6 +11,7 @@ use anchor_lang::prelude::*;
 use arcium_anchor::{prelude::*, HasSize};
 
 const USAGE_CHARGE_CIRCUIT: &str = "usage_charge";
+const TIERED_PRICING_CIRCUIT: &str = "tiered_pricing";
 
 /// Output struct for both usage_charge and tiered_pricing circuits.
 /// Both circuits return a single u64 plaintext value (the computed charge amount).
@@ -37,11 +38,7 @@ pub fn usage_charge_callback(
     ctx: Context<UsageComputationCallback>,
     output: SignedComputationOutputs<UsageChargeOutput>,
 ) -> Result<()> {
-    validate_static_callback_accounts(
-        &ctx.accounts.mxe_account,
-        &ctx.accounts.comp_def_account,
-        USAGE_CHARGE_CIRCUIT,
-    )?;
+    validate_usage_callback_accounts(&ctx.accounts.mxe_account, &ctx.accounts.comp_def_account)?;
     validate_protocol_config(&ctx.accounts.config)?;
     validate_callback_binding(
         &ctx.accounts.config,
@@ -79,6 +76,16 @@ pub fn usage_charge_callback(
     });
 
     Ok(())
+}
+
+fn validate_usage_callback_accounts(
+    mxe_account: &UncheckedAccount<'_>,
+    comp_def_account: &UncheckedAccount<'_>,
+) -> Result<()> {
+    validate_static_callback_accounts(mxe_account, comp_def_account, USAGE_CHARGE_CIRCUIT)
+        .or_else(|_| {
+            validate_static_callback_accounts(mxe_account, comp_def_account, TIERED_PRICING_CIRCUIT)
+        })
 }
 
 #[derive(Accounts)]

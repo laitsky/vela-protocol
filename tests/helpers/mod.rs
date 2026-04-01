@@ -26,7 +26,10 @@ use spl_associated_token_account::get_associated_token_address_with_program_id;
 use spl_token::state::{Account as SplTokenAccount, Mint as SplMint};
 use vela_protocol::{
     instructions::arcium_accounts::derive_cluster_pubkey,
-    state::{BillingEvent, ClusterType, ProtocolConfig, PullApproval},
+    state::{
+        BillingEvent, ClusterType, KeeperConfig, KeeperMode, PricingTier, ProtocolConfig,
+        PullApproval, UsagePlan,
+    },
 };
 
 pub const AIRDROP_LAMPORTS: u64 = 10_000_000_000;
@@ -34,6 +37,11 @@ pub const AIRDROP_LAMPORTS: u64 = 10_000_000_000;
 pub struct PlanAddresses {
     pub merchant_state: Pubkey,
     pub plan: Pubkey,
+    pub credential_mint: Pubkey,
+}
+
+pub struct UsagePlanAddresses {
+    pub usage_plan: Pubkey,
     pub credential_mint: Pubkey,
 }
 
@@ -121,6 +129,28 @@ impl TestHarness {
         }
     }
 
+    pub fn derive_usage_plan_addresses(&self, plan_id: u64) -> UsagePlanAddresses {
+        let merchant = self.merchant_pubkey();
+        let plan_id_bytes = plan_id.to_le_bytes();
+        let (usage_plan, _) = Pubkey::find_program_address(
+            &[
+                UsagePlan::SEED_PREFIX,
+                merchant.as_ref(),
+                plan_id_bytes.as_ref(),
+            ],
+            &vela_protocol::ID,
+        );
+        let (credential_mint, _) = Pubkey::find_program_address(
+            &[b"usage_credential", merchant.as_ref(), plan_id_bytes.as_ref()],
+            &vela_protocol::ID,
+        );
+
+        UsagePlanAddresses {
+            usage_plan,
+            credential_mint,
+        }
+    }
+
     pub fn derive_mandate_address(&self, subscriber: &Pubkey, plan: &Pubkey) -> Pubkey {
         Pubkey::find_program_address(
             &[
@@ -183,6 +213,45 @@ impl TestHarness {
         .0
     }
 
+    pub fn derive_keeper_config(&self) -> (Pubkey, u8) {
+        Pubkey::find_program_address(
+            &[vela_protocol::state::KeeperConfig::SEED_PREFIX],
+            &vela_protocol::ID,
+        )
+    }
+
+    pub fn ensure_keeper_config(&mut self, keeper_authority: &Keypair) -> Pubkey {
+        let (keeper_config, bump) = self.derive_keeper_config();
+        if self.svm.get_account(&to_address(keeper_config)).is_none() {
+            let account = KeeperConfig {
+                admin: self.merchant_pubkey(),
+                mode: KeeperMode::Centralized,
+                keeper_endpoint: [0u8; 128],
+                endpoint_len: 0,
+                keeper_authority: to_anchor_pubkey(keeper_authority.pubkey()),
+                bump,
+            };
+            let mut data = Vec::new();
+            account
+                .try_serialize(&mut data)
+                .expect("keeper config should serialize");
+            self.svm
+                .set_account(
+                    to_address(keeper_config),
+                    Account {
+                        lamports: 1_000_000,
+                        data,
+                        owner: self.program_id,
+                        executable: false,
+                        rent_epoch: 0,
+                    },
+                )
+                .expect("keeper config account should be created");
+        }
+
+        keeper_config
+    }
+
     /// Derives a Token-2022 ATA for the given owner and mint.
     pub fn derive_token_2022_ata(&self, owner: &Pubkey, mint: &Pubkey) -> Pubkey {
         to_anchor_pubkey(get_associated_token_address_with_program_id(
@@ -234,6 +303,49 @@ impl TestHarness {
                 .send()
                 .expect("mint should initialize"),
         )
+    }
+
+    pub fn send_create_usage_plan(
+        &mut self,
+        plan_id: u64,
+        unit_name: [u8; 32],
+        tiers: Vec<PricingTier>,
+        max_charge_per_period: u64,
+        settlement_frequency: u64,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let addresses = self.derive_usage_plan_addresses(plan_id);
+        let accounts = vela_protocol::accounts::CreateUsagePlan {
+            merchant: self.merchant_pubkey(),
+            usage_plan: addresses.usage_plan,
+            credential_mint: addresses.credential_mint,
+            system_program: anchor_lang::system_program::ID,
+            token_2022_program: token_2022_anchor_id(),
+            rent: anchor_lang::solana_program::sysvar::rent::ID,
+        };
+
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::CreateUsagePlan {
+                plan_id,
+                unit_name,
+                tiers,
+                max_charge_per_period,
+                settlement_frequency,
+            }
+            .data(),
+        };
+
+        let merchant_bytes = self.merchant.to_bytes();
+        let secret_key = merchant_bytes[..32]
+            .try_into()
+            .expect("merchant secret key should be 32 bytes");
+        let merchant = Keypair::new_from_array(secret_key);
+        self.send_instruction(&instruction, &[&merchant], Some(&merchant.pubkey()))
     }
 
     pub fn init_protocol_config(&mut self, admin: &Keypair) -> Pubkey {
@@ -446,19 +558,32 @@ impl TestHarness {
         plan_id: u64,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let addresses = self.derive_plan_addresses(plan_id);
+        self.send_subscribe_to_plan(
+            subscriber,
+            &addresses.plan,
+            &addresses.credential_mint,
+        )
+    }
+
+    pub fn send_subscribe_to_plan(
+        &mut self,
+        subscriber: &Keypair,
+        plan: &Pubkey,
+        credential_mint: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let mandate =
-            self.derive_mandate_address(&to_anchor_pubkey(subscriber.pubkey()), &addresses.plan);
+            self.derive_mandate_address(&to_anchor_pubkey(subscriber.pubkey()), plan);
         let credential_ata = self.derive_credential_ata(
             &to_anchor_pubkey(subscriber.pubkey()),
-            &addresses.credential_mint,
+            credential_mint,
         );
 
         let accounts = vela_protocol::accounts::Subscribe {
             subscriber: to_anchor_pubkey(subscriber.pubkey()),
             merchant: self.merchant_pubkey(),
-            plan: addresses.plan,
+            plan: *plan,
             mandate,
-            credential_mint: addresses.credential_mint,
+            credential_mint: *credential_mint,
             subscriber_credential_account: credential_ata,
             token_program: Pubkey::new_from_array(spl_token::id().to_bytes()),
             token_2022_program: token_2022_anchor_id(),
@@ -497,10 +622,12 @@ impl TestHarness {
         let addresses = self.derive_plan_addresses(plan_id);
         let mandate = self.derive_mandate_address(subscriber, &addresses.plan);
         let pull_approval = self.derive_pull_approval_address(&mandate);
+        let keeper_config = self.ensure_keeper_config(payer);
         let accounts = vela_protocol::accounts::ExecutePull {
             payer: to_anchor_pubkey(payer.pubkey()),
             subscriber: *subscriber,
             merchant: self.merchant_pubkey(),
+            keeper_config,
             plan: addresses.plan,
             mandate,
             subscriber_wrapped_account: *subscriber_wrapped_account,
@@ -829,7 +956,15 @@ impl TestHarness {
         T: AccountDeserialize,
     {
         let data = self.fetch_account_data(pubkey);
-        T::try_deserialize(&mut data.as_slice()).expect("account should deserialize")
+        T::try_deserialize(&mut data.as_slice())
+            .or_else(|_| T::try_deserialize_unchecked(&mut data.as_slice()))
+            .or_else(|_| {
+                let mut without_discriminator = data
+                    .get(8..)
+                    .expect("account should contain discriminator bytes");
+                T::try_deserialize_unchecked(&mut without_discriminator)
+            })
+            .expect("account should deserialize")
     }
 
     pub fn fetch_account_data(&self, pubkey: &Pubkey) -> Vec<u8> {

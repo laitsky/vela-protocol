@@ -7,7 +7,7 @@ use solana_signer::Signer;
 use spl_token_2022::state::Account as Token2022Account;
 use vela_protocol::{
     constants::MIN_FREQUENCY_SECONDS,
-    state::{MandateStatus, PlanStatus, VelaMandate, VelaPlan},
+    state::{BillingType, MandateStatus, PlanStatus, PricingTier, VelaMandate, VelaPlan, UsagePlan},
 };
 
 use anchor_lang::prelude::Pubkey;
@@ -151,4 +151,74 @@ fn test_subscribe_cu_budget() {
         "subscribe CU budget exceeded: {}",
         meta.compute_units_consumed
     );
+}
+
+#[test]
+fn test_subscribe_usage_plan_creates_usage_mandate() {
+    let mut harness = TestHarness::new();
+    let subscriber = harness.create_wallet();
+    let plan_id = 7u64;
+    let settlement_frequency = MIN_FREQUENCY_SECONDS * 2;
+    let max_charge_per_period = 75_000_000u64;
+    let now = harness.current_timestamp();
+    let addresses = harness.derive_usage_plan_addresses(plan_id);
+
+    let mut unit_name = [0u8; 32];
+    unit_name[..9].copy_from_slice(b"api_calls");
+    let tiers = vec![
+        PricingTier {
+            up_to: 1_000,
+            rate_per_unit: 10_000,
+            _padding: 0,
+        },
+        PricingTier {
+            up_to: 0,
+            rate_per_unit: 8_000,
+            _padding: 0,
+        },
+    ];
+
+    harness
+        .send_create_usage_plan(
+            plan_id,
+            unit_name,
+            tiers.clone(),
+            max_charge_per_period,
+            settlement_frequency,
+        )
+        .expect("create_usage_plan should succeed");
+
+    let plan: UsagePlan = harness.fetch_anchor_account(&addresses.usage_plan);
+    harness
+        .send_subscribe_to_plan(&subscriber, &addresses.usage_plan, &addresses.credential_mint)
+        .expect("usage plan subscribe should succeed");
+
+    let subscriber_pubkey = Pubkey::new_from_array(subscriber.pubkey().to_bytes());
+    let mandate_address = harness.derive_mandate_address(&subscriber_pubkey, &addresses.usage_plan);
+    let mandate: VelaMandate = harness.fetch_anchor_account(&mandate_address);
+
+    assert_eq!(mandate.subscriber, subscriber_pubkey);
+    assert_eq!(mandate.plan, addresses.usage_plan);
+    assert_eq!(mandate.merchant, harness.merchant_pubkey());
+    assert_eq!(mandate.amount, max_charge_per_period);
+    assert_eq!(mandate.frequency, settlement_frequency);
+    assert_eq!(mandate.start_date, now);
+    assert_eq!(mandate.expiry, 0);
+    assert_eq!(mandate.max_pulls, u64::MAX);
+    assert_eq!(mandate.pulls_executed, 0);
+    assert_eq!(mandate.next_payment_due, now + settlement_frequency as i64);
+    assert!(matches!(mandate.status, MandateStatus::Active));
+    assert!(matches!(mandate.billing_type, BillingType::Usage));
+
+    assert_eq!(plan.max_charge_per_period, max_charge_per_period);
+    assert_eq!(plan.settlement_frequency, settlement_frequency);
+    assert_eq!(plan.tier_count, tiers.len() as u8);
+
+    let credential_ata = harness.derive_credential_ata(&subscriber_pubkey, &addresses.credential_mint);
+    let credential_account =
+        Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata))
+            .expect("credential account should unpack");
+    assert_eq!(credential_account.mint.to_string(), addresses.credential_mint.to_string());
+    assert_eq!(credential_account.owner.to_string(), subscriber_pubkey.to_string());
+    assert_eq!(credential_account.amount, 1);
 }

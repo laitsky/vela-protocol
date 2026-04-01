@@ -10,7 +10,8 @@ use spl_token_2022::instruction::mint_to;
 
 use crate::{
     errors::VelaError,
-    state::{BillingType, MandateStatus, PlanStatus, VelaMandate, VelaPlan},
+    instructions::plan_account::load_plan_account,
+    state::{MandateStatus, PlanStatus, VelaMandate, VelaPlan, UsagePlan},
 };
 
 #[derive(Accounts)]
@@ -21,15 +22,9 @@ pub struct Subscribe<'info> {
     /// CHECK: Used for plan and mint PDA validation only.
     pub merchant: UncheckedAccount<'info>,
 
-    #[account(
-        seeds = [
-            VelaPlan::SEED_PREFIX,
-            merchant.key().as_ref(),
-            plan.plan_id.to_le_bytes().as_ref()
-        ],
-        bump = plan.bump
-    )]
-    pub plan: Account<'info, VelaPlan>,
+    /// CHECK: Deserialized and validated manually so the same instruction can accept
+    /// either a flat `VelaPlan` PDA or a usage `UsagePlan` PDA.
+    pub plan: UncheckedAccount<'info>,
 
     #[account(
         init,
@@ -44,7 +39,7 @@ pub struct Subscribe<'info> {
     )]
     pub mandate: Account<'info, VelaMandate>,
 
-    #[account(mut, address = plan.credential_mint)]
+    #[account(mut)]
     /// CHECK: Credential mint PDA ownership is validated in the handler.
     pub credential_mint: UncheckedAccount<'info>,
 
@@ -63,10 +58,10 @@ pub struct Subscribe<'info> {
 }
 
 pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
-    require!(
-        ctx.accounts.plan.status == PlanStatus::Active,
-        VelaError::PlanNotActive
-    );
+    let plan = load_plan_account(&ctx.accounts.plan.to_account_info())?;
+    require!(*plan.status() == PlanStatus::Active, VelaError::PlanNotActive);
+    require_keys_eq!(ctx.accounts.merchant.key(), plan.merchant());
+    require_keys_eq!(ctx.accounts.credential_mint.key(), plan.credential_mint());
     require_keys_eq!(
         ctx.accounts.token_2022_program.key(),
         anchor_pubkey(spl_token_2022::id())
@@ -100,13 +95,18 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
     );
     associated_token::create_idempotent(ata_ctx)?;
 
-    let merchant_key = ctx.accounts.merchant.key();
-    let plan_id_bytes = ctx.accounts.plan.plan_id.to_le_bytes();
+    let merchant_key = plan.merchant();
+    let plan_id_bytes = plan.plan_id().to_le_bytes();
+    let plan_bump = [plan.bump()];
+    let plan_seed_prefix = match &plan {
+        crate::instructions::plan_account::LoadedPlanAccount::Flat(_) => VelaPlan::SEED_PREFIX,
+        crate::instructions::plan_account::LoadedPlanAccount::Usage(_) => UsagePlan::SEED_PREFIX,
+    };
     let signer_seeds: &[&[u8]] = &[
-        VelaPlan::SEED_PREFIX,
+        plan_seed_prefix,
         merchant_key.as_ref(),
         plan_id_bytes.as_ref(),
-        &[ctx.accounts.plan.bump],
+        &plan_bump,
     ];
     let mint_ix = mint_to(
         &spl_token_2022::id(),
@@ -128,51 +128,18 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
     )?;
 
     let clock = Clock::get()?;
-    let frequency = i64::try_from(ctx.accounts.plan.frequency).map_err(|_| VelaError::Overflow)?;
-    let trial_period =
-        i64::try_from(ctx.accounts.plan.trial_period).map_err(|_| VelaError::Overflow)?;
-    let expiry = if ctx.accounts.plan.trial_period > 0 {
-        let total_duration = ctx
-            .accounts
-            .plan
-            .trial_period
-            .checked_add(
-                ctx.accounts
-                    .plan
-                    .frequency
-                    .checked_mul(ctx.accounts.plan.max_pulls)
-                    .ok_or(VelaError::Overflow)?,
-            )
-            .ok_or(VelaError::Overflow)?;
-        let total_duration = i64::try_from(total_duration).map_err(|_| VelaError::Overflow)?;
-        clock
-            .unix_timestamp
-            .checked_add(total_duration)
-            .ok_or(VelaError::Overflow)?
-    } else {
-        0
-    };
-    let next_payment_due = if ctx.accounts.plan.trial_period > 0 {
-        clock
-            .unix_timestamp
-            .checked_add(trial_period)
-            .ok_or(VelaError::Overflow)?
-    } else {
-        clock
-            .unix_timestamp
-            .checked_add(frequency)
-            .ok_or(VelaError::Overflow)?
-    };
+    let expiry = plan.expiry(clock.unix_timestamp)?;
+    let next_payment_due = plan.initial_next_payment_due(clock.unix_timestamp)?;
 
     ctx.accounts.mandate.set_inner(VelaMandate {
         subscriber: ctx.accounts.subscriber.key(),
         plan: ctx.accounts.plan.key(),
-        merchant: ctx.accounts.plan.merchant,
-        amount: ctx.accounts.plan.amount,
-        frequency: ctx.accounts.plan.frequency,
+        merchant: plan.merchant(),
+        amount: plan.mandate_amount(),
+        frequency: plan.mandate_frequency(),
         start_date: clock.unix_timestamp,
         expiry,
-        max_pulls: ctx.accounts.plan.max_pulls,
+        max_pulls: plan.max_pulls(),
         pulls_executed: 0,
         next_payment_due,
         last_pull_at: 0,
@@ -181,7 +148,7 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
         billing_request_nonce: 0,
         status: MandateStatus::Active,
         bump: ctx.bumps.mandate,
-        billing_type: BillingType::Flat,
+        billing_type: plan.billing_type(),
     });
 
     Ok(())
