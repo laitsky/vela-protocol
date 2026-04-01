@@ -8,25 +8,18 @@ pub mod state;
 
 use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
-    Cancel, CreatePlan, ExecutePull, InitConfig, InitExtraAccountMetaList, InitRecordBillingCompDef,
+    Cancel, CreatePlan, ExecutePull, InitConfig, InitKeeperConfig, InitRecordBillingCompDef,
     InitValidateMandateCompDef, InitWrappedMint, RecordBillingEventCallback, RequestBillingRecord,
-    RequestValidation, Subscribe, TransferHook, Unwrap, UpdateConfig, ValidateMandateCallback,
+    RequestValidation, Subscribe, Unwrap, UpdateConfig, UpdateKeeperConfig, ValidateMandateCallback,
     Wrap,
 };
+use crate::state::KeeperMode;
 use arcium_anchor::prelude::SignedComputationOutputs;
 use crate::instructions::billing_callback::RecordBillingEventOutput;
 use crate::instructions::validation_callback::ValidateMandateOutput;
 
-mod __client_accounts_init_extra_account_meta_list {
-    pub use crate::instructions::__client_accounts_init_extra_account_meta_list::*;
-}
-
 mod __client_accounts_init_wrapped_mint {
     pub use crate::instructions::__client_accounts_init_wrapped_mint::*;
-}
-
-mod __client_accounts_transfer_hook {
-    pub use crate::instructions::__client_accounts_transfer_hook::*;
 }
 
 mod __client_accounts_unwrap {
@@ -81,6 +74,14 @@ mod __client_accounts_update_config {
     pub use crate::instructions::__client_accounts_update_config::*;
 }
 
+mod __client_accounts_init_keeper_config {
+    pub use crate::instructions::__client_accounts_init_keeper_config::*;
+}
+
+mod __client_accounts_update_keeper_config {
+    pub use crate::instructions::__client_accounts_update_keeper_config::*;
+}
+
 mod __client_accounts_validate_mandate_callback {
     pub use crate::instructions::__client_accounts_validate_mandate_callback::*;
 }
@@ -105,7 +106,9 @@ pub mod vela_protocol {
         instructions::create_plan::handler(ctx, amount, frequency, trial_period, max_pulls)
     }
 
-    pub fn execute_pull(ctx: Context<ExecutePull>) -> Result<()> {
+    pub fn execute_pull<'a, 'b, 'c, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, ExecutePull<'info>>,
+    ) -> Result<()> {
         instructions::execute_pull::handler(ctx)
     }
 
@@ -170,16 +173,6 @@ pub mod vela_protocol {
         instructions::init_wrapped_mint::handler(ctx)
     }
 
-    pub fn init_extra_account_meta_list(ctx: Context<InitExtraAccountMetaList>) -> Result<()> {
-        instructions::init_extra_account_meta_list::handler(ctx)
-    }
-
-    #[allow(deprecated)]
-    #[interface(spl_transfer_hook_interface::execute)]
-    pub fn transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
-        instructions::transfer_hook::handler(ctx, amount)
-    }
-
     pub fn wrap(ctx: Context<Wrap>, amount: u64) -> Result<()> {
         instructions::wrap::handler(ctx, amount)
     }
@@ -188,20 +181,22 @@ pub mod vela_protocol {
         instructions::unwrap::handler(ctx, amount)
     }
 
-    pub fn fallback<'info>(
-        program_id: &Pubkey,
-        accounts: &'info [AccountInfo<'info>],
-        data: &[u8],
+    pub fn init_keeper_config(
+        ctx: Context<InitKeeperConfig>,
+        mode: KeeperMode,
+        keeper_endpoint: Vec<u8>,
+        keeper_authority: Pubkey,
     ) -> Result<()> {
-        use spl_transfer_hook_interface::instruction::TransferHookInstruction;
-        let instruction = TransferHookInstruction::unpack(data)
-            .map_err(|_| anchor_lang::error::Error::from(anchor_lang::prelude::ProgramError::InvalidInstructionData))?;
-        match instruction {
-            TransferHookInstruction::Execute { amount } => {
-                let amount_bytes = amount.to_le_bytes();
-                __private::__global::transfer_hook(program_id, accounts, &amount_bytes)
-            }
-            _ => Err(anchor_lang::error::Error::from(anchor_lang::prelude::ProgramError::InvalidInstructionData)),
-        }
+        instructions::init_keeper_config::handler(ctx, mode, keeper_endpoint, keeper_authority)
     }
+
+    pub fn update_keeper_config(
+        ctx: Context<UpdateKeeperConfig>,
+        mode: Option<KeeperMode>,
+        keeper_endpoint: Option<Vec<u8>>,
+        keeper_authority: Option<Pubkey>,
+    ) -> Result<()> {
+        instructions::update_keeper_config::handler(ctx, mode, keeper_endpoint, keeper_authority)
+    }
+
 }

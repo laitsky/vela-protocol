@@ -91,4 +91,7 @@ pub enum VelaError {
 
     #[msg("Wrapped USDC mint not yet initialized in ProtocolConfig")]
     WrappedMintNotInitialized,
+
+    #[msg("Keeper endpoint exceeds maximum length (128 bytes)")]
+    EndpointTooLong,
 }

@@ -5,26 +5,26 @@ pub mod create_plan;
 pub mod execute_pull;
 pub mod init_comp_defs;
 pub mod init_config;
-pub mod init_extra_account_meta_list;
+pub mod init_keeper_config;
 pub mod init_wrapped_mint;
 pub mod request_billing_record;
 pub mod request_validation;
 pub mod subscribe;
-pub mod transfer_hook;
 pub mod unwrap;
+pub mod update_keeper_config;
 pub mod validation_callback;
 pub mod wrap;
 
-pub mod __client_accounts_init_extra_account_meta_list {
-    pub use super::init_extra_account_meta_list::__client_accounts_init_extra_account_meta_list::*;
+pub mod __client_accounts_init_keeper_config {
+    pub use super::init_keeper_config::__client_accounts_init_keeper_config::*;
+}
+
+pub mod __client_accounts_update_keeper_config {
+    pub use super::update_keeper_config::__client_accounts_update_keeper_config::*;
 }
 
 pub mod __client_accounts_init_wrapped_mint {
     pub use super::init_wrapped_mint::__client_accounts_init_wrapped_mint::*;
-}
-
-pub mod __client_accounts_transfer_hook {
-    pub use super::transfer_hook::__client_accounts_transfer_hook::*;
 }
 
 pub mod __client_accounts_unwrap {
@@ -89,12 +89,12 @@ pub use create_plan::CreatePlan;
 pub use execute_pull::ExecutePull;
 pub use init_comp_defs::{InitRecordBillingCompDef, InitValidateMandateCompDef};
 pub use init_config::{InitConfig, InitConfigIx, UpdateConfig, UpdateConfigIx};
-pub use init_extra_account_meta_list::InitExtraAccountMetaList;
+pub use init_keeper_config::InitKeeperConfig;
 pub use init_wrapped_mint::InitWrappedMint;
 pub use request_billing_record::RequestBillingRecord;
 pub use request_validation::RequestValidation;
 pub use subscribe::Subscribe;
-pub use transfer_hook::TransferHook;
 pub use unwrap::Unwrap;
+pub use update_keeper_config::UpdateKeeperConfig;
 pub use validation_callback::ValidateMandateCallback;
 pub use wrap::Wrap;
