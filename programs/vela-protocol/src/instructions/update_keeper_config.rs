@@ -8,14 +8,22 @@ pub fn handler(
     keeper_endpoint: Option<Vec<u8>>,
     keeper_authority: Option<Pubkey>,
 ) -> Result<()> {
+    require!(
+        mode.is_some() || keeper_endpoint.is_some() || keeper_authority.is_some(),
+        VelaError::NoUpdateProvided
+    );
     if let Some(ref ep) = keeper_endpoint {
         require!(ep.len() <= 128, VelaError::EndpointTooLong);
+        require!(!ep.is_empty(), VelaError::EndpointEmpty);
+    }
+    if let Some(ka) = keeper_authority {
+        require!(ka != Pubkey::default(), VelaError::InvalidKeeperAuthority);
     }
 
     let config = &mut ctx.accounts.keeper_config;
 
     if let Some(m) = mode {
-        config.mode = m;
+        config.mode = m.clone();
     }
     if let Some(ep) = keeper_endpoint {
         config.endpoint_len = ep.len() as u8;
@@ -26,7 +34,20 @@ pub fn handler(
         config.keeper_authority = ka;
     }
 
+    emit!(KeeperConfigUpdated {
+        admin: ctx.accounts.admin.key(),
+        mode: config.mode.clone(),
+        keeper_authority: config.keeper_authority,
+    });
+
     Ok(())
+}
+
+#[event]
+pub struct KeeperConfigUpdated {
+    pub admin: Pubkey,
+    pub mode: KeeperMode,
+    pub keeper_authority: Pubkey,
 }
 
 #[derive(Accounts)]

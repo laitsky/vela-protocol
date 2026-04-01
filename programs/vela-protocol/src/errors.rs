@@ -94,4 +94,16 @@ pub enum VelaError {
 
     #[msg("Keeper endpoint exceeds maximum length (128 bytes)")]
     EndpointTooLong,
+
+    #[msg("Keeper endpoint must not be empty")]
+    EndpointEmpty,
+
+    #[msg("Keeper authority must not be the default (zero) public key")]
+    InvalidKeeperAuthority,
+
+    #[msg("Caller is not the authorized keeper")]
+    UnauthorizedKeeper,
+
+    #[msg("At least one field must be provided for update")]
+    NoUpdateProvided,
 }

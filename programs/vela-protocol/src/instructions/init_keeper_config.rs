@@ -12,17 +12,38 @@ pub fn handler(
         keeper_endpoint.len() <= 128,
         VelaError::EndpointTooLong
     );
+    require!(
+        !keeper_endpoint.is_empty(),
+        VelaError::EndpointEmpty
+    );
+    require!(
+        keeper_authority != Pubkey::default(),
+        VelaError::InvalidKeeperAuthority
+    );
 
     let config = &mut ctx.accounts.keeper_config;
     config.admin = ctx.accounts.admin.key();
-    config.mode = mode;
+    config.mode = mode.clone();
     config.endpoint_len = keeper_endpoint.len() as u8;
     config.keeper_endpoint = [0u8; 128];
     config.keeper_endpoint[..keeper_endpoint.len()].copy_from_slice(&keeper_endpoint);
     config.keeper_authority = keeper_authority;
     config.bump = ctx.bumps.keeper_config;
 
+    emit!(KeeperConfigInitialized {
+        admin: ctx.accounts.admin.key(),
+        mode,
+        keeper_authority,
+    });
+
     Ok(())
+}
+
+#[event]
+pub struct KeeperConfigInitialized {
+    pub admin: Pubkey,
+    pub mode: KeeperMode,
+    pub keeper_authority: Pubkey,
 }
 
 #[derive(Accounts)]

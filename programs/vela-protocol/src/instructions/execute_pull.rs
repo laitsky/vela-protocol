@@ -16,7 +16,7 @@ use crate::{
         EXTRA_ACCOUNT_METAS_SEED, TRANSFER_HOOK_PROGRAM_ID, USDC_DECIMALS,
     },
     errors::VelaError,
-    state::{MandateStatus, PlanStatus, ProtocolConfig, PullApproval, VelaMandate, VelaPlan},
+    state::{KeeperConfig, MandateStatus, PlanStatus, ProtocolConfig, PullApproval, VelaMandate, VelaPlan},
 };
 
 #[derive(Accounts)]
@@ -29,6 +29,13 @@ pub struct ExecutePull<'info> {
 
     /// CHECK: Used for plan PDA validation only.
     pub merchant: UncheckedAccount<'info>,
+
+    #[account(
+        seeds = [KeeperConfig::SEED_PREFIX],
+        bump = keeper_config.bump,
+        constraint = keeper_config.keeper_authority == payer.key() @ VelaError::UnauthorizedKeeper
+    )]
+    pub keeper_config: Account<'info, KeeperConfig>,
 
     #[account(
         seeds = [

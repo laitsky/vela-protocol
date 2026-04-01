@@ -23,7 +23,8 @@ impl KeeperConfig {
     pub const SIZE: usize = 8 + 32 + 1 + 128 + 1 + 32 + 1; // 203 bytes
 
     pub fn endpoint(&self) -> &[u8] {
-        &self.keeper_endpoint[..self.endpoint_len as usize]
+        let len = (self.endpoint_len as usize).min(self.keeper_endpoint.len());
+        &self.keeper_endpoint[..len]
     }
 
     pub fn endpoint_str(&self) -> Result<&str> {
