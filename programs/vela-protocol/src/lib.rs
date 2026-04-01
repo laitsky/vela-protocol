@@ -10,8 +10,9 @@ use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
     Cancel, CreatePlan, CreateUsagePlan, ExecutePull, InitConfig, InitKeeperConfig,
     InitRecordBillingCompDef, InitValidateMandateCompDef, InitWrappedMint,
-    RecordBillingEventCallback, RequestBillingRecord, RequestValidation, SubmitUsageReport,
-    Subscribe, Unwrap, UpdateConfig, UpdateKeeperConfig, ValidateMandateCallback, Wrap,
+    RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation, RequestValidation,
+    SubmitUsageReport, Subscribe, Unwrap, UpdateConfig, UpdateKeeperConfig,
+    UsageChargeOutput, UsageComputationCallback, ValidateMandateCallback, Wrap,
 };
 use crate::state::{KeeperMode, PricingTier};
 use arcium_anchor::prelude::SignedComputationOutputs;
@@ -92,6 +93,14 @@ mod __client_accounts_update_keeper_config {
 
 mod __client_accounts_validate_mandate_callback {
     pub use crate::instructions::__client_accounts_validate_mandate_callback::*;
+}
+
+mod __client_accounts_request_usage_computation {
+    pub use crate::instructions::__client_accounts_request_usage_computation::*;
+}
+
+mod __client_accounts_usage_computation_callback {
+    pub use crate::instructions::__client_accounts_usage_computation_callback::*;
 }
 
 declare_id!("BhgXzh4E6e9xsgNrsPf9q1JqXKxETxjc9LBqx3D8cAKC");
@@ -204,6 +213,29 @@ pub mod vela_protocol {
         output: SignedComputationOutputs<ValidateMandateOutput>,
     ) -> Result<()> {
         instructions::validation_callback::validate_mandate_callback(ctx, output)
+    }
+
+    pub fn request_usage_computation(
+        ctx: Context<RequestUsageComputation>,
+        requested_computation_offset: u64,
+        ciphertext: Vec<[u8; 32]>,
+        pub_key: [u8; 32],
+        nonce: u128,
+    ) -> Result<()> {
+        instructions::request_usage_computation::request_usage_computation(
+            ctx,
+            requested_computation_offset,
+            ciphertext,
+            pub_key,
+            nonce,
+        )
+    }
+
+    pub fn usage_charge_callback(
+        ctx: Context<UsageComputationCallback>,
+        output: SignedComputationOutputs<UsageChargeOutput>,
+    ) -> Result<()> {
+        instructions::usage_computation_callback::usage_charge_callback(ctx, output)
     }
 
     pub fn record_billing_event_callback(

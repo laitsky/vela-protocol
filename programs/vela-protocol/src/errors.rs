@@ -127,4 +127,7 @@ pub enum VelaError {
 
     #[msg("Tier boundaries must be monotonically increasing")]
     InvalidTierBoundary,
+
+    #[msg("Usage report has already been settled")]
+    UsageReportAlreadySettled,
 }

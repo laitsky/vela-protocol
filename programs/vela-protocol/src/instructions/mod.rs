@@ -9,11 +9,13 @@ pub mod init_config;
 pub mod init_keeper_config;
 pub mod init_wrapped_mint;
 pub mod request_billing_record;
+pub mod request_usage_computation;
 pub mod request_validation;
 pub mod submit_usage_report;
 pub mod subscribe;
 pub mod unwrap;
 pub mod update_keeper_config;
+pub mod usage_computation_callback;
 pub mod validation_callback;
 pub mod wrap;
 
@@ -93,6 +95,14 @@ pub mod __client_accounts_validate_mandate_callback {
     pub use super::validation_callback::__client_accounts_validate_mandate_callback::*;
 }
 
+pub mod __client_accounts_request_usage_computation {
+    pub use super::request_usage_computation::__client_accounts_request_usage_computation::*;
+}
+
+pub mod __client_accounts_usage_computation_callback {
+    pub use super::usage_computation_callback::__client_accounts_usage_computation_callback::*;
+}
+
 pub use billing_callback::RecordBillingEventCallback;
 pub use cancel::Cancel;
 pub use create_plan::CreatePlan;
@@ -108,5 +118,7 @@ pub use request_validation::RequestValidation;
 pub use subscribe::Subscribe;
 pub use unwrap::Unwrap;
 pub use update_keeper_config::UpdateKeeperConfig;
+pub use request_usage_computation::RequestUsageComputation;
+pub use usage_computation_callback::{UsageChargeOutput, UsageComputationCallback};
 pub use validation_callback::ValidateMandateCallback;
 pub use wrap::Wrap;

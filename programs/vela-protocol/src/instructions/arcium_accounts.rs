@@ -90,6 +90,21 @@ pub fn derive_billing_computation_offset(
     )
 }
 
+pub fn derive_usage_computation_offset(
+    mandate: &Pubkey,
+    period_start: i64,
+    request_nonce: u64,
+) -> u64 {
+    derive_request_offset(
+        b"usage",
+        mandate,
+        &[
+            &period_start.to_le_bytes(),
+            &request_nonce.to_le_bytes(),
+        ],
+    )
+}
+
 fn derive_request_offset(domain: &[u8], mandate: &Pubkey, extra_slices: &[&[u8]]) -> u64 {
     let mut slices = Vec::with_capacity(extra_slices.len() + 2);
     slices.push(domain);
@@ -260,7 +275,8 @@ pub fn build_callback_instruction(
 mod tests {
     use super::{
         derive_billing_computation_offset, derive_cluster_pubkey,
-        derive_validation_computation_offset, validate_cluster_configuration,
+        derive_usage_computation_offset, derive_validation_computation_offset,
+        validate_cluster_configuration,
     };
     use anchor_lang::prelude::Pubkey;
 
@@ -274,10 +290,14 @@ mod tests {
         let next_period = derive_validation_computation_offset(&mandate, 1_700_000_360, 1);
         let billing = derive_billing_computation_offset(&mandate, 1, 1);
 
+        let usage = derive_usage_computation_offset(&mandate, 1_700_000_000, 1);
+
         assert_eq!(first, same_inputs);
         assert_ne!(first, next_retry);
         assert_ne!(first, next_period);
         assert_ne!(first, billing);
+        assert_ne!(first, usage);
+        assert_ne!(billing, usage);
     }
 
     #[test]

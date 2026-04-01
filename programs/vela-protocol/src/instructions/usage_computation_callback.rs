@@ -1,77 +1,80 @@
 use crate::instructions::arcium_accounts::{
-    derive_validation_computation_offset, deserialize_cluster, validate_callback_binding,
+    derive_usage_computation_offset, deserialize_cluster, validate_callback_binding,
     validate_protocol_config, validate_static_callback_accounts,
 };
 use crate::{
     errors::VelaError,
-    state::{BillingType, ProtocolConfig, PullApproval, VelaMandate},
+    state::{ProtocolConfig, PullApproval, VelaMandate, UsageReport},
     validate_callback_ixs,
 };
 use anchor_lang::prelude::*;
 use arcium_anchor::{prelude::*, HasSize};
 
-const VALIDATE_MANDATE_CIRCUIT: &str = "validate_mandate";
+const USAGE_CHARGE_CIRCUIT: &str = "usage_charge";
 
+/// Output struct for both usage_charge and tiered_pricing circuits.
+/// Both circuits return a single u64 plaintext value (the computed charge amount).
 #[derive(AnchorSerialize, AnchorDeserialize)]
-pub struct ValidateMandateOutput {
-    pub field_0: bool,
+pub struct UsageChargeOutput {
+    pub field_0: u64,
 }
 
-impl ValidateMandateOutput {
-    pub const SIZE: usize = 1;
+impl UsageChargeOutput {
+    pub const SIZE: usize = 8;
 }
 
-impl HasSize for ValidateMandateOutput {
+impl HasSize for UsageChargeOutput {
     const SIZE: usize = Self::SIZE;
 }
 
-#[arcium_callback(encrypted_ix = "validate_mandate")]
-pub fn validate_mandate_callback(
-    ctx: Context<ValidateMandateCallback>,
-    output: SignedComputationOutputs<ValidateMandateOutput>,
+/// Arcium callback for usage charge computation.
+/// Handles both usage_charge (1-tier) and tiered_pricing (multi-tier) circuit outputs
+/// since both return the same u64 type.
+/// Function is named usage_charge_callback per arcium_callback macro naming requirement:
+/// the function name must be <encrypted_ix_name>_callback.
+#[arcium_callback(encrypted_ix = "usage_charge")]
+pub fn usage_charge_callback(
+    ctx: Context<UsageComputationCallback>,
+    output: SignedComputationOutputs<UsageChargeOutput>,
 ) -> Result<()> {
     validate_static_callback_accounts(
         &ctx.accounts.mxe_account,
         &ctx.accounts.comp_def_account,
-        VALIDATE_MANDATE_CIRCUIT,
+        USAGE_CHARGE_CIRCUIT,
     )?;
     validate_protocol_config(&ctx.accounts.config)?;
     validate_callback_binding(
         &ctx.accounts.config,
         &ctx.accounts.cluster_account,
         &ctx.accounts.computation_account,
-        derive_validation_computation_offset(
+        derive_usage_computation_offset(
             &ctx.accounts.mandate.key(),
-            ctx.accounts.mandate.next_payment_due,
+            ctx.accounts.usage_report.period_start,
             ctx.accounts.mandate.validation_request_nonce,
         ),
     )?;
     let cluster = deserialize_cluster(&ctx.accounts.cluster_account)?;
 
-    let result = match output.verify_output(&cluster, &ctx.accounts.computation_account) {
-        Ok(ValidateMandateOutput { field_0 }) => field_0,
+    let computed_charge = match output.verify_output(&cluster, &ctx.accounts.computation_account) {
+        Ok(UsageChargeOutput { field_0 }) => field_0,
         Err(_) => return Err(VelaError::AbortedComputation.into()),
     };
 
+    // Write PullApproval with the Arcium-computed charge amount (not mandate.amount)
     let approval = &mut ctx.accounts.pull_approval;
     approval.mandate = ctx.accounts.mandate.key();
     approval.valid_until = ctx.accounts.mandate.next_payment_due;
-    approval.approved = result;
-    approval.approved_amount = match ctx.accounts.mandate.billing_type {
-        BillingType::Flat => ctx.accounts.mandate.amount,
-        BillingType::Usage => {
-            // For usage mandates using the flat validation path,
-            // this should not happen -- usage mandates use usage_computation_callback.
-            // But if called, use mandate.amount as the cap (safe default).
-            ctx.accounts.mandate.amount
-        }
-    };
+    approval.approved = true; // successful usage computation means approval
+    approval.approved_amount = computed_charge;
     approval.created_at = Clock::get()?.unix_timestamp;
     approval.bump = ctx.bumps.pull_approval;
 
-    emit!(ValidationCompleteEvent {
+    // Mark usage report as settled
+    ctx.accounts.usage_report.settled = true;
+
+    emit!(UsageComputationCompleteEvent {
         mandate: ctx.accounts.mandate.key(),
-        approved: result,
+        approved_amount: computed_charge,
         timestamp: Clock::get()?.unix_timestamp,
     });
 
@@ -79,7 +82,7 @@ pub fn validate_mandate_callback(
 }
 
 #[derive(Accounts)]
-pub struct ValidateMandateCallback<'info> {
+pub struct UsageComputationCallback<'info> {
     pub arcium_program: Program<'info, Arcium>,
     /// CHECK: Validated against the circuit's comp-def PDA in the handler.
     pub comp_def_account: UncheckedAccount<'info>,
@@ -107,11 +110,14 @@ pub struct ValidateMandateCallback<'info> {
     pub config: Account<'info, ProtocolConfig>,
 
     pub mandate: Account<'info, VelaMandate>,
+
+    #[account(mut)]
+    pub usage_report: Account<'info, UsageReport>,
 }
 
 #[event]
-pub struct ValidationCompleteEvent {
+pub struct UsageComputationCompleteEvent {
     pub mandate: Pubkey,
-    pub approved: bool,
+    pub approved_amount: u64,
     pub timestamp: i64,
 }
