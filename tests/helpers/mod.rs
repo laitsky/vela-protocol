@@ -673,7 +673,7 @@ impl TestHarness {
         subscriber: &Pubkey,
         plan_id: u64,
         pulls_executed: u64,
-        encrypted_blob: [[u8; 32]; 8],
+        encrypted_blob: [[u8; 32]; 10],
         nonce: u128,
     ) -> Pubkey {
         let billing_event_pda = self.derive_billing_event_address(mandate, pulls_executed);

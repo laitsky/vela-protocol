@@ -18,7 +18,7 @@ fn setup_fixture() -> (TestHarness, helpers::SubscriptionFixture, VelaPlan) {
 #[test]
 fn test_billing_event_created() {
     let (mut harness, fixture, plan) = setup_fixture();
-    let encrypted_blob = [[7u8; 32]; 8];
+    let encrypted_blob = [[7u8; 32]; 10];
     let nonce = 99u128;
 
     let billing_event = harness.create_billing_event(

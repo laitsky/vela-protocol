@@ -14,11 +14,11 @@ const RECORD_BILLING_EVENT_CIRCUIT: &str = "record_billing_event";
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct RecordBillingEventOutput {
-    pub field_0: MXEEncryptedStruct<8>,
+    pub field_0: MXEEncryptedStruct<10>,
 }
 
 impl RecordBillingEventOutput {
-    pub const SIZE: usize = 16 + (8 * 32);
+    pub const SIZE: usize = 16 + (10 * 32);
 }
 
 impl HasSize for RecordBillingEventOutput {

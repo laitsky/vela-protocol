@@ -81,7 +81,7 @@ pub fn request_billing_record(
     billing_event.merchant = Pubkey::default();
     billing_event.subscriber = Pubkey::default();
     billing_event.plan_id = 0;
-    billing_event.encrypted_blob = [[0u8; 32]; 8];
+    billing_event.encrypted_blob = [[0u8; 32]; 10];
     billing_event.nonce = 0;
     billing_event.created_at = 0;
     billing_event.bump = ctx.bumps.billing_event;

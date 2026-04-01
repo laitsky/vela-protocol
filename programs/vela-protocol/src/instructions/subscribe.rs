@@ -10,7 +10,7 @@ use spl_token_2022::instruction::mint_to;
 
 use crate::{
     errors::VelaError,
-    state::{MandateStatus, PlanStatus, VelaMandate, VelaPlan},
+    state::{BillingType, MandateStatus, PlanStatus, VelaMandate, VelaPlan},
 };
 
 #[derive(Accounts)]
@@ -181,6 +181,7 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
         billing_request_nonce: 0,
         status: MandateStatus::Active,
         bump: ctx.bumps.mandate,
+        billing_type: BillingType::Flat,
     });
 
     Ok(())

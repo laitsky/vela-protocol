@@ -1,5 +1,7 @@
 use anchor_lang::prelude::*;
 
+use super::billing_type::BillingType;
+
 #[account]
 pub struct VelaMandate {
     pub subscriber: Pubkey,
@@ -18,11 +20,14 @@ pub struct VelaMandate {
     pub billing_request_nonce: u64,
     pub status: MandateStatus,
     pub bump: u8,
+    pub billing_type: BillingType, // 1 - trailing field for backward compat (0u8 = Flat)
 }
 
 impl VelaMandate {
     pub const SEED_PREFIX: &'static [u8] = b"mandate";
-    pub const SIZE: usize = 8 + 32 + 32 + 32 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 1 + 1;
+    // Previous SIZE: 8 + 32 + 32 + 32 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 1 + 1 = 170
+    // +1 for billing_type field
+    pub const SIZE: usize = 8 + 32 + 32 + 32 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 1 + 1 + 1;
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
