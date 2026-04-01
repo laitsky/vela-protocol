@@ -1,3 +1,5 @@
+use anchor_lang::prelude::Pubkey;
+
 pub const MIN_FREQUENCY_SECONDS: u64 = 3600;
 pub const USDC_DECIMALS: u8 = 6;
 pub const CREDENTIAL_DECIMALS: u8 = 0;
@@ -21,3 +23,8 @@ pub const WRAPPED_USDC_SYMBOL: &str = "sUSDC";
 pub const WRAPPED_USDC_URI: &str = "";
 pub const TRANSFER_FEE_BASIS_POINTS: u16 = 0;
 pub const TRANSFER_FEE_MAXIMUM: u64 = 0;
+pub const TRANSFER_HOOK_PROGRAM_ID_BYTES: [u8; 32] = [
+    119, 151, 22, 63, 246, 128, 87, 195, 239, 20, 74, 86, 88, 37, 93, 174, 138, 40, 6, 219, 108,
+    145, 80, 83, 110, 110, 168, 255, 120, 185, 194, 182,
+];
+pub const TRANSFER_HOOK_PROGRAM_ID: Pubkey = Pubkey::new_from_array(TRANSFER_HOOK_PROGRAM_ID_BYTES);

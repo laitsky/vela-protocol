@@ -8,6 +8,51 @@ use solana_signer::Signer;
 use vela_protocol::constants::MIN_FREQUENCY_SECONDS;
 use vela_protocol::state::VelaMandate;
 
+fn setup_wrapped_pull_accounts(
+    harness: &mut TestHarness,
+    subscriber_signer: &Keypair,
+    subscriber_pubkey: &Pubkey,
+    mandate: &Pubkey,
+    amount: u64,
+) -> (Pubkey, Pubkey, Pubkey) {
+    let admin = harness.merchant.insecure_clone();
+    let spl_usdc_mint = harness.create_spl_mint(&admin, 6);
+    harness.init_protocol_config(&admin);
+
+    let wrapped_mint = Keypair::new();
+    let (wrapped_mint_pubkey, wrapping_vault) =
+        harness.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
+    harness.init_extra_account_meta_list(&admin, &wrapped_mint_pubkey, &wrapping_vault);
+
+    let subscriber_usdc =
+        harness.create_spl_token_account(subscriber_signer, &spl_usdc_mint, subscriber_pubkey);
+    harness.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, amount * 4);
+
+    let subscriber_wrapped_pubkey =
+        harness.create_token_2022_ata(&admin, mandate, &wrapped_mint_pubkey);
+    harness
+        .send_wrap(
+            subscriber_signer,
+            &spl_usdc_mint,
+            &wrapped_mint_pubkey,
+            &subscriber_usdc,
+            &subscriber_wrapped_pubkey,
+            mandate,
+            &wrapping_vault,
+            amount * 2,
+        )
+        .expect("wrap into mandate account should succeed");
+
+    let merchant_wrapped_pubkey =
+        harness.create_token_2022_ata(&admin, &harness.merchant_pubkey(), &wrapped_mint_pubkey);
+
+    (
+        subscriber_wrapped_pubkey,
+        merchant_wrapped_pubkey,
+        wrapped_mint_pubkey,
+    )
+}
+
 #[test]
 fn test_cu_create_plan() {
     let mut harness = TestHarness::new();
@@ -50,29 +95,14 @@ fn test_cu_execute_pull() {
     let fixture = harness.subscribe_fixture(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4);
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
-    // Set up Token-2022 wrapped USDC accounts for execute_pull
-    let wrapped_mint = Keypair::new();
-    let wrapped_mint_pubkey = helpers::to_anchor_pubkey(wrapped_mint.pubkey());
-    let (mint_authority, _) = harness.derive_mint_authority();
-    harness.inject_token_2022_mint(&wrapped_mint_pubkey, &mint_authority, 1_000_000_000);
-
-    let subscriber_wrapped = Keypair::new();
-    let subscriber_wrapped_pubkey = helpers::to_anchor_pubkey(subscriber_wrapped.pubkey());
-    harness.inject_token_2022_account(
-        &subscriber_wrapped_pubkey,
-        &wrapped_mint_pubkey,
-        &fixture.mandate, // mandate PDA is the authority
-        100_000_000,
-    );
-
-    let merchant_wrapped = Keypair::new();
-    let merchant_wrapped_pubkey = helpers::to_anchor_pubkey(merchant_wrapped.pubkey());
-    harness.inject_token_2022_account(
-        &merchant_wrapped_pubkey,
-        &wrapped_mint_pubkey,
-        &harness.merchant_pubkey(),
-        0,
-    );
+    let (subscriber_wrapped_pubkey, merchant_wrapped_pubkey, wrapped_mint_pubkey) =
+        setup_wrapped_pull_accounts(
+            &mut harness,
+            &fixture.subscriber,
+            &subscriber,
+            &fixture.mandate,
+            25_000_000,
+        );
 
     let mandate: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
     harness.set_clock_timestamp(mandate.next_payment_due);
@@ -144,29 +174,14 @@ fn test_cu_full_lifecycle() {
     let mandate = harness.derive_mandate_address(&subscriber_pubkey, &addresses.plan);
     let mandate_account: VelaMandate = harness.fetch_anchor_account(&mandate);
 
-    // Set up Token-2022 wrapped USDC accounts for execute_pull
-    let wrapped_mint = Keypair::new();
-    let wrapped_mint_pubkey = helpers::to_anchor_pubkey(wrapped_mint.pubkey());
-    let (mint_authority, _) = harness.derive_mint_authority();
-    harness.inject_token_2022_mint(&wrapped_mint_pubkey, &mint_authority, 1_000_000_000);
-
-    let subscriber_wrapped = Keypair::new();
-    let subscriber_wrapped_pubkey = helpers::to_anchor_pubkey(subscriber_wrapped.pubkey());
-    harness.inject_token_2022_account(
-        &subscriber_wrapped_pubkey,
-        &wrapped_mint_pubkey,
-        &mandate,
-        100_000_000,
-    );
-
-    let merchant_wrapped = Keypair::new();
-    let merchant_wrapped_pubkey = helpers::to_anchor_pubkey(merchant_wrapped.pubkey());
-    harness.inject_token_2022_account(
-        &merchant_wrapped_pubkey,
-        &wrapped_mint_pubkey,
-        &harness.merchant_pubkey(),
-        0,
-    );
+    let (subscriber_wrapped_pubkey, merchant_wrapped_pubkey, wrapped_mint_pubkey) =
+        setup_wrapped_pull_accounts(
+            &mut harness,
+            &subscriber,
+            &subscriber_pubkey,
+            &mandate,
+            25_000_000,
+        );
 
     harness.set_clock_timestamp(mandate_account.next_payment_due);
     harness.create_pull_approval_with_amount(

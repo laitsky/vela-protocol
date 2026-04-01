@@ -22,28 +22,37 @@ fn setup_fixture(
     let plan: VelaPlan = harness.fetch_anchor_account(&fixture.plan);
     let mandate: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
 
+    let admin = harness.merchant.insecure_clone();
+    let spl_usdc_mint = harness.create_spl_mint(&admin, 6);
+    harness.init_protocol_config(&admin);
+
     let wrapped_mint = Keypair::new();
-    let wrapped_mint_pubkey = helpers::to_anchor_pubkey(wrapped_mint.pubkey());
-    let (mint_authority, _) = harness.derive_mint_authority();
-    harness.inject_token_2022_mint(&wrapped_mint_pubkey, &mint_authority, 1_000_000_000);
+    let (wrapped_mint_pubkey, wrapping_vault) =
+        harness.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
+    harness.init_extra_account_meta_list(&admin, &wrapped_mint_pubkey, &wrapping_vault);
 
-    let subscriber_wrapped = Keypair::new();
-    let subscriber_wrapped_pubkey = helpers::to_anchor_pubkey(subscriber_wrapped.pubkey());
-    harness.inject_token_2022_account(
-        &subscriber_wrapped_pubkey,
-        &wrapped_mint_pubkey,
-        &fixture.mandate,
-        amount * 10,
-    );
+    let subscriber = subscriber_pubkey(&fixture);
+    let subscriber_usdc =
+        harness.create_spl_token_account(&fixture.subscriber, &spl_usdc_mint, &subscriber);
+    harness.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, amount * 10);
 
-    let merchant_wrapped = Keypair::new();
-    let merchant_wrapped_pubkey = helpers::to_anchor_pubkey(merchant_wrapped.pubkey());
-    harness.inject_token_2022_account(
-        &merchant_wrapped_pubkey,
-        &wrapped_mint_pubkey,
-        &harness.merchant_pubkey(),
-        0,
-    );
+    let subscriber_wrapped_pubkey =
+        harness.create_token_2022_ata(&admin, &fixture.mandate, &wrapped_mint_pubkey);
+    harness
+        .send_wrap(
+            &fixture.subscriber,
+            &spl_usdc_mint,
+            &wrapped_mint_pubkey,
+            &subscriber_usdc,
+            &subscriber_wrapped_pubkey,
+            &fixture.mandate,
+            &wrapping_vault,
+            amount * 10,
+        )
+        .expect("wrap into mandate billing account should succeed");
+
+    let merchant_wrapped_pubkey =
+        harness.create_token_2022_ata(&admin, &harness.merchant_pubkey(), &wrapped_mint_pubkey);
 
     (harness, fixture, plan, mandate, subscriber_wrapped_pubkey, merchant_wrapped_pubkey, wrapped_mint_pubkey)
 }
@@ -197,14 +206,14 @@ fn test_insufficient_balance_pull_fails() {
         setup_fixture(1_000_000, MIN_FREQUENCY_SECONDS, 0, 3);
     let subscriber = subscriber_pubkey(&fixture);
 
-    // Create a subscriber wrapped account with 0 balance (no funds)
+    // Create a separate mandate-owned wrapped account with 0 balance.
     let empty_wrapped = Keypair::new();
     let empty_wrapped_pubkey = helpers::to_anchor_pubkey(empty_wrapped.pubkey());
     harness.inject_token_2022_account(
         &empty_wrapped_pubkey,
         &wrapped_mint,
         &fixture.mandate,
-        0, // empty
+        0,
     );
 
     harness.set_clock_timestamp(mandate.next_payment_due);

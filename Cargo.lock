@@ -6606,13 +6606,28 @@ dependencies = [
  "solana-signer 3.0.0",
  "solana-system-interface 2.0.0",
  "solana-transaction 3.1.0",
+ "vela-transfer-hook",
  "spl-associated-token-account 8.0.0",
+ "spl-discriminator 0.5.2",
  "spl-pod 0.7.1",
  "spl-tlv-account-resolution 0.11.1",
  "spl-token 9.0.0",
  "spl-token-2022 10.0.0",
  "spl-token-group-interface 0.7.1",
  "spl-token-metadata-interface 0.8.0",
+ "spl-transfer-hook-interface 2.0.0",
+]
+
+[[package]]
+name = "vela-transfer-hook"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "solana-pubkey 3.0.0",
+ "vela-protocol",
+ "spl-discriminator 0.5.2",
+ "spl-tlv-account-resolution 0.11.1",
  "spl-transfer-hook-interface 2.0.0",
 ]
 

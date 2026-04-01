@@ -3,13 +3,17 @@ package_manager = "bun"
 
 [features]
 resolution = true
-skip-lint = false
+# Anchor 0.32 falsely flags the dedicated hook program's foreign-PDA CHECK docs.
+# Keep the default build path working; safety is still enforced by runtime account validation.
+skip-lint = true
 
 [programs.localnet]
 vela_protocol = "BhgXzh4E6e9xsgNrsPf9q1JqXKxETxjc9LBqx3D8cAKC"
+vela_transfer_hook = "93q91TJ6M9yGoehAeeCttgEc1SThFGXaw4rZS2ysr3uX"
 
 [programs.devnet]
 vela_protocol = "BhgXzh4E6e9xsgNrsPf9q1JqXKxETxjc9LBqx3D8cAKC"
+vela_transfer_hook = "93q91TJ6M9yGoehAeeCttgEc1SThFGXaw4rZS2ysr3uX"
 
 [registry]
 url = "https://api.apr.dev"

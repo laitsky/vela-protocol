@@ -39,15 +39,19 @@ pub struct Wrap<'info> {
     #[account(
         mut,
         token::mint = wrapped_usdc_mint,
-        token::authority = subscriber,
         token::token_program = token_2022_program,
     )]
-    pub subscriber_wrapped_account: InterfaceAccount<'info, TokenAccount>,
+    pub destination_wrapped_account: InterfaceAccount<'info, TokenAccount>,
+
+    /// CHECK: Owner of destination_wrapped_account. Can be the subscriber or a mandate PDA.
+    pub destination_authority: UncheckedAccount<'info>,
 
     /// Protocol's SPL USDC vault (receives subscriber deposit, must match config.wrapping_vault).
     #[account(
         mut,
         address = config.wrapping_vault,
+        constraint = wrapping_vault.mint == spl_usdc_mint.key() @ VelaError::UsdcMintMismatch,
+        constraint = wrapping_vault.owner == mint_authority.key() @ VelaError::VaultMismatch,
     )]
     pub wrapping_vault: Account<'info, SplTokenAccount>,
 
@@ -67,6 +71,11 @@ pub fn handler(ctx: Context<Wrap>, amount: u64) -> Result<()> {
     require!(
         ctx.accounts.config.wrapped_usdc_mint != Pubkey::default(),
         VelaError::WrappedMintNotInitialized
+    );
+    require_keys_eq!(
+        ctx.accounts.destination_wrapped_account.owner,
+        ctx.accounts.destination_authority.key(),
+        VelaError::TransferNotAuthorized
     );
 
     // Step 1: Transfer SPL USDC from subscriber to the protocol vault.
@@ -91,7 +100,7 @@ pub fn handler(ctx: Context<Wrap>, amount: u64) -> Result<()> {
         ctx.accounts.token_2022_program.to_account_info(),
         MintTo {
             mint: ctx.accounts.wrapped_usdc_mint.to_account_info(),
-            to: ctx.accounts.subscriber_wrapped_account.to_account_info(),
+            to: ctx.accounts.destination_wrapped_account.to_account_info(),
             authority: ctx.accounts.mint_authority.to_account_info(),
         },
         &signer_seed_groups,

@@ -1,13 +1,22 @@
-use anchor_lang::prelude::*;
-use anchor_spl::{
-    token_2022::Token2022,
-    token_interface::{transfer_checked, Mint, TokenAccount, TransferChecked},
+use anchor_lang::{
+    prelude::*,
+    solana_program::program::invoke_signed,
 };
+use anchor_spl::{
+    token::{TokenAccount as SplTokenAccount},
+    token_2022::Token2022,
+    token_interface::{Mint, TokenAccount},
+};
+use solana_instruction::{AccountMeta as SplAccountMeta, Instruction as SplInstruction};
+use solana_program_error::ProgramError as SplProgramError;
+use solana_pubkey::Pubkey as SplPubkey;
 
 use crate::{
-    constants::USDC_DECIMALS,
+    constants::{
+        EXTRA_ACCOUNT_METAS_SEED, TRANSFER_HOOK_PROGRAM_ID, USDC_DECIMALS,
+    },
     errors::VelaError,
-    state::{MandateStatus, PlanStatus, PullApproval, VelaMandate, VelaPlan},
+    state::{MandateStatus, PlanStatus, ProtocolConfig, PullApproval, VelaMandate, VelaPlan},
 };
 
 #[derive(Accounts)]
@@ -60,17 +69,53 @@ pub struct ExecutePull<'info> {
     )]
     pub merchant_wrapped_account: InterfaceAccount<'info, TokenAccount>,
 
-    /// The Token-2022 wrapped USDC mint (triggers the transfer hook on transfer_checked).
+    /// The Token-2022 wrapped USDC mint charged by the billing transfer.
+    #[account(
+        mut,
+        address = protocol_config.wrapped_usdc_mint,
+    )]
     pub wrapped_usdc_mint: InterfaceAccount<'info, Mint>,
 
     /// CHECK: The handler validates the PDA derivation, ownership, and deserializes PullApproval manually.
     #[account(mut)]
     pub pull_approval: UncheckedAccount<'info>,
 
+    #[account(
+        seeds = [ProtocolConfig::SEED_PREFIX],
+        bump = protocol_config.bump,
+    )]
+    pub protocol_config: Account<'info, ProtocolConfig>,
+
+    #[account(
+        mut,
+        address = protocol_config.wrapping_vault,
+    )]
+    pub wrapping_vault: Account<'info, SplTokenAccount>,
+
+    /// CHECK: Dedicated transfer-hook validator program.
+    #[account(
+        address = TRANSFER_HOOK_PROGRAM_ID,
+    )]
+    pub hook_program: UncheckedAccount<'info>,
+
+    /// CHECK: PDA owned by the hook program and derived from the wrapped mint.
+    #[account(
+        seeds = [EXTRA_ACCOUNT_METAS_SEED, wrapped_usdc_mint.key().as_ref()],
+        bump,
+        seeds::program = hook_program.key(),
+    )]
+    pub extra_account_meta_list: UncheckedAccount<'info>,
+
+    /// CHECK: Main protocol executable, required as an external-PDA derivation program for the hook.
+    #[account(address = crate::ID)]
+    pub protocol_program: UncheckedAccount<'info>,
+
     pub token_2022_program: Program<'info, Token2022>,
 }
 
-pub fn handler(ctx: Context<ExecutePull>) -> Result<()> {
+pub fn handler<'a, 'b, 'c, 'info>(
+    ctx: Context<'a, 'b, 'c, 'info, ExecutePull<'info>>,
+) -> Result<()> {
     require!(
         ctx.accounts.plan.status == PlanStatus::Active,
         VelaError::PlanNotActive
@@ -99,8 +144,9 @@ pub fn handler(ctx: Context<ExecutePull>) -> Result<()> {
         clock.unix_timestamp >= ctx.accounts.mandate.next_payment_due,
         VelaError::PullTooEarly
     );
-    require!(
-        ctx.accounts.mandate.amount == ctx.accounts.plan.amount,
+    require_eq!(
+        ctx.accounts.mandate.amount,
+        ctx.accounts.plan.amount,
         VelaError::AmountExceedsPlanAmount
     );
 
@@ -126,44 +172,79 @@ pub fn handler(ctx: Context<ExecutePull>) -> Result<()> {
     }
 
     // Pre-validate the approval before invoking Token-2022 transfer_checked (belt-and-suspenders).
-    // Token-2022 will also invoke the transfer hook which re-validates, but we check here to
-    // produce cleaner error messages and avoid partially-charged hook compute.
-    let approval_data = ctx.accounts.pull_approval.try_borrow_data()?;
-    let mut approval_slice: &[u8] = &approval_data;
-    let approval = PullApproval::try_deserialize(&mut approval_slice)
-        .map_err(|_| VelaError::ApprovalNotGranted)?;
+    // The dedicated transfer-hook program re-validates the same approval during the actual billing
+    // transfer, but doing a local check here gives cleaner user-facing errors and avoids wasting CU.
+    let approval = {
+        let approval_data = ctx.accounts.pull_approval.try_borrow_data()?;
+        let mut approval_slice: &[u8] = &approval_data;
+        PullApproval::try_deserialize(&mut approval_slice)
+            .map_err(|_| VelaError::ApprovalNotGranted)?
+    };
 
     require!(approval.approved, VelaError::ApprovalNotGranted);
     require!(
         clock.unix_timestamp <= approval.valid_until,
         VelaError::ApprovalExpired
     );
+    require!(
+        ctx.accounts.plan.amount <= approval.approved_amount,
+        VelaError::AmountExceedsPlanAmount
+    );
 
-    // Execute the Token-2022 transfer_checked. This triggers the transfer hook (execute CPI),
-    // which validates the PullApproval PDA. The mandate PDA signs the transfer as the
-    // authority over the subscriber's wrapped USDC account.
+    // Settle the billing move as an actual Token-2022 transfer_checked.
+    // The wrapped mint points at the dedicated `vela-transfer-hook` program, so the hook fires
+    // during this CPI without re-entering the main protocol program.
     let subscriber_key = ctx.accounts.subscriber.key();
     let plan_key = ctx.accounts.plan.key();
     let mandate_bump = [ctx.accounts.mandate.bump];
-    let signer_seeds: &[&[u8]] = &[
+    let mandate_signer_seeds: &[&[u8]] = &[
         VelaMandate::SEED_PREFIX,
         subscriber_key.as_ref(),
         plan_key.as_ref(),
         &mandate_bump,
     ];
-    let signer_seed_groups = [signer_seeds];
-
-    let transfer_ctx = CpiContext::new_with_signer(
-        ctx.accounts.token_2022_program.to_account_info(),
-        TransferChecked {
-            from: ctx.accounts.subscriber_wrapped_account.to_account_info(),
-            mint: ctx.accounts.wrapped_usdc_mint.to_account_info(),
-            to: ctx.accounts.merchant_wrapped_account.to_account_info(),
-            authority: ctx.accounts.mandate.to_account_info(),
-        },
-        &signer_seed_groups,
-    );
-    transfer_checked(transfer_ctx, ctx.accounts.plan.amount, USDC_DECIMALS)?;
+    let mandate_signer_seed_groups = [mandate_signer_seeds];
+    let source_info = ctx.accounts.subscriber_wrapped_account.to_account_info();
+    let mint_info = ctx.accounts.wrapped_usdc_mint.to_account_info();
+    let destination_info = ctx.accounts.merchant_wrapped_account.to_account_info();
+    let authority_info = ctx.accounts.mandate.to_account_info();
+    let mut transfer_ix = spl_token_2022::instruction::transfer_checked(
+        &spl_pubkey(ctx.accounts.token_2022_program.key),
+        &spl_pubkey(source_info.key),
+        &spl_pubkey(mint_info.key),
+        &spl_pubkey(destination_info.key),
+        &spl_pubkey(authority_info.key),
+        &[],
+        ctx.accounts.plan.amount,
+        USDC_DECIMALS,
+    )
+    .map_err(map_spl_error)?;
+    transfer_ix.accounts.extend_from_slice(&[
+        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.protocol_program.key()), false),
+        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.wrapping_vault.key()), false),
+        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.protocol_config.key()), false),
+        SplAccountMeta::new(spl_pubkey(&ctx.accounts.pull_approval.key()), false),
+        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.extra_account_meta_list.key()), false),
+        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.hook_program.key()), false),
+    ]);
+    let transfer_ix = convert_instruction(transfer_ix);
+    let transfer_account_infos = [
+        source_info.clone(),
+        mint_info.clone(),
+        destination_info.clone(),
+        authority_info.clone(),
+        ctx.accounts.protocol_program.to_account_info(),
+        ctx.accounts.wrapping_vault.to_account_info(),
+        ctx.accounts.protocol_config.to_account_info(),
+        ctx.accounts.pull_approval.to_account_info(),
+        ctx.accounts.extra_account_meta_list.to_account_info(),
+        ctx.accounts.hook_program.to_account_info(),
+    ];
+    invoke_signed(
+        &transfer_ix,
+        &transfer_account_infos,
+        &mandate_signer_seed_groups,
+    )?;
 
     let mandate = &mut ctx.accounts.mandate;
     mandate.pulls_executed = mandate
@@ -197,4 +278,40 @@ pub fn handler(ctx: Context<ExecutePull>) -> Result<()> {
 pub struct ArciumUnavailableEvent {
     pub mandate: Pubkey,
     pub timestamp: i64,
+}
+
+fn spl_pubkey(key: &Pubkey) -> SplPubkey {
+    SplPubkey::from(key.to_bytes())
+}
+
+fn anchor_pubkey(key: SplPubkey) -> Pubkey {
+    Pubkey::new_from_array(key.to_bytes())
+}
+
+fn convert_instruction(ix: SplInstruction) -> anchor_lang::solana_program::instruction::Instruction {
+    anchor_lang::solana_program::instruction::Instruction {
+        program_id: anchor_pubkey(ix.program_id),
+        accounts: ix
+            .accounts
+            .into_iter()
+            .map(|meta| {
+                if meta.is_writable {
+                    anchor_lang::solana_program::instruction::AccountMeta::new(
+                        anchor_pubkey(meta.pubkey),
+                        meta.is_signer,
+                    )
+                } else {
+                    anchor_lang::solana_program::instruction::AccountMeta::new_readonly(
+                        anchor_pubkey(meta.pubkey),
+                        meta.is_signer,
+                    )
+                }
+            })
+            .collect(),
+        data: ix.data,
+    }
+}
+
+fn map_spl_error(_error: SplProgramError) -> anchor_lang::error::Error {
+    anchor_lang::error::Error::from(anchor_lang::prelude::ProgramError::InvalidInstructionData)
 }

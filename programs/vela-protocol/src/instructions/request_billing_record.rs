@@ -7,7 +7,7 @@ use crate::{
     state::{BillingEvent, ProtocolConfig, VelaMandate, VelaPlan},
     ArciumSignerAccount, ID,
 };
-use anchor_lang::{prelude::*, Discriminator};
+use anchor_lang::prelude::*;
 use arcium_anchor::{prelude::*, traits::QueueCompAccs};
 use arcium_client::idl::arcium::{
     cpi::accounts::QueueComputation as ArciumQueueComputation, types::CallbackAccount,
@@ -15,6 +15,8 @@ use arcium_client::idl::arcium::{
 };
 
 const RECORD_BILLING_EVENT_CIRCUIT: &str = "record_billing_event";
+const RECORD_BILLING_EVENT_CALLBACK_DISCRIMINATOR: [u8; 8] =
+    [123, 164, 16, 122, 130, 206, 223, 55];
 
 pub fn request_billing_record(
     ctx: Context<RequestBillingRecord>,
@@ -101,7 +103,7 @@ pub fn request_billing_record(
         computation_offset,
         args,
         vec![build_callback_instruction(
-            &crate::instruction::RecordBillingEventCallback::DISCRIMINATOR,
+            &RECORD_BILLING_EVENT_CALLBACK_DISCRIMINATOR,
             computation_offset,
             ctx.accounts.config.cluster_offset,
             RECORD_BILLING_EVENT_CIRCUIT,

@@ -7,7 +7,7 @@ use crate::{
     state::{MandateStatus, ProtocolConfig, PullApproval, VelaMandate, VelaPlan},
     ArciumSignerAccount, ID,
 };
-use anchor_lang::{prelude::*, Discriminator};
+use anchor_lang::prelude::*;
 use arcium_anchor::{prelude::*, traits::QueueCompAccs};
 use arcium_client::idl::arcium::{
     cpi::accounts::QueueComputation as ArciumQueueComputation, types::CallbackAccount,
@@ -15,6 +15,8 @@ use arcium_client::idl::arcium::{
 };
 
 const VALIDATE_MANDATE_CIRCUIT: &str = "validate_mandate";
+const VALIDATE_MANDATE_CALLBACK_DISCRIMINATOR: [u8; 8] =
+    [18, 21, 173, 122, 11, 126, 79, 200];
 
 pub fn request_validation(
     ctx: Context<RequestValidation>,
@@ -108,7 +110,7 @@ pub fn request_validation(
         computation_offset,
         args,
         vec![build_callback_instruction(
-            &crate::instruction::ValidateMandateCallback::DISCRIMINATOR,
+            &VALIDATE_MANDATE_CALLBACK_DISCRIMINATOR,
             computation_offset,
             ctx.accounts.config.cluster_offset,
             VALIDATE_MANDATE_CIRCUIT,

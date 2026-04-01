@@ -11,38 +11,43 @@ use vela_protocol::{
 use anchor_lang::prelude::Pubkey;
 
 /// Set up a full fixture with Token-2022 wrapped USDC accounts injected.
-/// The mandate PDA is used as authority over the subscriber's wrapped account.
+/// The mandate PDA owns the subscriber billing account, matching the production flow.
 fn setup_fixture() -> (TestHarness, SubscriptionFixture, VelaPlan, VelaMandate, Pubkey, Pubkey, Pubkey) {
     let mut harness = TestHarness::new();
     let fixture = harness.subscribe_fixture(25_000_000, MIN_FREQUENCY_SECONDS, 0, 2);
     let plan: VelaPlan = harness.fetch_anchor_account(&fixture.plan);
     let mandate: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
 
-    // Inject Token-2022 wrapped USDC mint
+    let admin = harness.merchant.insecure_clone();
+    let spl_usdc_mint = harness.create_spl_mint(&admin, 6);
+    harness.init_protocol_config(&admin);
+
     let wrapped_mint = Keypair::new();
-    let wrapped_mint_pubkey = helpers::to_anchor_pubkey(wrapped_mint.pubkey());
-    let (mint_authority, _) = harness.derive_mint_authority();
-    harness.inject_token_2022_mint(&wrapped_mint_pubkey, &mint_authority, 1_000_000_000);
+    let (wrapped_mint_pubkey, wrapping_vault) =
+        harness.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
+    harness.init_extra_account_meta_list(&admin, &wrapped_mint_pubkey, &wrapping_vault);
 
-    // Inject subscriber's wrapped USDC account (mandate PDA is authority)
-    let subscriber_wrapped = Keypair::new();
-    let subscriber_wrapped_pubkey = helpers::to_anchor_pubkey(subscriber_wrapped.pubkey());
-    harness.inject_token_2022_account(
-        &subscriber_wrapped_pubkey,
-        &wrapped_mint_pubkey,
-        &fixture.mandate,
-        plan.amount * 10,
-    );
+    let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
+    let subscriber_usdc = harness.create_spl_token_account(&fixture.subscriber, &spl_usdc_mint, &subscriber);
+    harness.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, plan.amount * 10);
 
-    // Inject merchant's wrapped USDC account
-    let merchant_wrapped = Keypair::new();
-    let merchant_wrapped_pubkey = helpers::to_anchor_pubkey(merchant_wrapped.pubkey());
-    harness.inject_token_2022_account(
-        &merchant_wrapped_pubkey,
-        &wrapped_mint_pubkey,
-        &harness.merchant_pubkey(),
-        0,
-    );
+    let subscriber_wrapped_pubkey =
+        harness.create_token_2022_ata(&admin, &fixture.mandate, &wrapped_mint_pubkey);
+    harness
+        .send_wrap(
+            &fixture.subscriber,
+            &spl_usdc_mint,
+            &wrapped_mint_pubkey,
+            &subscriber_usdc,
+            &subscriber_wrapped_pubkey,
+            &fixture.mandate,
+            &wrapping_vault,
+            plan.amount * 2,
+        )
+        .expect("wrap into the mandate billing account should succeed");
+
+    let merchant_wrapped_pubkey =
+        harness.create_token_2022_ata(&admin, &harness.merchant_pubkey(), &wrapped_mint_pubkey);
 
     (harness, fixture, plan, mandate, subscriber_wrapped_pubkey, merchant_wrapped_pubkey, wrapped_mint_pubkey)
 }

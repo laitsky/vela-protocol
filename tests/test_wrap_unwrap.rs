@@ -10,43 +10,10 @@ use anchor_lang::prelude::Pubkey;
 use helpers::TestHarness;
 use solana_keypair::Keypair;
 use solana_signer::Signer;
-use vela_protocol::{
-    constants::MIN_FREQUENCY_SECONDS,
-    instructions::arcium_accounts::derive_cluster_pubkey,
-    state::{ClusterType, ProtocolConfig},
-};
 
 /// Helper: send init_config to bootstrap ProtocolConfig.
 fn init_config(harness: &mut TestHarness, admin: &Keypair) -> Pubkey {
-    use anchor_lang::{InstructionData, ToAccountMetas};
-    use vela_protocol::instructions::init_config::InitConfigIx;
-
-    let config = harness.derive_config();
-    let accounts = vela_protocol::accounts::InitConfig {
-        admin: helpers::to_anchor_pubkey(admin.pubkey()),
-        config,
-        system_program: anchor_lang::system_program::ID,
-    };
-    let ix = solana_instruction::Instruction {
-        program_id: harness.program_id,
-        accounts: accounts
-            .to_account_metas(None)
-            .into_iter()
-            .map(helpers::convert_account_meta)
-            .collect(),
-        data: vela_protocol::instruction::InitConfig {
-            ix: InitConfigIx {
-                cluster_pubkey: derive_cluster_pubkey(456),
-                cluster_type: ClusterType::Cerberus,
-                cluster_offset: 456,
-            },
-        }
-        .data(),
-    };
-    harness
-        .send_instructions(&[ix], &[admin], Some(&admin.pubkey()))
-        .expect("init_config should succeed");
-    config
+    harness.init_protocol_config(admin)
 }
 
 /// Helper: send init_wrapped_mint instruction.
@@ -56,47 +23,7 @@ fn init_wrapped_mint(
     wrapped_mint: &Keypair,
     spl_usdc_mint: &Pubkey,
 ) -> (Pubkey, Pubkey) {
-    use anchor_lang::{InstructionData, ToAccountMetas};
-    use helpers::{spl_token_address, token_2022_address};
-    use solana_address::Address;
-
-    let config = harness.derive_config();
-    let (mint_authority, _) = harness.derive_mint_authority();
-    let admin_pubkey = helpers::to_anchor_pubkey(admin.pubkey());
-    let wrapped_mint_pubkey = helpers::to_anchor_pubkey(wrapped_mint.pubkey());
-
-    // The wrapping vault is SPL Token ATA owned by mint_authority
-    let wrapping_vault = harness.derive_spl_ata(&mint_authority, spl_usdc_mint);
-
-    let accounts = vela_protocol::accounts::InitWrappedMint {
-        admin: admin_pubkey,
-        config,
-        mint_authority,
-        wrapped_usdc_mint: wrapped_mint_pubkey,
-        spl_usdc_mint: *spl_usdc_mint,
-        wrapping_vault,
-        token_2022_program: helpers::to_anchor_pubkey(token_2022_address()),
-        spl_token_program: helpers::to_anchor_pubkey(spl_token_address()),
-        associated_token_program: Pubkey::new_from_array(
-            spl_associated_token_account::id().to_bytes(),
-        ),
-        system_program: anchor_lang::system_program::ID,
-    };
-    let ix = solana_instruction::Instruction {
-        program_id: harness.program_id,
-        accounts: accounts
-            .to_account_metas(None)
-            .into_iter()
-            .map(helpers::convert_account_meta)
-            .collect(),
-        data: vela_protocol::instruction::InitWrappedMint {}.data(),
-    };
-    // wrapped_mint is a signer for the init
-    harness
-        .send_instructions(&[ix], &[admin, wrapped_mint], Some(&admin.pubkey()))
-        .expect("init_wrapped_mint should succeed");
-
-    (wrapped_mint_pubkey, wrapping_vault)
+    harness.init_wrapped_mint(admin, wrapped_mint, spl_usdc_mint)
 }
 
 /// Helper: send wrap instruction.
@@ -106,7 +33,8 @@ fn send_wrap(
     spl_usdc_mint: &Pubkey,
     wrapped_usdc_mint: &Pubkey,
     subscriber_usdc_account: &Pubkey,
-    subscriber_wrapped_account: &Pubkey,
+    destination_wrapped_account: &Pubkey,
+    destination_authority: &Pubkey,
     wrapping_vault: &Pubkey,
     amount: u64,
 ) -> Result<litesvm::types::TransactionMetadata, litesvm::types::FailedTransactionMetadata> {
@@ -123,7 +51,8 @@ fn send_wrap(
         spl_usdc_mint: *spl_usdc_mint,
         wrapped_usdc_mint: *wrapped_usdc_mint,
         subscriber_usdc_account: *subscriber_usdc_account,
-        subscriber_wrapped_account: *subscriber_wrapped_account,
+        destination_wrapped_account: *destination_wrapped_account,
+        destination_authority: *destination_authority,
         wrapping_vault: *wrapping_vault,
         mint_authority,
         spl_token_program: helpers::to_anchor_pubkey(spl_token_address()),
@@ -241,6 +170,7 @@ fn test_wrap_before_mint_initialized_fails() {
         &fake_mint_pubkey,
         &subscriber_usdc,
         &subscriber_wrapped,
+        &subscriber_pubkey,
         &fake_vault,
         1_000,
     )
@@ -265,10 +195,9 @@ fn test_wrap_spl_usdc_to_wrapped() {
     let subscriber_usdc = harness.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);
     harness.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, wrap_amount * 2);
 
-    // Create subscriber's Token-2022 wrapped USDC ATA (must be initialized before wrap).
-    // inject_token_2022_account creates a T22 account with subscriber as authority.
-    let subscriber_wrapped = harness.derive_token_2022_ata(&subscriber_pubkey, &wrapped_usdc_mint);
-    harness.inject_token_2022_account(&subscriber_wrapped, &wrapped_usdc_mint, &subscriber_pubkey, 0);
+    // Create the real Token-2022 ATA so account extensions match the wrapped mint.
+    let subscriber_wrapped =
+        harness.create_token_2022_ata(&subscriber, &subscriber_pubkey, &wrapped_usdc_mint);
 
     // Execute wrap instruction
     send_wrap(
@@ -278,6 +207,7 @@ fn test_wrap_spl_usdc_to_wrapped() {
         &wrapped_usdc_mint,
         &subscriber_usdc,
         &subscriber_wrapped,
+        &subscriber_pubkey,
         &wrapping_vault,
         wrap_amount,
     )
@@ -304,9 +234,8 @@ fn test_unwrap_wrapped_to_spl() {
     // Fund user with SPL USDC and wrap first
     let user_usdc = harness.create_spl_token_account(&user, &spl_usdc_mint, &user_pubkey);
     harness.mint_spl_tokens(&admin, &spl_usdc_mint, &user_usdc, wrap_amount);
-    // User's T22 wrapped USDC ATA must be initialized before wrap.
-    let user_wrapped = harness.derive_token_2022_ata(&user_pubkey, &wrapped_usdc_mint);
-    harness.inject_token_2022_account(&user_wrapped, &wrapped_usdc_mint, &user_pubkey, 0);
+    // User's wrapped balance must live in a real Token-2022 ATA.
+    let user_wrapped = harness.create_token_2022_ata(&user, &user_pubkey, &wrapped_usdc_mint);
 
     send_wrap(
         &mut harness,
@@ -315,6 +244,7 @@ fn test_unwrap_wrapped_to_spl() {
         &wrapped_usdc_mint,
         &user_usdc,
         &user_wrapped,
+        &user_pubkey,
         &wrapping_vault,
         wrap_amount,
     )
@@ -360,9 +290,9 @@ fn test_wrap_insufficient_balance_fails() {
     let subscriber_usdc = harness.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);
     harness.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, 100);
 
-    // Inject subscriber's T22 wrapped USDC account (must be initialized before wrap attempt)
-    let subscriber_wrapped = harness.derive_token_2022_ata(&subscriber_pubkey, &wrapped_usdc_mint);
-    harness.inject_token_2022_account(&subscriber_wrapped, &wrapped_usdc_mint, &subscriber_pubkey, 0);
+    // Create the real Token-2022 ATA before attempting to wrap.
+    let subscriber_wrapped =
+        harness.create_token_2022_ata(&subscriber, &subscriber_pubkey, &wrapped_usdc_mint);
 
     // Try to wrap more than available
     let error = send_wrap(
@@ -372,6 +302,7 @@ fn test_wrap_insufficient_balance_fails() {
         &wrapped_usdc_mint,
         &subscriber_usdc,
         &subscriber_wrapped,
+        &subscriber_pubkey,
         &wrapping_vault,
         1_000_000, // 1 USDC but only have 100 lamports
     )

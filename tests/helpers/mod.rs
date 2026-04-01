@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[path = "arcium_helpers.rs"]
 pub mod arcium_helpers;
 
@@ -22,7 +24,10 @@ use solana_signer::Signer;
 use solana_transaction::versioned::VersionedTransaction;
 use spl_associated_token_account::get_associated_token_address_with_program_id;
 use spl_token::state::{Account as SplTokenAccount, Mint as SplMint};
-use vela_protocol::state::{BillingEvent, PullApproval};
+use vela_protocol::{
+    instructions::arcium_accounts::derive_cluster_pubkey,
+    state::{BillingEvent, ClusterType, ProtocolConfig, PullApproval},
+};
 
 pub const AIRDROP_LAMPORTS: u64 = 10_000_000_000;
 
@@ -36,21 +41,31 @@ pub struct TestHarness {
     pub svm: LiteSVM,
     pub merchant: Keypair,
     pub program_id: Address,
+    pub hook_program_id: Address,
 }
 
 impl TestHarness {
     pub fn new() -> Self {
         let program_path = program_so_path();
+        let hook_program_path = hook_program_so_path();
         assert!(
             program_path.exists(),
             "expected compiled program at {}; run `anchor build` first",
             program_path.display(),
         );
+        assert!(
+            hook_program_path.exists(),
+            "expected compiled hook program at {}; run `anchor build` first",
+            hook_program_path.display(),
+        );
 
         let mut svm = LiteSVM::new();
         let program_id = to_address(vela_protocol::ID);
+        let hook_program_id = to_address(vela_transfer_hook::ID);
         svm.add_program_from_file(program_id, &program_path)
             .expect("program should load into LiteSVM");
+        svm.add_program_from_file(hook_program_id, &hook_program_path)
+            .expect("hook program should load into LiteSVM");
 
         let merchant = Keypair::new();
         svm.airdrop(&merchant.pubkey(), AIRDROP_LAMPORTS)
@@ -60,6 +75,7 @@ impl TestHarness {
             svm,
             merchant,
             program_id,
+            hook_program_id,
         }
     }
 
@@ -154,7 +170,7 @@ impl TestHarness {
     pub fn derive_extra_account_meta_list(&self, mint: &Pubkey) -> (Pubkey, u8) {
         Pubkey::find_program_address(
             &[b"extra-account-metas", mint.as_ref()],
-            &vela_protocol::ID,
+            &vela_transfer_hook::ID,
         )
     }
 
@@ -220,6 +236,123 @@ impl TestHarness {
         )
     }
 
+    pub fn init_protocol_config(&mut self, admin: &Keypair) -> Pubkey {
+        use vela_protocol::instructions::init_config::InitConfigIx;
+
+        let config = self.derive_config();
+        let accounts = vela_protocol::accounts::InitConfig {
+            admin: to_anchor_pubkey(admin.pubkey()),
+            config,
+            system_program: anchor_lang::system_program::ID,
+        };
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::InitConfig {
+                ix: InitConfigIx {
+                    cluster_pubkey: derive_cluster_pubkey(456),
+                    cluster_type: ClusterType::Cerberus,
+                    cluster_offset: 456,
+                },
+            }
+            .data(),
+        };
+        self.send_instruction(&instruction, &[admin], Some(&admin.pubkey()))
+            .expect("init_config should succeed");
+        config
+    }
+
+    pub fn init_wrapped_mint(
+        &mut self,
+        admin: &Keypair,
+        wrapped_mint: &Keypair,
+        spl_usdc_mint: &Pubkey,
+    ) -> (Pubkey, Pubkey) {
+        let config = self.derive_config();
+        let (mint_authority, _) = self.derive_mint_authority();
+        let wrapped_usdc_mint = to_anchor_pubkey(wrapped_mint.pubkey());
+        let wrapping_vault = self.derive_spl_ata(&mint_authority, spl_usdc_mint);
+
+        let accounts = vela_protocol::accounts::InitWrappedMint {
+            admin: to_anchor_pubkey(admin.pubkey()),
+            config,
+            mint_authority,
+            wrapped_usdc_mint,
+            spl_usdc_mint: *spl_usdc_mint,
+            wrapping_vault,
+            token_2022_program: token_2022_anchor_id(),
+            spl_token_program: Pubkey::new_from_array(spl_token::id().to_bytes()),
+            associated_token_program: Pubkey::new_from_array(
+                spl_associated_token_account::id().to_bytes(),
+            ),
+            system_program: anchor_lang::system_program::ID,
+            rent: anchor_lang::solana_program::sysvar::rent::ID,
+        };
+
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::InitWrappedMint {}.data(),
+        };
+        self.send_instructions(
+            &[instruction],
+            &[admin, wrapped_mint],
+            Some(&admin.pubkey()),
+        )
+        .expect("init_wrapped_mint should succeed");
+
+        let needs_vault_repair = self
+            .svm
+            .get_account(&to_address(wrapping_vault))
+            .map(|account| account.owner != spl_token_address())
+            .unwrap_or(true);
+        if needs_vault_repair {
+            self.inject_spl_token_account_at(&wrapping_vault, spl_usdc_mint, &mint_authority, 0);
+        }
+
+        (wrapped_usdc_mint, wrapping_vault)
+    }
+
+    pub fn init_extra_account_meta_list(
+        &mut self,
+        admin: &Keypair,
+        wrapped_usdc_mint: &Pubkey,
+        wrapping_vault: &Pubkey,
+    ) -> Pubkey {
+        let config = self.derive_config();
+        let (extra_account_meta_list, _) = self.derive_extra_account_meta_list(wrapped_usdc_mint);
+
+        let accounts = vela_transfer_hook::accounts::InitExtraAccountMetaList {
+            admin: to_anchor_pubkey(admin.pubkey()),
+            config,
+            extra_account_meta_list,
+            wrapped_usdc_mint: *wrapped_usdc_mint,
+            wrapping_vault: *wrapping_vault,
+            system_program: anchor_lang::system_program::ID,
+        };
+        let instruction = Instruction {
+            program_id: self.hook_program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_transfer_hook::instruction::InitExtraAccountMetaList {}.data(),
+        };
+        self.send_instructions(&[instruction], &[admin], Some(&admin.pubkey()))
+            .expect("init_extra_account_meta_list should succeed");
+
+        extra_account_meta_list
+    }
+
     pub fn create_spl_token_account(
         &mut self,
         payer: &Keypair,
@@ -232,6 +365,58 @@ impl TestHarness {
                 .send()
                 .expect("token account should initialize"),
         )
+    }
+
+    pub fn create_token_2022_ata(
+        &mut self,
+        payer: &Keypair,
+        owner: &Pubkey,
+        mint: &Pubkey,
+    ) -> Pubkey {
+        let instruction = spl_associated_token_account::instruction::create_associated_token_account(
+            &payer.pubkey(),
+            &to_solana_pubkey(*owner),
+            &to_solana_pubkey(*mint),
+            &spl_token_2022::id(),
+        );
+        self.send_instructions(&[instruction], &[payer], Some(&payer.pubkey()))
+            .expect("token-2022 ATA should initialize");
+        self.derive_token_2022_ata(owner, mint)
+    }
+
+    pub fn inject_spl_token_account_at(
+        &mut self,
+        pubkey: &Pubkey,
+        mint: &Pubkey,
+        owner: &Pubkey,
+        amount: u64,
+    ) {
+        use spl_token::solana_program::program_option::COption;
+        use spl_token::state::{Account as SplAccount, AccountState};
+        let account_state = SplAccount {
+            mint: to_address(*mint),
+            owner: to_address(*owner),
+            amount,
+            delegate: COption::None,
+            state: AccountState::Initialized,
+            is_native: COption::None,
+            delegated_amount: 0,
+            close_authority: COption::None,
+        };
+        let mut data = vec![0u8; SplAccount::LEN];
+        SplAccount::pack(account_state, &mut data).expect("account should pack");
+        self.svm
+            .set_account(
+                to_address(*pubkey),
+                Account {
+                    lamports: 2_039_280,
+                    data,
+                    owner: spl_token_address(),
+                    executable: false,
+                    rent_epoch: 0,
+                },
+            )
+            .expect("spl-token account should be created");
     }
 
     pub fn mint_spl_tokens(
@@ -297,7 +482,6 @@ impl TestHarness {
     }
 
     /// Send execute_pull using Token-2022 wrapped USDC accounts.
-    /// The pull_approval PDA is passed as a remaining account for the transfer hook.
     pub fn send_execute_pull_wrapped(
         &mut self,
         payer: &Keypair,
@@ -313,34 +497,31 @@ impl TestHarness {
         let addresses = self.derive_plan_addresses(plan_id);
         let mandate = self.derive_mandate_address(subscriber, &addresses.plan);
         let pull_approval = self.derive_pull_approval_address(&mandate);
-        let token_2022_id = Address::from(spl_token_2022::id().to_bytes());
-
-        // Core accounts for execute_pull instruction
-        let mut accounts = vec![
-            AccountMeta::new(to_address(to_anchor_pubkey(payer.pubkey())), true),
-            AccountMeta::new_readonly(to_address(*subscriber), false),
-            AccountMeta::new_readonly(to_address(self.merchant_pubkey()), false),
-            AccountMeta::new_readonly(to_address(addresses.plan), false),
-            AccountMeta::new(to_address(mandate), false),
-            AccountMeta::new(to_address(*subscriber_wrapped_account), false),
-            AccountMeta::new(to_address(*merchant_wrapped_account), false),
-            AccountMeta::new_readonly(to_address(*wrapped_usdc_mint), false),
-            AccountMeta::new(to_address(pull_approval), false),
-            AccountMeta::new_readonly(token_2022_id, false),
-        ];
-
-        // Remaining accounts for Token-2022 transfer hook resolution:
-        // The transfer hook Execute CPI expects: extra_account_meta_list, wrapping_vault, config, pull_approval
-        // NOTE: Token-2022 resolves hook accounts from ExtraAccountMetaList automatically;
-        // the PullApproval is passed as an additional remaining account per the D-05 pattern.
-        accounts.push(AccountMeta::new_readonly(to_address(*extra_account_meta_list), false));
-        accounts.push(AccountMeta::new_readonly(to_address(*wrapping_vault), false));
-        accounts.push(AccountMeta::new_readonly(to_address(*config), false));
-        accounts.push(AccountMeta::new(to_address(pull_approval), false));
+        let accounts = vela_protocol::accounts::ExecutePull {
+            payer: to_anchor_pubkey(payer.pubkey()),
+            subscriber: *subscriber,
+            merchant: self.merchant_pubkey(),
+            plan: addresses.plan,
+            mandate,
+            subscriber_wrapped_account: *subscriber_wrapped_account,
+            merchant_wrapped_account: *merchant_wrapped_account,
+            wrapped_usdc_mint: *wrapped_usdc_mint,
+            pull_approval,
+            protocol_config: *config,
+            wrapping_vault: *wrapping_vault,
+            hook_program: Pubkey::new_from_array(vela_transfer_hook::ID.to_bytes()),
+            extra_account_meta_list: *extra_account_meta_list,
+            protocol_program: vela_protocol::ID,
+            token_2022_program: token_2022_anchor_id(),
+        };
 
         let instruction = Instruction {
             program_id: self.program_id,
-            accounts,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
             data: vela_protocol::instruction::ExecutePull {}.data(),
         };
         self.send_instruction(&instruction, &[payer], Some(&payer.pubkey()))
@@ -357,9 +538,10 @@ impl TestHarness {
         merchant_token_account: &Pubkey,
         usdc_mint: &Pubkey,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-        // Delegate to wrapped version with Token-2022 accounts.
-        // These field names are preserved for call-site compatibility; the actual accounts
-        // are now Token-2022 accounts passed to the rewritten ExecutePull instruction.
+        let config = self.derive_config();
+        let config_account: ProtocolConfig = self.fetch_anchor_account(&config);
+        let (extra_account_meta_list, _) = self.derive_extra_account_meta_list(usdc_mint);
+
         self.send_execute_pull_t22(
             payer,
             subscriber,
@@ -367,7 +549,48 @@ impl TestHarness {
             subscriber_token_account, // now subscriber_wrapped_account
             merchant_token_account,   // now merchant_wrapped_account
             usdc_mint,                // now wrapped_usdc_mint
+            &config_account.wrapping_vault,
+            &config,
+            &extra_account_meta_list,
         )
+    }
+
+    pub fn send_wrap(
+        &mut self,
+        subscriber: &Keypair,
+        spl_usdc_mint: &Pubkey,
+        wrapped_usdc_mint: &Pubkey,
+        subscriber_usdc_account: &Pubkey,
+        destination_wrapped_account: &Pubkey,
+        destination_authority: &Pubkey,
+        wrapping_vault: &Pubkey,
+        amount: u64,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let config = self.derive_config();
+        let (mint_authority, _) = self.derive_mint_authority();
+        let accounts = vela_protocol::accounts::Wrap {
+            subscriber: to_anchor_pubkey(subscriber.pubkey()),
+            config,
+            spl_usdc_mint: *spl_usdc_mint,
+            wrapped_usdc_mint: *wrapped_usdc_mint,
+            subscriber_usdc_account: *subscriber_usdc_account,
+            destination_wrapped_account: *destination_wrapped_account,
+            destination_authority: *destination_authority,
+            wrapping_vault: *wrapping_vault,
+            mint_authority,
+            spl_token_program: Pubkey::new_from_array(spl_token::id().to_bytes()),
+            token_2022_program: token_2022_anchor_id(),
+        };
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::Wrap { amount }.data(),
+        };
+        self.send_instruction(&instruction, &[subscriber], Some(&subscriber.pubkey()))
     }
 
     /// Send execute_pull with Token-2022 accounts (minimal version without hook remaining accounts).
@@ -380,31 +603,21 @@ impl TestHarness {
         subscriber_wrapped_account: &Pubkey,
         merchant_wrapped_account: &Pubkey,
         wrapped_usdc_mint: &Pubkey,
+        wrapping_vault: &Pubkey,
+        config: &Pubkey,
+        extra_account_meta_list: &Pubkey,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-        let addresses = self.derive_plan_addresses(plan_id);
-        let mandate = self.derive_mandate_address(subscriber, &addresses.plan);
-        let token_2022_id = Address::from(spl_token_2022::id().to_bytes());
-
-        let pull_approval = self.derive_pull_approval_address(&mandate);
-        let accounts = vec![
-            AccountMeta::new(to_address(to_anchor_pubkey(payer.pubkey())), true),
-            AccountMeta::new_readonly(to_address(*subscriber), false),
-            AccountMeta::new_readonly(to_address(self.merchant_pubkey()), false),
-            AccountMeta::new_readonly(to_address(addresses.plan), false),
-            AccountMeta::new(to_address(mandate), false),
-            AccountMeta::new(to_address(*subscriber_wrapped_account), false),
-            AccountMeta::new(to_address(*merchant_wrapped_account), false),
-            AccountMeta::new_readonly(to_address(*wrapped_usdc_mint), false),
-            AccountMeta::new(to_address(pull_approval), false),
-            AccountMeta::new_readonly(token_2022_id, false),
-        ];
-
-        let instruction = Instruction {
-            program_id: self.program_id,
-            accounts,
-            data: vela_protocol::instruction::ExecutePull {}.data(),
-        };
-        self.send_instruction(&instruction, &[payer], Some(&payer.pubkey()))
+        self.send_execute_pull_wrapped(
+            payer,
+            subscriber,
+            plan_id,
+            subscriber_wrapped_account,
+            merchant_wrapped_account,
+            wrapped_usdc_mint,
+            wrapping_vault,
+            config,
+            extra_account_meta_list,
+        )
     }
 
     /// Create a PullApproval account with all fields including approved_amount.
@@ -780,6 +993,10 @@ fn token_2022_anchor_id() -> Pubkey {
     Pubkey::new_from_array(spl_token_2022::id().to_bytes())
 }
 
+fn to_solana_pubkey(key: Pubkey) -> solana_pubkey::Pubkey {
+    solana_pubkey::Pubkey::new_from_array(key.to_bytes())
+}
+
 pub struct SubscriptionFixture {
     pub subscriber: Keypair,
     pub plan: Pubkey,
@@ -810,4 +1027,8 @@ pub fn to_anchor_pubkey(address: Address) -> Pubkey {
 
 fn program_so_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/deploy/vela_protocol.so")
+}
+
+fn hook_program_so_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/deploy/vela_transfer_hook.so")
 }
