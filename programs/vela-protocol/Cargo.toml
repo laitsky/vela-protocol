@@ -110,6 +110,9 @@ path = "../../tests/test_transfer_hook.rs"
 name = "test_wrap_unwrap"
 path = "../../tests/test_wrap_unwrap.rs"
 
+[[test]]
+name = "test_emergency"
+path = "../../tests/test_emergency.rs"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

@@ -1074,6 +1074,82 @@ impl TestHarness {
         self.send_instructions(&[instruction.clone()], signers, payer)
     }
 
+    pub fn send_pause_protocol(
+        &mut self,
+        admin: &Keypair,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let config = self.derive_config();
+        let accounts = vela_protocol::accounts::PauseProtocol {
+            admin: to_anchor_pubkey(admin.pubkey()),
+            config,
+        };
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::PauseProtocol {}.data(),
+        };
+        self.send_instruction(&instruction, &[admin], Some(&admin.pubkey()))
+    }
+
+    pub fn send_unpause_protocol(
+        &mut self,
+        admin: &Keypair,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let config = self.derive_config();
+        let accounts = vela_protocol::accounts::UnpauseProtocol {
+            admin: to_anchor_pubkey(admin.pubkey()),
+            config,
+        };
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::UnpauseProtocol {}.data(),
+        };
+        self.send_instruction(&instruction, &[admin], Some(&admin.pubkey()))
+    }
+
+    pub fn send_admin_cancel(
+        &mut self,
+        admin: &Keypair,
+        subscriber: &Pubkey,
+        plan: &Pubkey,
+        mandate: &Pubkey,
+        credential_mint: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let config = self.derive_config();
+        let subscriber_credential_account =
+            self.derive_credential_ata(subscriber, credential_mint);
+        let accounts = vec![
+            AccountMeta::new(to_address(to_anchor_pubkey(admin.pubkey())), true),
+            AccountMeta::new_readonly(to_address(config), false),
+            AccountMeta::new_readonly(to_address(*subscriber), false),
+            AccountMeta::new_readonly(to_address(*plan), false),
+            AccountMeta::new(to_address(*mandate), false),
+            AccountMeta::new(to_address(subscriber_credential_account), false),
+            AccountMeta::new(to_address(*credential_mint), false),
+            AccountMeta::new_readonly(token_2022_address(), false),
+        ];
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts,
+            data: vela_protocol::instruction::AdminCancel {}.data(),
+        };
+        self.send_instruction(&instruction, &[admin], Some(&admin.pubkey()))
+    }
+
+    pub fn read_protocol_config(&self) -> vela_protocol::state::ProtocolConfig {
+        let config = self.derive_config();
+        self.fetch_anchor_account(&config)
+    }
+
     fn create_plan_instruction(
         &self,
         amount: u64,
