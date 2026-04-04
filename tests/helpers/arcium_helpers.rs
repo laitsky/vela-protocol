@@ -35,6 +35,8 @@ pub fn create_mock_protocol_config(
         cluster_offset,
         wrapped_usdc_mint: Pubkey::default(),
         wrapping_vault: Pubkey::default(),
+        paused: false,
+        paused_at: 0,
         bump: 255, // Mock bump; the actual bump would be derived
     };
 

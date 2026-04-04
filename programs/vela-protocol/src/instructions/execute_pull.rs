@@ -117,6 +117,10 @@ pub struct ExecutePull<'info> {
 pub fn handler<'a, 'b, 'c, 'info>(
     ctx: Context<'a, 'b, 'c, 'info, ExecutePull<'info>>,
 ) -> Result<()> {
+    require!(
+        !ctx.accounts.protocol_config.paused,
+        VelaError::ProtocolPaused
+    );
     let plan = load_plan_account(&ctx.accounts.plan.to_account_info())?;
     require_plan_billing_type(&plan, &ctx.accounts.mandate.billing_type)?;
     require!(*plan.status() == PlanStatus::Active, VelaError::PlanNotActive);

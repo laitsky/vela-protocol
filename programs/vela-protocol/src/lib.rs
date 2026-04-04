@@ -8,16 +8,29 @@ pub mod state;
 
 use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
-    Cancel, CreatePlan, CreateUsagePlan, ExecutePull, InitConfig, InitKeeperConfig,
+    AdminCancel, Cancel, CreatePlan, CreateUsagePlan, ExecutePull, InitConfig, InitKeeperConfig,
     InitRecordBillingCompDef, InitValidateMandateCompDef, InitWrappedMint,
-    RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation, RequestValidation,
-    SubmitUsageReport, Subscribe, Unwrap, UpdateConfig, UpdateKeeperConfig,
-    UsageChargeOutput, UsageComputationCallback, ValidateMandateCallback, Wrap,
+    PauseProtocol, RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation,
+    RequestValidation, SubmitUsageReport, Subscribe, UnpauseProtocol, Unwrap, UpdateConfig,
+    UpdateKeeperConfig, UsageChargeOutput, UsageComputationCallback, ValidateMandateCallback,
+    Wrap,
 };
 use crate::state::{KeeperMode, PricingTier};
 use arcium_anchor::prelude::SignedComputationOutputs;
 use crate::instructions::billing_callback::RecordBillingEventOutput;
 use crate::instructions::validation_callback::ValidateMandateOutput;
+
+mod __client_accounts_admin_cancel {
+    pub use crate::instructions::__client_accounts_admin_cancel::*;
+}
+
+mod __client_accounts_pause_protocol {
+    pub use crate::instructions::__client_accounts_pause_protocol::*;
+}
+
+mod __client_accounts_unpause_protocol {
+    pub use crate::instructions::__client_accounts_unpause_protocol::*;
+}
 
 mod __client_accounts_create_usage_plan {
     pub use crate::instructions::__client_accounts_create_usage_plan::*;
@@ -108,6 +121,10 @@ declare_id!("BhgXzh4E6e9xsgNrsPf9q1JqXKxETxjc9LBqx3D8cAKC");
 #[arcium_program]
 pub mod vela_protocol {
     use super::*;
+
+    pub fn admin_cancel(ctx: Context<AdminCancel>) -> Result<()> {
+        instructions::admin_cancel::handler(ctx)
+    }
 
     pub fn cancel(ctx: Context<Cancel>) -> Result<()> {
         instructions::cancel::handler(ctx)
@@ -255,6 +272,14 @@ pub mod vela_protocol {
 
     pub fn unwrap_tokens(ctx: Context<Unwrap>, amount: u64) -> Result<()> {
         instructions::unwrap::handler(ctx, amount)
+    }
+
+    pub fn pause_protocol(ctx: Context<PauseProtocol>) -> Result<()> {
+        instructions::pause_protocol::handler(ctx)
+    }
+
+    pub fn unpause_protocol(ctx: Context<UnpauseProtocol>) -> Result<()> {
+        instructions::unpause_protocol::handler(ctx)
     }
 
     pub fn init_keeper_config(

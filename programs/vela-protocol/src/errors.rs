@@ -128,6 +128,9 @@ pub enum VelaError {
     #[msg("Tier boundaries must be monotonically increasing")]
     InvalidTierBoundary,
 
+    #[msg("Protocol is paused -- billing pulls are blocked")]
+    ProtocolPaused,
+
     #[msg("Usage report has already been settled")]
     UsageReportAlreadySettled,
 }

@@ -11,7 +11,7 @@ use solana_pubkey::Pubkey as SplPubkey;
 use spl_pod::optional_keys::OptionalNonZeroPubkey;
 use spl_token_2022::{
     extension::{metadata_pointer, ExtensionType},
-    instruction::{initialize_mint2, initialize_non_transferable_mint},
+    instruction::{initialize_mint2, initialize_non_transferable_mint, initialize_permanent_delegate},
     state::Mint,
 };
 use spl_token_metadata_interface::{
@@ -127,6 +127,7 @@ pub fn handler(
     let mint_extensions = [
         ExtensionType::NonTransferable,
         ExtensionType::MetadataPointer,
+        ExtensionType::PermanentDelegate,
     ];
     let mint_len = ExtensionType::try_calculate_account_len::<Mint>(&mint_extensions)
         .map_err(map_interface_error)?;
@@ -172,6 +173,19 @@ pub fn handler(
             )
             .map_err(map_interface_error)?,
         ),
+        &[ctx.accounts.credential_mint.to_account_info()],
+    )?;
+
+    // Initialize PermanentDelegate extension -- plan PDA is the permanent delegate,
+    // enabling admin_cancel to burn credential tokens without subscriber consent.
+    let init_permanent_delegate_ix = initialize_permanent_delegate(
+        &token_2022_program_id,
+        &spl_pubkey(&credential_mint_key),
+        &spl_pubkey(&plan_key),
+    )
+    .map_err(map_interface_error)?;
+    invoke(
+        &convert_instruction(init_permanent_delegate_ix),
         &[ctx.accounts.credential_mint.to_account_info()],
     )?;
 

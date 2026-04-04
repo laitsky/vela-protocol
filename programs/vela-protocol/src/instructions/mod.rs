@@ -1,3 +1,4 @@
+pub mod admin_cancel;
 pub mod arcium_accounts;
 pub mod billing_callback;
 pub mod cancel;
@@ -8,17 +9,31 @@ pub mod init_comp_defs;
 pub mod init_config;
 pub mod init_keeper_config;
 pub mod init_wrapped_mint;
+pub mod pause_protocol;
 pub mod plan_account;
 pub mod request_billing_record;
 pub mod request_usage_computation;
 pub mod request_validation;
 pub mod submit_usage_report;
 pub mod subscribe;
+pub mod unpause_protocol;
 pub mod unwrap;
 pub mod update_keeper_config;
 pub mod usage_computation_callback;
 pub mod validation_callback;
 pub mod wrap;
+
+pub mod __client_accounts_admin_cancel {
+    pub use super::admin_cancel::__client_accounts_admin_cancel::*;
+}
+
+pub mod __client_accounts_pause_protocol {
+    pub use super::pause_protocol::__client_accounts_pause_protocol::*;
+}
+
+pub mod __client_accounts_unpause_protocol {
+    pub use super::unpause_protocol::__client_accounts_unpause_protocol::*;
+}
 
 pub mod __client_accounts_init_keeper_config {
     pub use super::init_keeper_config::__client_accounts_init_keeper_config::*;
@@ -104,6 +119,7 @@ pub mod __client_accounts_usage_computation_callback {
     pub use super::usage_computation_callback::__client_accounts_usage_computation_callback::*;
 }
 
+pub use admin_cancel::AdminCancel;
 pub use billing_callback::RecordBillingEventCallback;
 pub use cancel::Cancel;
 pub use create_plan::CreatePlan;
@@ -114,9 +130,11 @@ pub use init_comp_defs::{InitRecordBillingCompDef, InitValidateMandateCompDef};
 pub use init_config::{InitConfig, InitConfigIx, UpdateConfig, UpdateConfigIx};
 pub use init_keeper_config::InitKeeperConfig;
 pub use init_wrapped_mint::InitWrappedMint;
+pub use pause_protocol::PauseProtocol;
 pub use request_billing_record::RequestBillingRecord;
 pub use request_validation::RequestValidation;
 pub use subscribe::Subscribe;
+pub use unpause_protocol::UnpauseProtocol;
 pub use unwrap::Unwrap;
 pub use update_keeper_config::UpdateKeeperConfig;
 pub use request_usage_computation::RequestUsageComputation;
