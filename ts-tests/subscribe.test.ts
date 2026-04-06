@@ -25,8 +25,8 @@ describe("subscribe", () => {
     expect(mandate.frequency.toString()).toBe(fixture.frequency.toString());
     expect(mandate.maxPulls.toString()).toBe(fixture.maxPulls.toString());
     expect(Object.keys(mandate.status)[0]).toBe("active");
-    expect(subscriberToken.delegate?.toBase58()).toBe(fixture.mandate.toBase58());
-    expect(subscriberToken.delegatedAmount).toBe(fixture.amount * fixture.maxPulls);
+    expect(subscriberToken.delegate).toBeNull();
+    expect(subscriberToken.delegatedAmount).toBe(0n);
     expect(credentialAccount.amount).toBe(1n);
   });
 });
