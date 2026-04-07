@@ -555,3 +555,23 @@ fn test_adjust_agent_mandate_updates_services() {
     assert_eq!(mandate.services[1].daily_spent, before_service.daily_spent);
     assert_eq!(mandate.services[1].last_reset, before_service.last_reset);
 }
+
+#[test]
+fn test_pause_blocks_and_resume_restores_pull() {
+    test_pause_resume_agent_mandate();
+}
+
+#[test]
+fn test_revoke_blocks_future_pulls() {
+    test_revoke_agent_mandate_blocks_future_pulls();
+}
+
+#[test]
+fn test_authority_only_lifecycle_instructions() {
+    test_lifecycle_authority_only();
+}
+
+#[test]
+fn test_drain_reclaims_funds_in_any_status() {
+    test_drain_agent_mandate_in_all_statuses();
+}

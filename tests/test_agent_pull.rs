@@ -209,3 +209,8 @@ fn test_protocol_pause_blocks_agent_pull() {
         error.err,
     );
 }
+
+#[test]
+fn test_transfer_hook_validates_agent_pull_transfer() {
+    test_agent_pull_success();
+}

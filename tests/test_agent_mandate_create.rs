@@ -63,6 +63,67 @@ fn send_create_agent_mandate(
     )
 }
 
+fn send_create_agent_mandate_with_authority(
+    harness: &mut TestHarness,
+    fixture: &AgentMandateFixture,
+    authority: anchor_lang::prelude::Pubkey,
+    signer: &Keypair,
+    funded_amount: u64,
+) -> Result<litesvm::types::TransactionMetadata, litesvm::types::FailedTransactionMetadata> {
+    let config = harness.derive_config();
+    let (mint_authority, _) = harness.derive_mint_authority();
+    let service = Keypair::new();
+    let (agent_mandate, _) = anchor_lang::prelude::Pubkey::find_program_address(
+        &[
+            vela_protocol::constants::AGENT_MANDATE_SEED,
+            authority.as_ref(),
+            to_anchor_pubkey(fixture.agent.pubkey()).as_ref(),
+        ],
+        &vela_protocol::ID,
+    );
+    let mandate_wrapped_account =
+        harness.derive_agent_mandate_wrapped_ata(&agent_mandate, &fixture.wrapped_usdc_mint);
+    let accounts = vela_protocol::accounts::CreateAgentMandate {
+        authority,
+        agent: to_anchor_pubkey(fixture.agent.pubkey()),
+        agent_mandate,
+        authority_usdc_account: fixture.authority_spl_usdc_ata,
+        mandate_wrapped_account,
+        wrapped_usdc_mint: fixture.wrapped_usdc_mint,
+        protocol_config: config,
+        spl_usdc_mint: fixture.spl_usdc_mint,
+        wrapping_vault: fixture.wrapping_vault,
+        mint_authority,
+        spl_token_program: helpers::to_anchor_pubkey(helpers::spl_token_address()),
+        token_2022_program: helpers::to_anchor_pubkey(helpers::token_2022_address()),
+        associated_token_program: anchor_lang::prelude::Pubkey::new_from_array(
+            spl_associated_token_account::id().to_bytes(),
+        ),
+        system_program: anchor_lang::system_program::ID,
+    };
+    let instruction = Instruction {
+        program_id: harness.program_id,
+        accounts: accounts
+            .to_account_metas(None)
+            .into_iter()
+            .map(helpers::convert_account_meta)
+            .collect(),
+        data: vela_protocol::instruction::CreateAgentMandate {
+            daily_limit: 5_000_000,
+            lifetime_cap: 20_000_000,
+            min_pull_amount: 100_000,
+            min_pull_interval: 0,
+            services: vec![vela_protocol::instructions::ServiceLimitInput {
+                service: to_anchor_pubkey(service.pubkey()),
+                daily_limit: 4_000_000,
+            }],
+            funded_amount,
+        }
+        .data(),
+    };
+    harness.send_instructions(&[instruction], &[signer], Some(&signer.pubkey()))
+}
+
 fn setup_fixture(initial_usdc_amount: u64) -> (TestHarness, AgentMandateFixture) {
     let mut harness = TestHarness::new();
     let admin = harness.merchant.insecure_clone();
@@ -219,4 +280,27 @@ fn test_create_agent_mandate_rejects_more_than_max_services() {
 #[test]
 fn test_agent_mandate_create_rejects_more_than_max_services_wrapper() {
     test_create_agent_mandate_rejects_more_than_max_services();
+}
+
+#[test]
+fn test_non_authority_create_agent_mandate_fails() {
+    let (mut harness, fixture) = setup_fixture(5_000_000);
+    let intruder = harness.create_wallet();
+    let authority = to_anchor_pubkey(fixture.authority.pubkey());
+
+    let error = send_create_agent_mandate_with_authority(
+        &mut harness,
+        &fixture,
+        authority,
+        &intruder,
+        2_500_000,
+    )
+    .expect_err("non-authority signer should not be able to create mandate for authority");
+
+    let err = format!("{:?}", error.err);
+    assert!(
+        err.contains("MissingRequiredSignature") || err.contains("Custom("),
+        "expected authority/signature enforcement failure, got {:?}",
+        error.err,
+    );
 }
