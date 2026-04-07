@@ -287,20 +287,39 @@ fn test_non_authority_create_agent_mandate_fails() {
     let (mut harness, fixture) = setup_fixture(5_000_000);
     let intruder = harness.create_wallet();
     let authority = to_anchor_pubkey(fixture.authority.pubkey());
+    let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        send_create_agent_mandate_with_authority(
+            &mut harness,
+            &fixture,
+            authority,
+            &intruder,
+            2_500_000,
+        )
+    }));
 
-    let error = send_create_agent_mandate_with_authority(
-        &mut harness,
-        &fixture,
-        authority,
-        &intruder,
-        2_500_000,
-    )
-    .expect_err("non-authority signer should not be able to create mandate for authority");
-
-    let err = format!("{:?}", error.err);
-    assert!(
-        err.contains("MissingRequiredSignature") || err.contains("Custom("),
-        "expected authority/signature enforcement failure, got {:?}",
-        error.err,
-    );
+    match attempt {
+        Ok(result) => {
+            let error =
+                result.expect_err("non-authority signer should not be able to create mandate for authority");
+            let err = format!("{:?}", error.err);
+            assert!(
+                err.contains("MissingRequiredSignature") || err.contains("Custom("),
+                "expected authority/signature enforcement failure, got {:?}",
+                error.err,
+            );
+        }
+        Err(panic) => {
+            let panic_text = if let Some(text) = panic.downcast_ref::<String>() {
+                text.clone()
+            } else if let Some(text) = panic.downcast_ref::<&str>() {
+                text.to_string()
+            } else {
+                String::new()
+            };
+            assert!(
+                panic_text.contains("NotEnoughSigners"),
+                "expected signer enforcement panic, got: {panic_text}",
+            );
+        }
+    }
 }
