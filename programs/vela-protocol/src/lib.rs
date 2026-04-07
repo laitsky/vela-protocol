@@ -8,7 +8,7 @@ pub mod state;
 
 use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
-    AdminCancel, Cancel, CreateAgentMandate, CreatePlan, CreateUsagePlan, ExecutePull, InitConfig, InitKeeperConfig,
+    AdminCancel, AgentPull, Cancel, CreateAgentMandate, CreatePlan, CreateUsagePlan, ExecutePull, InitConfig, InitKeeperConfig,
     InitRecordBillingCompDef, InitValidateMandateCompDef, InitWrappedMint,
     PauseProtocol, RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation,
     RequestValidation, SubmitUsageReport, Subscribe, UnpauseProtocol, Unwrap, UpdateConfig,
@@ -27,6 +27,10 @@ mod __client_accounts_admin_cancel {
 
 mod __client_accounts_pause_protocol {
     pub use crate::instructions::__client_accounts_pause_protocol::*;
+}
+
+mod __client_accounts_agent_pull {
+    pub use crate::instructions::__client_accounts_agent_pull::*;
 }
 
 mod __client_accounts_unpause_protocol {
@@ -163,6 +167,13 @@ pub mod vela_protocol {
             services,
             funded_amount,
         )
+    }
+
+    pub fn agent_pull<'a, 'b, 'c, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, AgentPull<'info>>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::agent_pull::handler(ctx, amount)
     }
 
     pub fn create_usage_plan(

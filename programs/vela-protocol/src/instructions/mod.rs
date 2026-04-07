@@ -1,4 +1,5 @@
 pub mod admin_cancel;
+pub mod agent_pull;
 pub mod arcium_accounts;
 pub mod billing_callback;
 pub mod cancel;
@@ -26,6 +27,10 @@ pub mod wrap;
 
 pub mod __client_accounts_admin_cancel {
     pub use super::admin_cancel::__client_accounts_admin_cancel::*;
+}
+
+pub mod __client_accounts_agent_pull {
+    pub use super::agent_pull::__client_accounts_agent_pull::*;
 }
 
 pub mod __client_accounts_pause_protocol {
@@ -125,6 +130,7 @@ pub mod __client_accounts_usage_computation_callback {
 }
 
 pub use admin_cancel::AdminCancel;
+pub use agent_pull::AgentPull;
 pub use billing_callback::RecordBillingEventCallback;
 pub use cancel::Cancel;
 pub use create_agent_mandate::{CreateAgentMandate, ServiceLimitInput};
