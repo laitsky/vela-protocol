@@ -119,6 +119,10 @@ name = "test_agent_pull"
 path = "../../tests/test_agent_pull.rs"
 
 [[test]]
+name = "test_agent_mandate_lifecycle"
+path = "../../tests/test_agent_mandate_lifecycle.rs"
+
+[[test]]
 name = "test_emergency"
 path = "../../tests/test_emergency.rs"
 

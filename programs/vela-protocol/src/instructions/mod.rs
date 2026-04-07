@@ -6,16 +6,20 @@ pub mod cancel;
 pub mod create_agent_mandate;
 pub mod create_plan;
 pub mod create_usage_plan;
+pub mod drain_agent_mandate;
 pub mod execute_pull;
 pub mod init_comp_defs;
 pub mod init_config;
 pub mod init_keeper_config;
 pub mod init_wrapped_mint;
+pub mod pause_agent_mandate;
 pub mod pause_protocol;
 pub mod plan_account;
 pub mod request_billing_record;
 pub mod request_usage_computation;
 pub mod request_validation;
+pub mod resume_agent_mandate;
+pub mod revoke_agent_mandate;
 pub mod submit_usage_report;
 pub mod subscribe;
 pub mod unpause_protocol;
@@ -81,6 +85,22 @@ pub mod __client_accounts_create_agent_mandate {
     pub use super::create_agent_mandate::__client_accounts_create_agent_mandate::*;
 }
 
+pub mod __client_accounts_revoke_agent_mandate {
+    pub use super::revoke_agent_mandate::__client_accounts_revoke_agent_mandate::*;
+}
+
+pub mod __client_accounts_pause_agent_mandate {
+    pub use super::pause_agent_mandate::__client_accounts_pause_agent_mandate::*;
+}
+
+pub mod __client_accounts_resume_agent_mandate {
+    pub use super::resume_agent_mandate::__client_accounts_resume_agent_mandate::*;
+}
+
+pub mod __client_accounts_drain_agent_mandate {
+    pub use super::drain_agent_mandate::__client_accounts_drain_agent_mandate::*;
+}
+
 pub mod __client_accounts_create_plan {
     pub use super::create_plan::__client_accounts_create_plan::*;
 }
@@ -136,15 +156,19 @@ pub use cancel::Cancel;
 pub use create_agent_mandate::{CreateAgentMandate, ServiceLimitInput};
 pub use create_plan::CreatePlan;
 pub use create_usage_plan::CreateUsagePlan;
+pub use drain_agent_mandate::DrainAgentMandate;
 pub use submit_usage_report::SubmitUsageReport;
 pub use execute_pull::ExecutePull;
 pub use init_comp_defs::{InitRecordBillingCompDef, InitValidateMandateCompDef};
 pub use init_config::{InitConfig, InitConfigIx, UpdateConfig, UpdateConfigIx};
 pub use init_keeper_config::InitKeeperConfig;
 pub use init_wrapped_mint::InitWrappedMint;
+pub use pause_agent_mandate::PauseAgentMandate;
 pub use pause_protocol::PauseProtocol;
 pub use request_billing_record::RequestBillingRecord;
 pub use request_validation::RequestValidation;
+pub use resume_agent_mandate::ResumeAgentMandate;
+pub use revoke_agent_mandate::RevokeAgentMandate;
 pub use subscribe::Subscribe;
 pub use unpause_protocol::UnpauseProtocol;
 pub use unwrap::Unwrap;

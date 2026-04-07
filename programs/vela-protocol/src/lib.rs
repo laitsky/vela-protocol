@@ -8,11 +8,13 @@ pub mod state;
 
 use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
-    AdminCancel, AgentPull, Cancel, CreateAgentMandate, CreatePlan, CreateUsagePlan, ExecutePull, InitConfig, InitKeeperConfig,
-    InitRecordBillingCompDef, InitValidateMandateCompDef, InitWrappedMint,
-    PauseProtocol, RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation,
-    RequestValidation, SubmitUsageReport, Subscribe, UnpauseProtocol, Unwrap, UpdateConfig,
-    UpdateKeeperConfig, UsageChargeOutput, UsageComputationCallback, ValidateMandateCallback,
+    AdminCancel, AgentPull, Cancel, CreateAgentMandate, CreatePlan, CreateUsagePlan,
+    DrainAgentMandate, ExecutePull, InitConfig, InitKeeperConfig, InitRecordBillingCompDef,
+    InitValidateMandateCompDef, InitWrappedMint, PauseAgentMandate, PauseProtocol,
+    RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation, RequestValidation,
+    ResumeAgentMandate, RevokeAgentMandate, SubmitUsageReport, Subscribe, UnpauseProtocol, Unwrap,
+    UpdateConfig, UpdateKeeperConfig, UsageChargeOutput, UsageComputationCallback,
+    ValidateMandateCallback,
     ServiceLimitInput,
     Wrap,
 };
@@ -71,6 +73,22 @@ mod __client_accounts_create_plan {
 
 mod __client_accounts_create_agent_mandate {
     pub use crate::instructions::__client_accounts_create_agent_mandate::*;
+}
+
+mod __client_accounts_revoke_agent_mandate {
+    pub use crate::instructions::__client_accounts_revoke_agent_mandate::*;
+}
+
+mod __client_accounts_pause_agent_mandate {
+    pub use crate::instructions::__client_accounts_pause_agent_mandate::*;
+}
+
+mod __client_accounts_resume_agent_mandate {
+    pub use crate::instructions::__client_accounts_resume_agent_mandate::*;
+}
+
+mod __client_accounts_drain_agent_mandate {
+    pub use crate::instructions::__client_accounts_drain_agent_mandate::*;
 }
 
 mod __client_accounts_execute_pull {
@@ -174,6 +192,22 @@ pub mod vela_protocol {
         amount: u64,
     ) -> Result<()> {
         instructions::agent_pull::handler(ctx, amount)
+    }
+
+    pub fn revoke_agent_mandate(ctx: Context<RevokeAgentMandate>) -> Result<()> {
+        instructions::revoke_agent_mandate::handler(ctx)
+    }
+
+    pub fn pause_agent_mandate(ctx: Context<PauseAgentMandate>) -> Result<()> {
+        instructions::pause_agent_mandate::handler(ctx)
+    }
+
+    pub fn resume_agent_mandate(ctx: Context<ResumeAgentMandate>) -> Result<()> {
+        instructions::resume_agent_mandate::handler(ctx)
+    }
+
+    pub fn drain_agent_mandate(ctx: Context<DrainAgentMandate>) -> Result<()> {
+        instructions::drain_agent_mandate::handler(ctx)
     }
 
     pub fn create_usage_plan(
