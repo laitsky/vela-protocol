@@ -8,11 +8,12 @@ pub mod state;
 
 use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
-    AdminCancel, Cancel, CreatePlan, CreateUsagePlan, ExecutePull, InitConfig, InitKeeperConfig,
+    AdminCancel, Cancel, CreateAgentMandate, CreatePlan, CreateUsagePlan, ExecutePull, InitConfig, InitKeeperConfig,
     InitRecordBillingCompDef, InitValidateMandateCompDef, InitWrappedMint,
     PauseProtocol, RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation,
     RequestValidation, SubmitUsageReport, Subscribe, UnpauseProtocol, Unwrap, UpdateConfig,
     UpdateKeeperConfig, UsageChargeOutput, UsageComputationCallback, ValidateMandateCallback,
+    ServiceLimitInput,
     Wrap,
 };
 use crate::state::{KeeperMode, PricingTier};
@@ -62,6 +63,10 @@ mod __client_accounts_cancel {
 
 mod __client_accounts_create_plan {
     pub use crate::instructions::__client_accounts_create_plan::*;
+}
+
+mod __client_accounts_create_agent_mandate {
+    pub use crate::instructions::__client_accounts_create_agent_mandate::*;
 }
 
 mod __client_accounts_execute_pull {
@@ -138,6 +143,26 @@ pub mod vela_protocol {
         max_pulls: u64,
     ) -> Result<()> {
         instructions::create_plan::handler(ctx, amount, frequency, trial_period, max_pulls)
+    }
+
+    pub fn create_agent_mandate(
+        ctx: Context<CreateAgentMandate>,
+        daily_limit: u64,
+        lifetime_cap: u64,
+        min_pull_amount: u64,
+        min_pull_interval: i64,
+        services: Vec<ServiceLimitInput>,
+        funded_amount: u64,
+    ) -> Result<()> {
+        instructions::create_agent_mandate::handler(
+            ctx,
+            daily_limit,
+            lifetime_cap,
+            min_pull_amount,
+            min_pull_interval,
+            services,
+            funded_amount,
+        )
     }
 
     pub fn create_usage_plan(

@@ -111,6 +111,10 @@ name = "test_wrap_unwrap"
 path = "../../tests/test_wrap_unwrap.rs"
 
 [[test]]
+name = "test_agent_mandate_create"
+path = "../../tests/test_agent_mandate_create.rs"
+
+[[test]]
 name = "test_emergency"
 path = "../../tests/test_emergency.rs"
 

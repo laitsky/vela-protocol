@@ -2,6 +2,7 @@ pub mod admin_cancel;
 pub mod arcium_accounts;
 pub mod billing_callback;
 pub mod cancel;
+pub mod create_agent_mandate;
 pub mod create_plan;
 pub mod create_usage_plan;
 pub mod execute_pull;
@@ -71,6 +72,10 @@ pub mod __client_accounts_cancel {
     pub use super::cancel::__client_accounts_cancel::*;
 }
 
+pub mod __client_accounts_create_agent_mandate {
+    pub use super::create_agent_mandate::__client_accounts_create_agent_mandate::*;
+}
+
 pub mod __client_accounts_create_plan {
     pub use super::create_plan::__client_accounts_create_plan::*;
 }
@@ -122,6 +127,7 @@ pub mod __client_accounts_usage_computation_callback {
 pub use admin_cancel::AdminCancel;
 pub use billing_callback::RecordBillingEventCallback;
 pub use cancel::Cancel;
+pub use create_agent_mandate::{CreateAgentMandate, ServiceLimitInput};
 pub use create_plan::CreatePlan;
 pub use create_usage_plan::CreateUsagePlan;
 pub use submit_usage_report::SubmitUsageReport;
