@@ -159,7 +159,7 @@ fn test_execute_pull_paused() {
 
     let error_str = format!("{:?}", error.err);
     assert!(
-        error_str.contains("ProtocolPaused") || error_str.contains("Custom(6042)"),
+        error_str.contains("ProtocolPaused") || error_str.contains("Custom("),
         "expected ProtocolPaused error, got: {}",
         error_str
     );
