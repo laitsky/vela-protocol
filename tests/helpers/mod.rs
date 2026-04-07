@@ -997,6 +997,67 @@ impl TestHarness {
         }
     }
 
+    pub fn agent_mandate_pull_fixture(
+        &mut self,
+        admin: &Keypair,
+        initial_usdc_amount: u64,
+    ) -> (AgentMandateFixture, Pubkey, Pubkey) {
+        let fixture = self.setup_agent_mandate_fixture(admin, initial_usdc_amount);
+        let service = self.create_wallet();
+        let service_pubkey = to_anchor_pubkey(service.pubkey());
+        let service_wrapped_account =
+            self.create_token_2022_ata(&fixture.authority, &service_pubkey, &fixture.wrapped_usdc_mint);
+
+        let config = self.derive_config();
+        let (mint_authority, _) = self.derive_mint_authority();
+        let accounts = vela_protocol::accounts::CreateAgentMandate {
+            authority: to_anchor_pubkey(fixture.authority.pubkey()),
+            agent: to_anchor_pubkey(fixture.agent.pubkey()),
+            agent_mandate: fixture.agent_mandate,
+            authority_usdc_account: fixture.authority_spl_usdc_ata,
+            mandate_wrapped_account: fixture.agent_mandate_wrapped_ata,
+            wrapped_usdc_mint: fixture.wrapped_usdc_mint,
+            protocol_config: config,
+            spl_usdc_mint: fixture.spl_usdc_mint,
+            wrapping_vault: fixture.wrapping_vault,
+            mint_authority,
+            spl_token_program: Pubkey::new_from_array(spl_token::id().to_bytes()),
+            token_2022_program: token_2022_anchor_id(),
+            associated_token_program: Pubkey::new_from_array(
+                spl_associated_token_account::id().to_bytes(),
+            ),
+            system_program: anchor_lang::system_program::ID,
+        };
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::CreateAgentMandate {
+                daily_limit: 5_000_000,
+                lifetime_cap: 20_000_000,
+                min_pull_amount: 100_000,
+                min_pull_interval: 0,
+                services: vec![vela_protocol::instructions::ServiceLimitInput {
+                    service: service_pubkey,
+                    daily_limit: 4_000_000,
+                }],
+                funded_amount: 3_000_000,
+            }
+            .data(),
+        };
+        self.send_instructions(
+            &[instruction],
+            &[&fixture.authority],
+            Some(&fixture.authority.pubkey()),
+        )
+        .expect("create_agent_mandate should succeed");
+
+        (fixture, service_pubkey, service_wrapped_account)
+    }
+
     pub fn overwrite_anchor_account<T>(&mut self, pubkey: &Pubkey, account: &T)
     where
         T: AccountSerialize,
