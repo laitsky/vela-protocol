@@ -27,8 +27,8 @@ use spl_token::state::{Account as SplTokenAccount, Mint as SplMint};
 use vela_protocol::{
     instructions::arcium_accounts::derive_cluster_pubkey,
     state::{
-        BillingEvent, ClusterType, KeeperConfig, KeeperMode, PricingTier, ProtocolConfig,
-        PullApproval, UsagePlan,
+        AgentMandate, BillingEvent, ClusterType, KeeperConfig, KeeperMode, PricingTier,
+        ProtocolConfig, PullApproval, UsagePlan,
     },
 };
 
@@ -177,6 +177,30 @@ impl TestHarness {
             &vela_protocol::ID,
         )
         .0
+    }
+
+    pub fn derive_agent_mandate_address(&self, authority: &Pubkey, agent: &Pubkey) -> Pubkey {
+        Pubkey::find_program_address(
+            &[AgentMandate::SEED_PREFIX, authority.as_ref(), agent.as_ref()],
+            &vela_protocol::ID,
+        )
+        .0
+    }
+
+    pub fn derive_agent_pull_approval_address(&self, agent_mandate: &Pubkey) -> Pubkey {
+        Pubkey::find_program_address(
+            &[PullApproval::SEED_PREFIX, agent_mandate.as_ref()],
+            &vela_protocol::ID,
+        )
+        .0
+    }
+
+    pub fn derive_agent_mandate_wrapped_ata(
+        &self,
+        agent_mandate: &Pubkey,
+        wrapped_mint: &Pubkey,
+    ) -> Pubkey {
+        self.derive_token_2022_ata(agent_mandate, wrapped_mint)
     }
 
     pub fn derive_billing_event_address(&self, mandate: &Pubkey, pulls_executed: u64) -> Pubkey {
@@ -925,6 +949,54 @@ impl TestHarness {
         }
     }
 
+    pub fn setup_agent_mandate_fixture(
+        &mut self,
+        admin: &Keypair,
+        initial_usdc_amount: u64,
+    ) -> AgentMandateFixture {
+        let authority = self.create_wallet();
+        let agent = self.create_wallet();
+        let authority_pubkey = to_anchor_pubkey(authority.pubkey());
+        let agent_pubkey = to_anchor_pubkey(agent.pubkey());
+
+        let config = self.derive_config();
+        if self.svm.get_account(&to_address(config)).is_none() {
+            self.init_protocol_config(admin);
+        }
+
+        let spl_usdc_mint = self.create_spl_mint(admin, 6);
+        let wrapped_mint = Keypair::new();
+        let (wrapped_usdc_mint, wrapping_vault) =
+            self.init_wrapped_mint(admin, &wrapped_mint, &spl_usdc_mint);
+        let extra_account_meta_list =
+            self.init_extra_account_meta_list(admin, &wrapped_usdc_mint, &wrapping_vault);
+
+        let authority_spl_usdc_ata =
+            self.create_spl_token_account(&authority, &spl_usdc_mint, &authority_pubkey);
+        self.mint_spl_tokens(
+            admin,
+            &spl_usdc_mint,
+            &authority_spl_usdc_ata,
+            initial_usdc_amount,
+        );
+
+        let agent_mandate = self.derive_agent_mandate_address(&authority_pubkey, &agent_pubkey);
+        let agent_mandate_wrapped_ata =
+            self.create_token_2022_ata(&authority, &agent_mandate, &wrapped_usdc_mint);
+
+        AgentMandateFixture {
+            authority,
+            agent,
+            spl_usdc_mint,
+            wrapped_usdc_mint,
+            wrapping_vault,
+            extra_account_meta_list,
+            authority_spl_usdc_ata,
+            agent_mandate,
+            agent_mandate_wrapped_ata,
+        }
+    }
+
     pub fn overwrite_anchor_account<T>(&mut self, pubkey: &Pubkey, account: &T)
     where
         T: AccountSerialize,
@@ -965,6 +1037,10 @@ impl TestHarness {
                 T::try_deserialize_unchecked(&mut without_discriminator)
             })
             .expect("account should deserialize")
+    }
+
+    pub fn fetch_agent_mandate(&self, agent_mandate: &Pubkey) -> AgentMandate {
+        self.fetch_anchor_account(agent_mandate)
     }
 
     pub fn fetch_account_data(&self, pubkey: &Pubkey) -> Vec<u8> {
@@ -1216,6 +1292,18 @@ pub struct SubscriptionFixture {
     pub usdc_mint: Pubkey,
     pub subscriber_token_account: Pubkey,
     pub merchant_token_account: Pubkey,
+}
+
+pub struct AgentMandateFixture {
+    pub authority: Keypair,
+    pub agent: Keypair,
+    pub spl_usdc_mint: Pubkey,
+    pub wrapped_usdc_mint: Pubkey,
+    pub wrapping_vault: Pubkey,
+    pub extra_account_meta_list: Pubkey,
+    pub authority_spl_usdc_ata: Pubkey,
+    pub agent_mandate: Pubkey,
+    pub agent_mandate_wrapped_ata: Pubkey,
 }
 
 pub fn convert_account_meta(
