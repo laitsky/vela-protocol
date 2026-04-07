@@ -92,6 +92,60 @@ pub enum VelaError {
     #[msg("Wrapped USDC mint not yet initialized in ProtocolConfig")]
     WrappedMintNotInitialized,
 
+    #[msg("Only the authorized agent signer can execute this pull")]
+    UnauthorizedAgent,
+
+    #[msg("Destination service is not authorized on this agent mandate")]
+    UnauthorizedService,
+
+    #[msg("Agent mandate service list exceeds the maximum allowed entries")]
+    TooManyServices,
+
+    #[msg("Agent mandate service list contains a duplicate service")]
+    DuplicateService,
+
+    #[msg("Agent mandate is paused and cannot process pulls")]
+    MandatePaused,
+
+    #[msg("Agent mandate is revoked and cannot process pulls")]
+    MandateRevoked,
+
+    #[msg("Agent mandate daily limit would be exceeded by this pull")]
+    DailyLimitExceeded,
+
+    #[msg("Service daily limit would be exceeded by this pull")]
+    ServiceDailyLimitExceeded,
+
+    #[msg("Agent mandate lifetime cap would be exceeded by this pull")]
+    LifetimeCapExceeded,
+
+    #[msg("Pull amount is below the agent mandate minimum pull amount")]
+    PullAmountTooSmall,
+
+    #[msg("Agent mandate pull cooldown is still active")]
+    PullCooldownActive,
+
+    #[msg("Agent mandate service list is invalid")]
+    InvalidServiceList,
+
+    #[msg("Agent mandate already exists for this authority and agent")]
+    AgentMandateAlreadyExists,
+
+    #[msg("Agent mandate account was not found")]
+    AgentMandateNotFound,
+
+    #[msg("Mandate-owned wrapped token account has insufficient balance")]
+    InsufficientMandateBalance,
+
+    #[msg("Agent mandate has no funds available to drain")]
+    NoFundsToDrain,
+
+    #[msg("Requested agent mandate status transition is invalid")]
+    InvalidAgentMandateStatusTransition,
+
+    #[msg("Only the agent mandate authority can perform this action")]
+    UnauthorizedAgentMandateAuthority,
+
     #[msg("Keeper endpoint exceeds maximum length (128 bytes)")]
     EndpointTooLong,
 

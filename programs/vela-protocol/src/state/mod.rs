@@ -1,3 +1,4 @@
+pub mod agent_mandate;
 pub mod billing_event;
 pub mod billing_type;
 pub mod keeper_config;
@@ -9,6 +10,7 @@ pub mod pull_approval;
 pub mod usage_plan;
 pub mod usage_report;
 
+pub use agent_mandate::*;
 pub use billing_event::*;
 pub use billing_type::*;
 pub use keeper_config::*;
