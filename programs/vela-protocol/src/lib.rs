@@ -8,13 +8,13 @@ pub mod state;
 
 use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
-    AdminCancel, AgentPull, Cancel, CreateAgentMandate, CreatePlan, CreateUsagePlan,
-    DrainAgentMandate, ExecutePull, InitConfig, InitKeeperConfig, InitRecordBillingCompDef,
-    InitValidateMandateCompDef, InitWrappedMint, PauseAgentMandate, PauseProtocol,
-    RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation, RequestValidation,
-    ResumeAgentMandate, RevokeAgentMandate, SubmitUsageReport, Subscribe, UnpauseProtocol, Unwrap,
-    UpdateConfig, UpdateKeeperConfig, UsageChargeOutput, UsageComputationCallback,
-    ValidateMandateCallback,
+    AdjustAgentMandate, AdminCancel, AgentPull, Cancel, CreateAgentMandate, CreatePlan,
+    CreateUsagePlan, DrainAgentMandate, ExecutePull, InitConfig, InitKeeperConfig,
+    InitRecordBillingCompDef, InitValidateMandateCompDef, InitWrappedMint, PauseAgentMandate,
+    PauseProtocol, RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation,
+    RequestValidation, ResumeAgentMandate, RevokeAgentMandate, SubmitUsageReport, Subscribe,
+    UnpauseProtocol, Unwrap, UpdateConfig, UpdateKeeperConfig, UsageChargeOutput,
+    UsageComputationCallback, ValidateMandateCallback,
     ServiceLimitInput,
     Wrap,
 };
@@ -29,6 +29,10 @@ mod __client_accounts_admin_cancel {
 
 mod __client_accounts_pause_protocol {
     pub use crate::instructions::__client_accounts_pause_protocol::*;
+}
+
+mod __client_accounts_adjust_agent_mandate {
+    pub use crate::instructions::__client_accounts_adjust_agent_mandate::*;
 }
 
 mod __client_accounts_agent_pull {
@@ -208,6 +212,24 @@ pub mod vela_protocol {
 
     pub fn drain_agent_mandate(ctx: Context<DrainAgentMandate>) -> Result<()> {
         instructions::drain_agent_mandate::handler(ctx)
+    }
+
+    pub fn adjust_agent_mandate(
+        ctx: Context<AdjustAgentMandate>,
+        daily_limit: Option<u64>,
+        lifetime_cap: Option<u64>,
+        min_pull_amount: Option<u64>,
+        min_pull_interval: Option<i64>,
+        services: Option<Vec<ServiceLimitInput>>,
+    ) -> Result<()> {
+        instructions::adjust_agent_mandate::handler(
+            ctx,
+            daily_limit,
+            lifetime_cap,
+            min_pull_amount,
+            min_pull_interval,
+            services,
+        )
     }
 
     pub fn create_usage_plan(

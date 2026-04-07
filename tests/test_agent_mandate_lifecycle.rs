@@ -220,6 +220,46 @@ fn send_drain_agent_mandate(
     harness.send_instructions(&[instruction], &[authority], Some(&authority.pubkey()))
 }
 
+#[allow(clippy::too_many_arguments)]
+fn send_adjust_agent_mandate(
+    harness: &mut TestHarness,
+    authority: &Keypair,
+    fixture: &AgentMandateFixture,
+    daily_limit: Option<u64>,
+    lifetime_cap: Option<u64>,
+    min_pull_amount: Option<u64>,
+    min_pull_interval: Option<i64>,
+    services: Option<Vec<ServiceLimitInput>>,
+) -> Result<litesvm::types::TransactionMetadata, litesvm::types::FailedTransactionMetadata> {
+    let config = harness.derive_config();
+    let accounts = vela_protocol::accounts::AdjustAgentMandate {
+        authority: to_anchor_pubkey(authority.pubkey()),
+        agent: to_anchor_pubkey(fixture.agent.pubkey()),
+        agent_mandate: fixture.agent_mandate,
+        mandate_wrapped_account: fixture.agent_mandate_wrapped_ata,
+        wrapped_usdc_mint: fixture.wrapped_usdc_mint,
+        protocol_config: config,
+        token_2022_program: helpers::to_anchor_pubkey(helpers::token_2022_address()),
+    };
+    let instruction = Instruction {
+        program_id: harness.program_id,
+        accounts: accounts
+            .to_account_metas(None)
+            .into_iter()
+            .map(helpers::convert_account_meta)
+            .collect(),
+        data: vela_protocol::instruction::AdjustAgentMandate {
+            daily_limit,
+            lifetime_cap,
+            min_pull_amount,
+            min_pull_interval,
+            services,
+        }
+        .data(),
+    };
+    harness.send_instructions(&[instruction], &[authority], Some(&authority.pubkey()))
+}
+
 fn setup_fixture() -> (
     TestHarness,
     Keypair,
@@ -389,4 +429,129 @@ fn test_lifecycle_authority_only() {
         .expect_err("non-authority revoke should fail");
     send_drain_agent_mandate(&mut harness, &intruder, intruder_ata, &fixture)
         .expect_err("non-authority drain should fail");
+}
+
+#[test]
+fn test_adjust_agent_mandate_updates_limits() {
+    let (mut harness, _admin, fixture, _service, _service_wrapped_account) = setup_fixture();
+
+    send_adjust_agent_mandate(
+        &mut harness,
+        &fixture.authority,
+        &fixture,
+        Some(6_500_000),
+        Some(25_000_000),
+        Some(250_000),
+        Some(90),
+        None,
+    )
+    .expect("adjust should succeed");
+
+    let mandate: AgentMandate = harness.fetch_agent_mandate(&fixture.agent_mandate);
+    assert_eq!(mandate.daily_limit, 6_500_000);
+    assert_eq!(mandate.lifetime_cap, 25_000_000);
+    assert_eq!(mandate.min_pull_amount, 250_000);
+    assert_eq!(mandate.min_pull_interval, 90);
+}
+
+#[test]
+fn test_adjust_agent_mandate_rejects_revoked() {
+    let (mut harness, _admin, fixture, _service, _service_wrapped_account) = setup_fixture();
+    send_revoke_agent_mandate(
+        &mut harness,
+        &fixture.authority,
+        fixture.authority_spl_usdc_ata,
+        &fixture,
+    )
+    .expect("revoke should succeed");
+
+    let error = send_adjust_agent_mandate(
+        &mut harness,
+        &fixture.authority,
+        &fixture,
+        Some(7_000_000),
+        None,
+        None,
+        None,
+        None,
+    )
+    .expect_err("adjust should fail for revoked mandate");
+    assert!(
+        format!("{:?}", error.err).contains("Custom("),
+        "expected custom status-transition error, got {:?}",
+        error.err,
+    );
+}
+
+#[test]
+fn test_adjust_agent_mandate_rejects_empty_update() {
+    let (mut harness, _admin, fixture, _service, _service_wrapped_account) = setup_fixture();
+    let error = send_adjust_agent_mandate(
+        &mut harness,
+        &fixture.authority,
+        &fixture,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .expect_err("empty adjust should fail");
+    assert!(
+        format!("{:?}", error.err).contains("Custom("),
+        "expected no-update custom error, got {:?}",
+        error.err,
+    );
+}
+
+#[test]
+fn test_adjust_agent_mandate_updates_services() {
+    let (mut harness, _admin, fixture, service, service_wrapped_account) = setup_fixture();
+    let payer = harness.create_wallet();
+    send_agent_pull(
+        &mut harness,
+        &fixture,
+        &payer,
+        &service_wrapped_account,
+        500_000,
+    )
+    .expect("pull should succeed before service adjustment");
+    let before: AgentMandate = harness.fetch_agent_mandate(&fixture.agent_mandate);
+    let before_service = before
+        .services
+        .iter()
+        .find(|entry| entry.service == service)
+        .expect("original service should exist")
+        .clone();
+
+    let new_service = to_anchor_pubkey(harness.create_wallet().pubkey());
+    send_adjust_agent_mandate(
+        &mut harness,
+        &fixture.authority,
+        &fixture,
+        None,
+        None,
+        None,
+        None,
+        Some(vec![
+            ServiceLimitInput {
+                service: new_service,
+                daily_limit: 900_000,
+            },
+            ServiceLimitInput {
+                service,
+                daily_limit: 3_500_000,
+            },
+        ]),
+    )
+    .expect("service update should succeed");
+
+    let mandate: AgentMandate = harness.fetch_agent_mandate(&fixture.agent_mandate);
+    assert_eq!(mandate.services.len(), 2);
+    assert_eq!(mandate.services[0].service, new_service);
+    assert_eq!(mandate.services[0].daily_spent, 0);
+    assert_eq!(mandate.services[1].service, service);
+    assert_eq!(mandate.services[1].daily_limit, 3_500_000);
+    assert_eq!(mandate.services[1].daily_spent, before_service.daily_spent);
+    assert_eq!(mandate.services[1].last_reset, before_service.last_reset);
 }
