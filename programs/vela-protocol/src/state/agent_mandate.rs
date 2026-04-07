@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{AGENT_DAILY_RESET_WINDOW_SECONDS, AGENT_MANDATE_SEED};
+use crate::constants::{
+    AGENT_DAILY_RESET_WINDOW_SECONDS, AGENT_MANDATE_MAX_SERVICES, AGENT_MANDATE_SEED,
+};
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq, Debug)]
 pub struct ServiceLimit {
@@ -34,13 +36,13 @@ pub struct AgentMandate {
     pub min_pull_interval: i64,
     pub last_pull_at: i64,
     pub status: AgentMandateStatus,
-    pub bump: u8,
     pub services: Vec<ServiceLimit>,
+    pub bump: u8,
 }
 
 impl AgentMandate {
     pub const SEED_PREFIX: &'static [u8] = AGENT_MANDATE_SEED;
-    pub const MAX_SERVICES: usize = 8;
+    pub const MAX_SERVICES: usize = AGENT_MANDATE_MAX_SERVICES;
     pub const BASE_SIZE: usize = 32 + 32 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 1 + 1;
     pub const SIZE: usize = 8 + Self::BASE_SIZE + 4 + (Self::MAX_SERVICES * ServiceLimit::SIZE);
 
