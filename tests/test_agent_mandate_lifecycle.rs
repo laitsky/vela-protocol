@@ -505,6 +505,105 @@ fn test_adjust_agent_mandate_rejects_empty_update() {
 }
 
 #[test]
+fn test_adjust_agent_mandate_rejects_limits_below_recorded_spend() {
+    let (mut harness, _admin, fixture, service, service_wrapped_account) = setup_fixture();
+    let payer = harness.create_wallet();
+    send_agent_pull(
+        &mut harness,
+        &fixture,
+        &payer,
+        &service_wrapped_account,
+        700_000,
+    )
+    .expect("agent_pull should succeed before lowering caps");
+
+    let daily_limit_error = send_adjust_agent_mandate(
+        &mut harness,
+        &fixture.authority,
+        &fixture,
+        Some(600_000),
+        None,
+        None,
+        None,
+        None,
+    )
+    .expect_err("daily limit below spent should fail");
+    assert!(
+        format!("{:?}", daily_limit_error.err).contains("Custom("),
+        "expected custom error, got {:?}",
+        daily_limit_error.err,
+    );
+
+    let lifetime_cap_error = send_adjust_agent_mandate(
+        &mut harness,
+        &fixture.authority,
+        &fixture,
+        None,
+        Some(600_000),
+        None,
+        None,
+        None,
+    )
+    .expect_err("lifetime cap below spent should fail");
+    assert!(
+        format!("{:?}", lifetime_cap_error.err).contains("Custom("),
+        "expected custom error, got {:?}",
+        lifetime_cap_error.err,
+    );
+
+    let service_limit_error = send_adjust_agent_mandate(
+        &mut harness,
+        &fixture.authority,
+        &fixture,
+        None,
+        None,
+        None,
+        None,
+        Some(vec![ServiceLimitInput {
+            service,
+            daily_limit: 600_000,
+        }]),
+    )
+    .expect_err("service limit below spent should fail");
+    assert!(
+        format!("{:?}", service_limit_error.err).contains("Custom("),
+        "expected custom error, got {:?}",
+        service_limit_error.err,
+    );
+
+    let mandate: AgentMandate = harness.fetch_anchor_account(&fixture.agent_mandate);
+    assert_eq!(mandate.daily_limit, 5_000_000);
+    assert_eq!(mandate.lifetime_cap, 20_000_000);
+    assert_eq!(mandate.services[0].daily_limit, 4_000_000);
+    assert_eq!(mandate.services[0].service, service);
+    assert!(matches!(mandate.status, AgentMandateStatus::Active));
+    assert_eq!(mandate.authority, to_anchor_pubkey(fixture.authority.pubkey()));
+}
+
+#[test]
+fn test_adjust_agent_mandate_rejects_negative_min_pull_interval() {
+    let (mut harness, _admin, fixture, _service, _service_wrapped_account) = setup_fixture();
+
+    let error = send_adjust_agent_mandate(
+        &mut harness,
+        &fixture.authority,
+        &fixture,
+        None,
+        None,
+        None,
+        Some(-1),
+        None,
+    )
+    .expect_err("negative min_pull_interval should fail");
+
+    assert!(
+        format!("{:?}", error.err).contains("Custom("),
+        "expected custom error, got {:?}",
+        error.err,
+    );
+}
+
+#[test]
 fn test_adjust_agent_mandate_updates_services() {
     let (mut harness, _admin, fixture, service, service_wrapped_account) = setup_fixture();
     let payer = harness.create_wallet();

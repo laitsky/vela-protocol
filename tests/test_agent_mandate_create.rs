@@ -236,6 +236,33 @@ fn test_create_agent_mandate_rejects_duplicate_services() {
 }
 
 #[test]
+fn test_create_agent_mandate_rejects_negative_min_pull_interval() {
+    let (mut harness, fixture) = setup_fixture(5_000_000);
+    let service = Keypair::new();
+
+    let error = send_create_agent_mandate(
+        &mut harness,
+        &fixture,
+        3_000_000,
+        10_000_000,
+        100_000,
+        -1,
+        vec![vela_protocol::instructions::ServiceLimitInput {
+            service: to_anchor_pubkey(service.pubkey()),
+            daily_limit: 2_000_000,
+        }],
+        2_500_000,
+    )
+    .expect_err("negative min_pull_interval should fail");
+
+    assert!(
+        format!("{:?}", error.err).contains("Custom("),
+        "expected custom error, got {:?}",
+        error.err,
+    );
+}
+
+#[test]
 fn test_agent_mandate_create_rejects_duplicate_services_wrapper() {
     test_create_agent_mandate_rejects_duplicate_services();
 }

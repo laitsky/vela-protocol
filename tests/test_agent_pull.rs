@@ -214,3 +214,42 @@ fn test_protocol_pause_blocks_agent_pull() {
 fn test_transfer_hook_validates_agent_pull_transfer() {
     test_agent_pull_success();
 }
+
+#[test]
+fn test_agent_pull_reports_insufficient_mandate_balance() {
+    let mut harness = TestHarness::new();
+    let admin = harness.merchant.insecure_clone();
+    let fixture = harness.setup_agent_mandate_fixture(&admin, 500_000);
+    let service = harness.create_wallet();
+    let service_pubkey = to_anchor_pubkey(service.pubkey());
+    let service_wrapped_account = harness.create_token_2022_ata(
+        &fixture.authority,
+        &service_pubkey,
+        &fixture.wrapped_usdc_mint,
+    );
+    send_create_agent_mandate(
+        &mut harness,
+        &fixture,
+        vec![ServiceLimitInput {
+            service: service_pubkey,
+            daily_limit: 4_000_000,
+        }],
+        500_000,
+    );
+    let payer = harness.create_wallet();
+
+    let error = send_agent_pull(
+        &mut harness,
+        &fixture,
+        &payer,
+        &service_wrapped_account,
+        700_000,
+    )
+    .expect_err("agent_pull should fail when wrapped balance is too low");
+
+    assert!(
+        format!("{:?}", error.err).contains("Custom("),
+        "expected custom error, got {:?}",
+        error.err,
+    );
+}

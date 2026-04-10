@@ -103,6 +103,7 @@ pub fn handler(
         services.len() <= AgentMandate::MAX_SERVICES,
         VelaError::TooManyServices
     );
+    require!(min_pull_interval >= 0, VelaError::InvalidFrequency);
 
     for i in 0..services.len() {
         for j in (i + 1)..services.len() {

@@ -167,6 +167,11 @@ pub fn handler<'a, 'b, 'c, 'info>(
         (next_service_spent, next_daily_spent, next_total_spent)
     };
 
+    require!(
+        ctx.accounts.mandate_wrapped_account.amount >= amount,
+        VelaError::InsufficientMandateBalance
+    );
+
     let approval = &mut ctx.accounts.pull_approval;
     approval.mandate = ctx.accounts.agent_mandate.key();
     approval.valid_until = now

@@ -74,15 +74,21 @@ pub fn handler(
     }
 
     if let Some(next_daily_limit) = daily_limit {
+        require!(next_daily_limit >= mandate.daily_spent, VelaError::InvalidAmount);
         mandate.daily_limit = next_daily_limit;
     }
     if let Some(next_lifetime_cap) = lifetime_cap {
+        require!(
+            next_lifetime_cap >= mandate.total_spent,
+            VelaError::InvalidAmount
+        );
         mandate.lifetime_cap = next_lifetime_cap;
     }
     if let Some(next_min_pull_amount) = min_pull_amount {
         mandate.min_pull_amount = next_min_pull_amount;
     }
     if let Some(next_min_pull_interval) = min_pull_interval {
+        require!(next_min_pull_interval >= 0, VelaError::InvalidFrequency);
         mandate.min_pull_interval = next_min_pull_interval;
     }
 
@@ -111,15 +117,19 @@ pub fn handler(
                 let (daily_spent, last_reset) = existing
                     .map(|service_limit| (service_limit.daily_spent, service_limit.last_reset))
                     .unwrap_or((0, now));
+                require!(
+                    service_input.daily_limit >= daily_spent,
+                    VelaError::InvalidAmount
+                );
 
-                ServiceLimit {
+                Ok(ServiceLimit {
                     service: service_input.service,
                     daily_limit: service_input.daily_limit,
                     daily_spent,
                     last_reset,
-                }
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>>>()?;
         mandate.services = updated_services;
     }
 
