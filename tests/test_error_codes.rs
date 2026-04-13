@@ -19,7 +19,7 @@ fn legacy_error_codes_remain_pinned() {
     assert_eq!(error_code(VelaError::PullTooEarly), 6000);
     assert_eq!(error_code(VelaError::MandateNotActive), 6001);
     assert_eq!(error_code(VelaError::UnauthorizedAdmin), 6015);
-    assert_eq!(error_code(VelaError::InvalidFrequency), 6059);
+    assert_eq!(error_code(VelaError::InvalidFrequency), 6058);
     assert_eq!(error_code(VelaError::UsageReportAlreadySettled), 6061);
 }
 

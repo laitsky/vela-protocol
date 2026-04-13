@@ -22,5 +22,8 @@ url = "https://api.apr.dev"
 cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
+[test]
+upgradeable = true
+
 [scripts]
 test = "bun test"

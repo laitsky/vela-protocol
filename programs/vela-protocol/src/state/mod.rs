@@ -1,3 +1,7 @@
+pub const LEGACY_ACCOUNT_VERSION: u8 = 0;
+pub const CURRENT_ACCOUNT_VERSION: u8 = 1;
+pub const ACCOUNT_RESERVED_BYTES: usize = 64;
+
 pub mod agent_mandate;
 pub mod billing_event;
 pub mod billing_type;
