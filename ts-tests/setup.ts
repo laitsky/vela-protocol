@@ -221,6 +221,28 @@ export function derivePlanAddresses(
   return { merchantState, plan, credentialMint };
 }
 
+export async function fetchMerchantState(context: TestContext, address: PublicKey) {
+  const account = await context.provider.connection.getAccountInfo(address);
+  if (!account) {
+    throw new Error("merchant state account not found");
+  }
+
+  const data = Buffer.from(account.data);
+  const expectedDiscriminator = discriminator("account", "MerchantState");
+  if (!data.subarray(0, 8).equals(expectedDiscriminator)) {
+    throw new Error("invalid merchant state discriminator");
+  }
+
+  return {
+    merchant: new PublicKey(data.subarray(8, 40)),
+    planCount: data.readBigUInt64LE(40),
+    bump: data.readUInt8(48),
+    credentialMint: new PublicKey(data.subarray(49, 81)),
+    mandateCounter: data.readBigUInt64LE(81),
+    version: data.readUInt8(89),
+  };
+}
+
 export function deriveMandateAddress(
   subscriber: PublicKey,
   plan: PublicKey,

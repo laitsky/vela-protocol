@@ -41,6 +41,7 @@ pub struct PlanAddresses {
 }
 
 pub struct UsagePlanAddresses {
+    pub merchant_state: Pubkey,
     pub usage_plan: Pubkey,
     pub credential_mint: Pubkey,
 }
@@ -131,6 +132,13 @@ impl TestHarness {
 
     pub fn derive_usage_plan_addresses(&self, plan_id: u64) -> UsagePlanAddresses {
         let merchant = self.merchant_pubkey();
+        let (merchant_state, _) = Pubkey::find_program_address(
+            &[
+                vela_protocol::state::MerchantState::SEED_PREFIX,
+                merchant.as_ref(),
+            ],
+            &vela_protocol::ID,
+        );
         let plan_id_bytes = plan_id.to_le_bytes();
         let (usage_plan, _) = Pubkey::find_program_address(
             &[
@@ -146,6 +154,7 @@ impl TestHarness {
         );
 
         UsagePlanAddresses {
+            merchant_state,
             usage_plan,
             credential_mint,
         }
@@ -340,6 +349,7 @@ impl TestHarness {
         let addresses = self.derive_usage_plan_addresses(plan_id);
         let accounts = vela_protocol::accounts::CreateUsagePlan {
             merchant: self.merchant_pubkey(),
+            merchant_state: addresses.merchant_state,
             usage_plan: addresses.usage_plan,
             credential_mint: addresses.credential_mint,
             system_program: anchor_lang::system_program::ID,

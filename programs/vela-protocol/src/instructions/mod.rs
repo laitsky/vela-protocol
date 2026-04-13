@@ -13,6 +13,7 @@ pub mod init_comp_defs;
 pub mod init_config;
 pub mod init_keeper_config;
 pub mod init_wrapped_mint;
+pub mod merchant_account;
 pub mod pause_agent_mandate;
 pub mod pause_protocol;
 pub mod plan_account;

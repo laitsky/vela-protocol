@@ -3,7 +3,7 @@ mod helpers;
 
 use anchor_lang::{
     prelude::{borsh, Pubkey},
-    AccountSerialize, AnchorDeserialize, AnchorSerialize, Discriminator,
+    AnchorDeserialize, AnchorSerialize, Discriminator,
 };
 use helpers::{to_address, TestHarness};
 use solana_account::Account;

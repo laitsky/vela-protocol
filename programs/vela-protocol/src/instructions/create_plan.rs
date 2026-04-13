@@ -2,8 +2,10 @@ use anchor_lang::{
     prelude::*,
     solana_program::{
         program::{invoke, invoke_signed},
+        program_error::ProgramError,
         system_instruction,
     },
+    AccountSerialize,
 };
 use solana_instruction::Instruction as SplInstruction;
 use solana_program_error::ProgramError as SplProgramError;
@@ -22,6 +24,7 @@ use spl_token_metadata_interface::{
 use crate::{
     constants::{CREDENTIAL_DECIMALS, MIN_FREQUENCY_SECONDS},
     errors::VelaError,
+    instructions::merchant_account::{ensure_merchant_state, write_merchant_state},
     state::{MerchantState, PlanStatus, VelaPlan},
 };
 
@@ -30,37 +33,13 @@ pub struct CreatePlan<'info> {
     #[account(mut)]
     pub merchant: Signer<'info>,
 
-    #[account(
-        init_if_needed,
-        payer = merchant,
-        space = MerchantState::SIZE,
-        seeds = [MerchantState::SEED_PREFIX, merchant.key().as_ref()],
-        bump
-    )]
-    pub merchant_state: Account<'info, MerchantState>,
+    #[account(mut, seeds = [MerchantState::SEED_PREFIX, merchant.key().as_ref()], bump)]
+    pub merchant_state: UncheckedAccount<'info>,
 
-    #[account(
-        init,
-        payer = merchant,
-        space = VelaPlan::SIZE,
-        seeds = [
-            VelaPlan::SEED_PREFIX,
-            merchant.key().as_ref(),
-            merchant_state.plan_count.to_le_bytes().as_ref()
-        ],
-        bump
-    )]
-    pub plan: Account<'info, VelaPlan>,
+    #[account(mut)]
+    pub plan: UncheckedAccount<'info>,
 
-    #[account(
-        mut,
-        seeds = [
-            b"credential",
-            merchant.key().as_ref(),
-            merchant_state.plan_count.to_le_bytes().as_ref()
-        ],
-        bump
-    )]
+    #[account(mut)]
     /// CHECK: PDA mint account is created via manual CPI and constrained by seeds.
     pub credential_mint: UncheckedAccount<'info>,
 
@@ -92,15 +71,35 @@ pub fn handler(
     );
 
     let merchant_key = ctx.accounts.merchant.key();
-    let merchant_state = &mut ctx.accounts.merchant_state;
+    let merchant_state_info = ctx.accounts.merchant_state.to_account_info();
+    let mut merchant_state = ensure_merchant_state(
+        &ctx.accounts.merchant.to_account_info(),
+        &merchant_state_info,
+        &ctx.accounts.system_program.to_account_info(),
+        &ctx.accounts.rent,
+        &merchant_key,
+        ctx.bumps.merchant_state,
+    )?;
     let plan_id = merchant_state.plan_count;
     let plan_id_bytes = plan_id.to_le_bytes();
     let plan_key = ctx.accounts.plan.key();
     let credential_mint_key = ctx.accounts.credential_mint.key();
-
-    if merchant_state.merchant == Pubkey::default() {
-        merchant_state.merchant = merchant_key;
-        merchant_state.bump = ctx.bumps.merchant_state;
+    let (expected_plan_key, plan_bump) = Pubkey::find_program_address(
+        &[VelaPlan::SEED_PREFIX, merchant_key.as_ref(), plan_id_bytes.as_ref()],
+        &crate::ID,
+    );
+    if plan_key != expected_plan_key {
+        return Err(ProgramError::InvalidSeeds.into());
+    }
+    let (expected_credential_key, credential_bump) = Pubkey::find_program_address(
+        &[b"credential", merchant_key.as_ref(), plan_id_bytes.as_ref()],
+        &crate::ID,
+    );
+    if credential_mint_key != expected_credential_key {
+        return Err(ProgramError::InvalidSeeds.into());
+    }
+    if !ctx.accounts.plan.data_is_empty() {
+        return Err(ProgramError::AccountAlreadyInitialized.into());
     }
 
     let credential_name = format!("Vela Plan #{plan_id}");
@@ -140,14 +139,31 @@ pub fn handler(
         b"credential",
         merchant_key.as_ref(),
         plan_id_bytes.as_ref(),
-        &[ctx.bumps.credential_mint],
+        &[credential_bump],
     ];
     let plan_signer_seeds: &[&[u8]] = &[
         VelaPlan::SEED_PREFIX,
         merchant_key.as_ref(),
         plan_id_bytes.as_ref(),
-        &[ctx.bumps.plan],
+        &[plan_bump],
     ];
+    let plan_rent = ctx.accounts.rent.minimum_balance(VelaPlan::SIZE);
+
+    invoke_signed(
+        &system_instruction::create_account(
+            &merchant_key,
+            &plan_key,
+            plan_rent,
+            VelaPlan::SIZE as u64,
+            &crate::ID,
+        ),
+        &[
+            ctx.accounts.merchant.to_account_info(),
+            ctx.accounts.plan.to_account_info(),
+            ctx.accounts.system_program.to_account_info(),
+        ],
+        &[plan_signer_seeds],
+    )?;
 
     invoke_signed(
         &system_instruction::create_account(
@@ -256,7 +272,7 @@ pub fn handler(
         )?;
     }
 
-    ctx.accounts.plan.set_inner(VelaPlan {
+    let plan_state = VelaPlan {
         merchant: merchant_key,
         plan_id,
         amount,
@@ -265,13 +281,15 @@ pub fn handler(
         max_pulls,
         status: PlanStatus::Active,
         credential_mint: credential_mint_key,
-        bump: ctx.bumps.plan,
-    });
+        bump: plan_bump,
+    };
+    write_plan(&ctx.accounts.plan.to_account_info(), &plan_state)?;
 
     merchant_state.plan_count = merchant_state
         .plan_count
         .checked_add(1)
         .ok_or(VelaError::Overflow)?;
+    write_merchant_state(&merchant_state_info, &merchant_state)?;
 
     Ok(())
 }
@@ -346,4 +364,11 @@ fn map_interface_error(error: SplProgramError) -> anchor_lang::error::Error {
         SplProgramError::IncorrectAuthority => ProgramError::IncorrectAuthority,
     };
     error.into()
+}
+
+fn write_plan(plan_info: &AccountInfo<'_>, plan: &VelaPlan) -> Result<()> {
+    let mut data = plan_info.try_borrow_mut_data()?;
+    let mut slice: &mut [u8] = &mut data[..];
+    plan.try_serialize(&mut slice)?;
+    Ok(())
 }

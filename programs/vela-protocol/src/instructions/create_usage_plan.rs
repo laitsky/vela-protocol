@@ -22,6 +22,7 @@ use spl_token_metadata_interface::{
 use crate::{
     constants::CREDENTIAL_DECIMALS,
     errors::VelaError,
+    instructions::merchant_account::ensure_merchant_state,
     state::{PlanStatus, PricingTier, UsagePlan},
 };
 
@@ -30,6 +31,9 @@ use crate::{
 pub struct CreateUsagePlan<'info> {
     #[account(mut)]
     pub merchant: Signer<'info>,
+
+    #[account(mut, seeds = [crate::state::MerchantState::SEED_PREFIX, merchant.key().as_ref()], bump)]
+    pub merchant_state: UncheckedAccount<'info>,
 
     #[account(
         init,
@@ -104,6 +108,14 @@ pub fn handler(
     );
 
     let merchant_key = ctx.accounts.merchant.key();
+    ensure_merchant_state(
+        &ctx.accounts.merchant.to_account_info(),
+        &ctx.accounts.merchant_state.to_account_info(),
+        &ctx.accounts.system_program.to_account_info(),
+        &ctx.accounts.rent,
+        &merchant_key,
+        ctx.bumps.merchant_state,
+    )?;
     let plan_id_bytes = plan_id.to_le_bytes();
     let usage_plan_key = ctx.accounts.usage_plan.key();
     let credential_mint_key = ctx.accounts.credential_mint.key();
