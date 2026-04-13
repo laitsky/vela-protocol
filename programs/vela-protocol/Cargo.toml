@@ -138,5 +138,9 @@ path = "../../tests/test_emergency.rs"
 name = "test_error_codes"
 path = "../../tests/test_error_codes.rs"
 
+[[test]]
+name = "test_versioned_merchant_state"
+path = "../../tests/test_versioned_merchant_state.rs"
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

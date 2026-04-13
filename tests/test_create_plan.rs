@@ -2,6 +2,7 @@
 mod helpers;
 
 use helpers::{token_2022_address, TestHarness};
+use anchor_lang::prelude::Pubkey;
 use spl_token_2022::{
     extension::{
         metadata_pointer::MetadataPointer,
@@ -34,6 +35,10 @@ fn test_create_plan_initializes_plan_and_credential_mint() {
     let merchant_state: MerchantState = harness.fetch_anchor_account(&addresses.merchant_state);
     assert_eq!(merchant_state.merchant, harness.merchant_pubkey());
     assert_eq!(merchant_state.plan_count, 1);
+    assert_eq!(merchant_state.credential_mint, Pubkey::default());
+    assert_eq!(merchant_state.mandate_counter, 0);
+    assert_eq!(merchant_state.version, 1);
+    assert_eq!(merchant_state._reserved, [0u8; 64]);
 
     let plan: VelaPlan = harness.fetch_anchor_account(&addresses.plan);
     assert_eq!(plan.merchant, harness.merchant_pubkey());
