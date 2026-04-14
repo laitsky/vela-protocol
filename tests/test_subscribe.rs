@@ -222,3 +222,149 @@ fn test_subscribe_usage_plan_creates_usage_mandate() {
     assert_eq!(credential_account.owner.to_string(), subscriber_pubkey.to_string());
     assert_eq!(credential_account.amount, 1);
 }
+
+// --- Phase 40-08: Merchant-credential-aware subscribe ---
+
+#[test]
+fn test_subscribe_mints_from_merchant_credential() {
+    let mut harness = TestHarness::new();
+    let subscriber = harness.create_wallet();
+    let subscriber_pubkey = Pubkey::new_from_array(subscriber.pubkey().to_bytes());
+
+    // Bootstrap merchant credential first (40-07)
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+
+    let (merchant_credential_mint, _) = harness.derive_merchant_credential_mint();
+
+    // Create plan -- should use merchant credential
+    harness
+        .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
+        .expect("create_plan should succeed");
+
+    let plan_addresses = harness.derive_plan_addresses(0);
+    let plan: VelaPlan = harness.fetch_anchor_account(&plan_addresses.plan);
+
+    // Plan must reference the merchant credential mint
+    assert_eq!(
+        plan.credential_mint, merchant_credential_mint,
+        "plan should reference merchant credential mint"
+    );
+
+    // Subscribe -- should mint from merchant credential (D-12)
+    harness
+        .send_subscribe(&subscriber, 0)
+        .expect("subscribe should succeed with merchant credential");
+
+    // Verify credential was minted from the merchant credential mint
+    let credential_ata = harness.derive_credential_ata(&subscriber_pubkey, &merchant_credential_mint);
+    let credential_account =
+        Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata))
+            .expect("credential account should unpack");
+    assert_eq!(
+        credential_account.mint.to_string(),
+        merchant_credential_mint.to_string(),
+        "credential must be from merchant mint (D-12, CRED-02)"
+    );
+    assert_eq!(credential_account.amount, 1);
+
+    // Verify mandate was created correctly
+    let mandate_address = harness.derive_mandate_address(&subscriber_pubkey, &plan_addresses.plan);
+    let mandate: VelaMandate = harness.fetch_anchor_account(&mandate_address);
+    assert_eq!(mandate.subscriber, subscriber_pubkey);
+    assert!(matches!(mandate.status, MandateStatus::Active));
+}
+
+#[test]
+fn test_subscribe_legacy_plan_fallback() {
+    let mut harness = TestHarness::new();
+    let subscriber = harness.create_wallet();
+    let subscriber_pubkey = Pubkey::new_from_array(subscriber.pubkey().to_bytes());
+
+    // Create a legacy plan (no merchant credential bootstrap)
+    harness
+        .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
+        .expect("create_plan should succeed");
+
+    let plan_addresses = harness.derive_plan_addresses(0);
+
+    // Subscribe to the legacy plan -- should fall back to plan credential (CRED-05)
+    harness
+        .send_subscribe(&subscriber, 0)
+        .expect("subscribe should succeed with legacy plan credential fallback");
+
+    // Verify credential was minted from the plan-scoped credential mint
+    let credential_ata = harness.derive_credential_ata(
+        &subscriber_pubkey,
+        &plan_addresses.credential_mint,
+    );
+    let credential_account =
+        Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata))
+            .expect("credential account should unpack");
+    assert_eq!(
+        credential_account.mint.to_string(),
+        plan_addresses.credential_mint.to_string(),
+        "credential must be from plan mint for legacy plans (CRED-05)"
+    );
+    assert_eq!(credential_account.amount, 1);
+}
+
+#[test]
+fn test_subscribe_credential_persists_across_plan_changes() {
+    // CRED-04: credential is merchant-scoped, so plan changes don't require reburn/remint
+    let mut harness = TestHarness::new();
+    let subscriber = harness.create_wallet();
+    let subscriber_pubkey = Pubkey::new_from_array(subscriber.pubkey().to_bytes());
+
+    // Bootstrap merchant credential
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+
+    let (merchant_credential_mint, _) = harness.derive_merchant_credential_mint();
+
+    // Create two plans -- both should use the same merchant credential mint
+    harness
+        .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
+        .expect("first plan should succeed");
+    harness
+        .send_create_plan(50_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 1)
+        .expect("second plan should succeed");
+
+    let plan_a = harness.derive_plan_addresses(0);
+    let plan_b = harness.derive_plan_addresses(1);
+
+    let plan_a_record: VelaPlan = harness.fetch_anchor_account(&plan_a.plan);
+    let plan_b_record: VelaPlan = harness.fetch_anchor_account(&plan_b.plan);
+
+    // Both plans must reference the same merchant credential mint
+    assert_eq!(plan_a_record.credential_mint, merchant_credential_mint);
+    assert_eq!(plan_b_record.credential_mint, merchant_credential_mint);
+
+    // Subscribe to both plans
+    harness
+        .send_subscribe(&subscriber, 0)
+        .expect("subscribe to plan A should succeed");
+    harness
+        .send_subscribe(&subscriber, 1)
+        .expect("subscribe to plan B should succeed");
+
+    // Both subscriptions should create credentials from the same merchant mint
+    let credential_ata_a = harness.derive_credential_ata(&subscriber_pubkey, &merchant_credential_mint);
+    let credential_account =
+        Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata_a))
+            .expect("credential account should unpack");
+
+    // The credential is merchant-scoped, so it's the same mint for both plans (CRED-04)
+    assert_eq!(
+        credential_account.mint.to_string(),
+        merchant_credential_mint.to_string(),
+        "credential mint must be merchant-scoped, not plan-scoped (CRED-04)"
+    );
+    // Subscriber holds 2 tokens from the same merchant credential mint
+    assert_eq!(
+        credential_account.amount, 2,
+        "subscriber should have 2 credential tokens from the same merchant mint"
+    );
+}

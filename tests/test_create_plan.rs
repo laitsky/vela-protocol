@@ -89,3 +89,85 @@ fn test_create_plan_rejects_zero_max_pulls() {
         error.err,
     );
 }
+
+// --- Phase 40-08: Merchant-credential-aware plan creation ---
+
+#[test]
+fn test_create_plan_uses_merchant_credential_after_bootstrap() {
+    let mut harness = TestHarness::new();
+
+    // Bootstrap merchant credential first (40-07)
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+
+    let (merchant_credential_mint, _) = harness.derive_merchant_credential_mint();
+
+    // Create plan after bootstrap -- should use merchant credential mint
+    harness
+        .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
+        .expect("create_plan should succeed after merchant bootstrap");
+
+    let addresses = harness.derive_plan_addresses(0);
+    let plan: VelaPlan = harness.fetch_anchor_account(&addresses.plan);
+
+    // New plans should reference the merchant credential mint, not a plan-scoped mint
+    assert_eq!(
+        plan.credential_mint, merchant_credential_mint,
+        "create_plan must use merchant credential mint after bootstrap (CRED-01)"
+    );
+
+    // The plan-scoped credential mint PDA should NOT be created as a Token-2022 mint
+    let plan_scoped_mint_account = harness.svm.get_account(
+        &solana_address::Address::from(addresses.credential_mint.to_bytes()),
+    );
+    // It should either not exist or not be owned by Token-2022
+    if let Some(account) = plan_scoped_mint_account {
+        assert_ne!(
+            account.owner,
+            spl_token_2022::id().to_bytes().into(),
+            "plan-scoped credential mint should not be created after merchant bootstrap"
+        );
+    }
+}
+
+#[test]
+fn test_create_usage_plan_uses_merchant_credential_after_bootstrap() {
+    let mut harness = TestHarness::new();
+    use vela_protocol::state::PricingTier;
+
+    // Bootstrap merchant credential first (40-07)
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+
+    let (merchant_credential_mint, _) = harness.derive_merchant_credential_mint();
+
+    let mut unit_name = [0u8; 32];
+    unit_name[..9].copy_from_slice(b"api_calls");
+    let tiers = vec![
+        PricingTier {
+            up_to: 1_000,
+            rate_per_unit: 10_000,
+            _padding: 0,
+        },
+        PricingTier {
+            up_to: 0,
+            rate_per_unit: 8_000,
+            _padding: 0,
+        },
+    ];
+
+    harness
+        .send_create_usage_plan(0, unit_name, tiers, 75_000_000, MIN_FREQUENCY_SECONDS * 2)
+        .expect("create_usage_plan should succeed after merchant bootstrap");
+
+    let addresses = harness.derive_usage_plan_addresses(0);
+    let plan: vela_protocol::state::UsagePlan = harness.fetch_anchor_account(&addresses.usage_plan);
+
+    // New usage plans should reference the merchant credential mint
+    assert_eq!(
+        plan.credential_mint, merchant_credential_mint,
+        "create_usage_plan must use merchant credential mint after bootstrap (CRED-01)"
+    );
+}
