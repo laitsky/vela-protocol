@@ -150,5 +150,17 @@ path = "../../tests/test_versioned_protocol_readers.rs"
 name = "test_versioned_agent_mandate"
 path = "../../tests/test_versioned_agent_mandate.rs"
 
+[[test]]
+name = "test_migrate_plan"
+path = "../../tests/test_migrate_plan.rs"
+
+[[test]]
+name = "test_update_plan"
+path = "../../tests/test_update_plan.rs"
+
+[[test]]
+name = "test_update_usage_plan"
+path = "../../tests/test_update_usage_plan.rs"
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

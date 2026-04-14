@@ -1301,6 +1301,96 @@ impl TestHarness {
         self.fetch_anchor_account(&config)
     }
 
+    pub fn send_update_plan(
+        &mut self,
+        merchant: &Keypair,
+        plan_id: u64,
+        amount: Option<u64>,
+        frequency: Option<u64>,
+        trial_period: Option<u64>,
+        max_pulls: Option<u64>,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let addresses = self.derive_plan_addresses(plan_id);
+        let accounts = vela_protocol::accounts::UpdatePlan {
+            merchant: to_anchor_pubkey(merchant.pubkey()),
+            plan: addresses.plan,
+            system_program: anchor_lang::system_program::ID,
+        };
+
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::UpdatePlan {
+                amount,
+                frequency,
+                trial_period,
+                max_pulls,
+            }
+            .data(),
+        };
+        self.send_instruction(&instruction, &[merchant], Some(&merchant.pubkey()))
+    }
+
+    pub fn send_update_usage_plan(
+        &mut self,
+        merchant: &Keypair,
+        plan_id: u64,
+        tiers: Option<Vec<PricingTier>>,
+        max_charge_per_period: Option<u64>,
+        settlement_frequency: Option<u64>,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let addresses = self.derive_usage_plan_addresses(plan_id);
+        let accounts = vela_protocol::accounts::UpdateUsagePlan {
+            merchant: to_anchor_pubkey(merchant.pubkey()),
+            usage_plan: addresses.usage_plan,
+            system_program: anchor_lang::system_program::ID,
+        };
+
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::UpdateUsagePlan {
+                tiers,
+                max_charge_per_period,
+                settlement_frequency,
+            }
+            .data(),
+        };
+        self.send_instruction(&instruction, &[merchant], Some(&merchant.pubkey()))
+    }
+
+    pub fn send_migrate_plan(
+        &mut self,
+        admin: &Keypair,
+        plan: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let accounts = vela_protocol::accounts::MigratePlan {
+            admin: to_anchor_pubkey(admin.pubkey()),
+            plan: *plan,
+            system_program: anchor_lang::system_program::ID,
+            rent: anchor_lang::solana_program::sysvar::rent::ID,
+        };
+
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::MigratePlan {}.data(),
+        };
+        self.send_instruction(&instruction, &[admin], Some(&admin.pubkey()))
+    }
+
     fn create_plan_instruction(
         &self,
         amount: u64,
