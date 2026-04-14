@@ -3,6 +3,7 @@ mod helpers;
 
 use helpers::{SubscriptionFixture, TestHarness};
 use solana_keypair::Keypair;
+use solana_program_pack::Pack;
 use solana_signer::Signer;
 use spl_token_2022::state::Account as Token2022Account;
 use vela_protocol::{

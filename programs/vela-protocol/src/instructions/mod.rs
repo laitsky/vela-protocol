@@ -5,6 +5,7 @@ pub mod agent_pull;
 pub mod arcium_accounts;
 pub mod billing_callback;
 pub mod cancel;
+pub mod close_mandate;
 pub mod create_agent_mandate;
 pub mod create_plan;
 pub mod create_usage_plan;
@@ -16,6 +17,7 @@ pub mod init_keeper_config;
 pub mod init_merchant_credential;
 pub mod init_wrapped_mint;
 pub mod keeper_config_account;
+pub mod mandate_account;
 pub mod merchant_account;
 pub mod migrate_plan;
 pub mod pause_agent_mandate;
@@ -32,6 +34,7 @@ pub mod subscribe;
 pub mod unpause_protocol;
 pub mod unwrap;
 pub mod update_keeper_config;
+pub mod update_mandate;
 pub mod update_plan;
 pub mod update_usage_plan;
 pub mod usage_computation_callback;
@@ -96,6 +99,10 @@ pub mod __client_accounts_record_billing_event_callback {
 
 pub mod __client_accounts_cancel {
     pub use super::cancel::__client_accounts_cancel::*;
+}
+
+pub mod __client_accounts_close_mandate {
+    pub use super::close_mandate::__client_accounts_close_mandate::*;
 }
 
 pub mod __client_accounts_create_agent_mandate {
@@ -174,6 +181,10 @@ pub mod __client_accounts_update_plan {
     pub use super::update_plan::__client_accounts_update_plan::*;
 }
 
+pub mod __client_accounts_update_mandate {
+    pub use super::update_mandate::__client_accounts_update_mandate::*;
+}
+
 pub mod __client_accounts_update_usage_plan {
     pub use super::update_usage_plan::__client_accounts_update_usage_plan::*;
 }
@@ -183,6 +194,7 @@ pub use adjust_agent_mandate::AdjustAgentMandate;
 pub use agent_pull::AgentPull;
 pub use billing_callback::RecordBillingEventCallback;
 pub use cancel::Cancel;
+pub use close_mandate::CloseMandate;
 pub use create_agent_mandate::{CreateAgentMandate, ServiceLimitInput};
 pub use create_plan::CreatePlan;
 pub use create_usage_plan::CreateUsagePlan;
@@ -205,6 +217,7 @@ pub use subscribe::Subscribe;
 pub use unpause_protocol::UnpauseProtocol;
 pub use unwrap::Unwrap;
 pub use update_keeper_config::UpdateKeeperConfig;
+pub use update_mandate::UpdateMandate;
 pub use update_plan::UpdatePlan;
 pub use update_usage_plan::UpdateUsagePlan;
 pub use request_usage_computation::RequestUsageComputation;

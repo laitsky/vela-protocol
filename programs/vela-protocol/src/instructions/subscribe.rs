@@ -1,4 +1,7 @@
-use anchor_lang::{prelude::*, solana_program::program::invoke_signed};
+use anchor_lang::{
+    prelude::*,
+    solana_program::{program::invoke_signed, system_instruction},
+};
 use anchor_spl::{
     associated_token::{self, AssociatedToken},
     token::Token,
@@ -10,9 +13,13 @@ use spl_token_2022::instruction::mint_to;
 
 use crate::{
     errors::VelaError,
+    instructions::mandate_account::write_mandate,
     instructions::merchant_account::resolve_merchant_credential_mint,
     instructions::plan_account::load_plan_account,
-    state::{MandateStatus, MerchantState, PlanStatus, VelaMandate, VelaPlan, UsagePlan},
+    state::{
+        MandateStatus, MerchantState, PlanStatus, VelaMandate, VelaPlan, UsagePlan,
+        ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION,
+    },
 };
 
 #[derive(Accounts)]
@@ -23,26 +30,20 @@ pub struct Subscribe<'info> {
     /// CHECK: Used for plan and mint PDA validation only.
     pub merchant: UncheckedAccount<'info>,
 
-    /// CHECK: MerchantState PDA for merchant-credential resolution.
-    #[account(seeds = [MerchantState::SEED_PREFIX, merchant.key().as_ref()], bump)]
-    pub merchant_state: UncheckedAccount<'info>,
+    #[account(
+        mut,
+        seeds = [MerchantState::SEED_PREFIX, merchant.key().as_ref()],
+        bump
+    )]
+    pub merchant_state: Box<Account<'info, MerchantState>>,
 
     /// CHECK: Deserialized and validated manually so the same instruction can accept
     /// either a flat `VelaPlan` PDA or a usage `UsagePlan` PDA.
     pub plan: UncheckedAccount<'info>,
 
-    #[account(
-        init,
-        payer = subscriber,
-        space = VelaMandate::SIZE,
-        seeds = [
-            VelaMandate::SEED_PREFIX,
-            subscriber.key().as_ref(),
-            plan.key().as_ref()
-        ],
-        bump
-    )]
-    pub mandate: Account<'info, VelaMandate>,
+    #[account(mut)]
+    /// CHECK: Handler validates mandate PDA and initializes account.
+    pub mandate: UncheckedAccount<'info>,
 
     #[account(mut)]
     /// CHECK: Credential mint PDA ownership is validated in the handler.
@@ -66,11 +67,24 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
     let plan = load_plan_account(&ctx.accounts.plan.to_account_info())?;
     require!(*plan.status() == PlanStatus::Active, VelaError::PlanNotActive);
     require_keys_eq!(ctx.accounts.merchant.key(), plan.merchant());
+    let merchant_key = plan.merchant();
+    let mandate_index = ctx.accounts.merchant_state.mandate_counter;
+    let mandate_index_bytes = mandate_index.to_le_bytes();
+    let (expected_mandate, mandate_bump) = Pubkey::find_program_address(
+        &[
+            VelaMandate::SEED_PREFIX,
+            ctx.accounts.subscriber.key().as_ref(),
+            merchant_key.as_ref(),
+            mandate_index_bytes.as_ref(),
+        ],
+        &crate::ID,
+    );
+    require_keys_eq!(ctx.accounts.mandate.key(), expected_mandate);
 
     // Resolve credential mint: merchant-first (D-12), plan-scoped fallback (CRED-05)
     let resolved_credential_mint = resolve_merchant_credential_mint(
         &ctx.accounts.merchant_state.to_account_info(),
-        &plan.merchant(),
+        &merchant_key,
         &plan.credential_mint(),
     )?;
     require_keys_eq!(ctx.accounts.credential_mint.key(), resolved_credential_mint);
@@ -108,7 +122,40 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
     );
     associated_token::create_idempotent(ata_ctx)?;
 
-    let merchant_key = plan.merchant();
+    ctx.accounts.merchant_state.mandate_counter = ctx
+        .accounts
+        .merchant_state
+        .mandate_counter
+        .checked_add(1)
+        .ok_or(VelaError::Overflow)?;
+    if !ctx.accounts.mandate.data_is_empty() {
+        return Err(ProgramError::AccountAlreadyInitialized.into());
+    }
+    let mandate_lamports = Rent::get()?.minimum_balance(VelaMandate::SIZE);
+    let subscriber_key = ctx.accounts.subscriber.key();
+    let mandate_signer_seeds: &[&[u8]] = &[
+        VelaMandate::SEED_PREFIX,
+        subscriber_key.as_ref(),
+        merchant_key.as_ref(),
+        mandate_index_bytes.as_ref(),
+        &[mandate_bump],
+    ];
+    invoke_signed(
+        &system_instruction::create_account(
+            &ctx.accounts.subscriber.key(),
+            &ctx.accounts.mandate.key(),
+            mandate_lamports,
+            VelaMandate::SIZE as u64,
+            &crate::ID,
+        ),
+        &[
+            ctx.accounts.subscriber.to_account_info(),
+            ctx.accounts.mandate.to_account_info(),
+            ctx.accounts.system_program.to_account_info(),
+        ],
+        &[mandate_signer_seeds],
+    )?;
+
     let plan_id_bytes = plan.plan_id().to_le_bytes();
     let plan_bump_seed = [plan.bump()];
     let merchant_state_bump_seed = [ctx.bumps.merchant_state];
@@ -184,11 +231,10 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
     let clock = Clock::get()?;
     let expiry = plan.expiry(clock.unix_timestamp)?;
     let next_payment_due = plan.initial_next_payment_due(clock.unix_timestamp)?;
-
-    ctx.accounts.mandate.set_inner(VelaMandate {
+    let mandate = VelaMandate {
         subscriber: ctx.accounts.subscriber.key(),
         plan: ctx.accounts.plan.key(),
-        merchant: plan.merchant(),
+        merchant: merchant_key,
         amount: plan.mandate_amount(),
         frequency: plan.mandate_frequency(),
         start_date: clock.unix_timestamp,
@@ -201,9 +247,13 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
         validation_request_nonce: 0,
         billing_request_nonce: 0,
         status: MandateStatus::Active,
-        bump: ctx.bumps.mandate,
+        bump: mandate_bump,
         billing_type: plan.billing_type(),
-    });
+        mandate_index,
+        version: CURRENT_ACCOUNT_VERSION,
+        _reserved: [0; ACCOUNT_RESERVED_BYTES],
+    };
+    write_mandate(&ctx.accounts.mandate.to_account_info(), &mandate, false)?;
 
     Ok(())
 }

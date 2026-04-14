@@ -162,5 +162,13 @@ path = "../../tests/test_update_plan.rs"
 name = "test_update_usage_plan"
 path = "../../tests/test_update_usage_plan.rs"
 
+[[test]]
+name = "test_update_mandate"
+path = "../../tests/test_update_mandate.rs"
+
+[[test]]
+name = "test_close_mandate"
+path = "../../tests/test_close_mandate.rs"
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

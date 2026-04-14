@@ -1,5 +1,6 @@
 use anchor_lang::prelude::*;
 
+use super::{ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION};
 use super::billing_type::BillingType;
 
 #[account]
@@ -21,13 +22,19 @@ pub struct VelaMandate {
     pub status: MandateStatus,
     pub bump: u8,
     pub billing_type: BillingType, // 1 - trailing field for backward compat (0u8 = Flat)
+    pub mandate_index: u64,
+    pub version: u8,
+    pub _reserved: [u8; ACCOUNT_RESERVED_BYTES],
 }
 
 impl VelaMandate {
     pub const SEED_PREFIX: &'static [u8] = b"mandate";
-    // Previous SIZE: 8 + 32 + 32 + 32 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 1 + 1 = 170
-    // +1 for billing_type field
-    pub const SIZE: usize = 8 + 32 + 32 + 32 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 1 + 1 + 1;
+    pub const SIZE: usize =
+        8 + 32 + 32 + 32 + (11 * 8) + 1 + 1 + 1 + 8 + 1 + ACCOUNT_RESERVED_BYTES;
+
+    pub fn current_version() -> u8 {
+        CURRENT_ACCOUNT_VERSION
+    }
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]

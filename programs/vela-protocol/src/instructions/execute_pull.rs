@@ -13,11 +13,15 @@ use crate::{
     },
     errors::VelaError,
     instructions::{
+        mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
         keeper_config_account::load_keeper_config,
         plan_account::{load_plan_account, require_plan_billing_type, LoadedPlanAccount},
         protocol_config_account::load_protocol_config,
     },
-    state::{BillingType, KeeperConfig, MandateStatus, PlanStatus, ProtocolConfig, PullApproval, VelaMandate},
+    state::{
+        BillingType, KeeperConfig, MandateStatus, PlanStatus, ProtocolConfig, PullApproval,
+        VelaMandate,
+    },
 };
 
 #[derive(Accounts)]
@@ -40,16 +44,8 @@ pub struct ExecutePull<'info> {
     /// CHECK: Deserialized and validated manually to support both flat and usage plans.
     pub plan: UncheckedAccount<'info>,
 
-    #[account(
-        mut,
-        seeds = [
-            VelaMandate::SEED_PREFIX,
-            subscriber.key().as_ref(),
-            plan.key().as_ref()
-        ],
-        bump = mandate.bump
-    )]
-    pub mandate: Box<Account<'info, VelaMandate>>,
+    #[account(mut)]
+    pub mandate: UncheckedAccount<'info>,
 
     /// Subscriber's Token-2022 wrapped USDC account (source of the transfer).
     /// CHECK: Token account mint and authority validated in handler.
@@ -126,43 +122,39 @@ pub fn handler<'a, 'b, 'c, 'info>(
         VelaError::VaultMismatch
     );
     let plan = load_plan_account(&ctx.accounts.plan.to_account_info())?;
-    require_plan_billing_type(&plan, &ctx.accounts.mandate.billing_type)?;
+    let loaded_mandate = load_mandate_account(&ctx.accounts.mandate.to_account_info())?;
+    validate_loaded_mandate_address(&ctx.accounts.mandate.key(), &loaded_mandate)?;
+    let legacy_layout = loaded_mandate.is_legacy();
+    let mut mandate = loaded_mandate.into_current();
+    require_plan_billing_type(&plan, &mandate.billing_type)?;
     require!(*plan.status() == PlanStatus::Active, VelaError::PlanNotActive);
     require!(
-        ctx.accounts.mandate.status == MandateStatus::Active,
+        matches!(mandate.status, MandateStatus::Active),
         VelaError::MandateNotActive
     );
-    require_keys_eq!(ctx.accounts.plan.key(), ctx.accounts.mandate.plan);
+    require_keys_eq!(ctx.accounts.plan.key(), mandate.plan);
     require_keys_eq!(plan.merchant(), ctx.accounts.merchant.key());
+    require_keys_eq!(mandate.subscriber, ctx.accounts.subscriber.key());
+    require_keys_eq!(mandate.merchant, ctx.accounts.merchant.key());
     require!(
-        ctx.accounts.mandate.last_billing_recorded_pull == ctx.accounts.mandate.pulls_executed,
+        mandate.last_billing_recorded_pull == mandate.pulls_executed,
         VelaError::PendingBillingRecord
     );
 
     let clock = Clock::get()?;
-    if ctx.accounts.mandate.expiry > 0 {
+    if mandate.expiry > 0 {
         require!(
-            clock.unix_timestamp < ctx.accounts.mandate.expiry,
+            clock.unix_timestamp < mandate.expiry,
             VelaError::MandateExpired
         );
     }
     require!(
-        ctx.accounts.mandate.pulls_executed < ctx.accounts.mandate.max_pulls,
+        mandate.pulls_executed < mandate.max_pulls,
         VelaError::MaxPullsExceeded
     );
     require!(
-        clock.unix_timestamp >= ctx.accounts.mandate.next_payment_due,
+        clock.unix_timestamp >= mandate.next_payment_due,
         VelaError::PullTooEarly
-    );
-    require_eq!(
-        ctx.accounts.mandate.amount,
-        plan.mandate_amount(),
-        VelaError::AmountExceedsPlanAmount
-    );
-    require_eq!(
-        ctx.accounts.mandate.frequency,
-        plan.mandate_frequency(),
-        VelaError::InvalidFrequency
     );
 
     // Validate PullApproval PDA derivation and existence.
@@ -202,30 +194,16 @@ pub fn handler<'a, 'b, 'c, 'info>(
         VelaError::ApprovalExpired
     );
     let charge_amount = match &plan {
-        LoadedPlanAccount::Flat(plan) => {
+        LoadedPlanAccount::Flat(_) | LoadedPlanAccount::LegacyFlat(_) => {
             require!(
-                plan.amount <= approval.approved_amount,
+                mandate.amount <= approval.approved_amount,
                 VelaError::AmountExceedsPlanAmount
             );
-            plan.amount
+            mandate.amount
         }
-        LoadedPlanAccount::Usage(_) => {
+        LoadedPlanAccount::Usage(_) | LoadedPlanAccount::LegacyUsage(_) => {
             require!(
-                approval.approved_amount <= ctx.accounts.mandate.amount,
-                VelaError::AmountExceedsPlanAmount
-            );
-            approval.approved_amount
-        }
-        LoadedPlanAccount::LegacyFlat(plan) => {
-            require!(
-                plan.amount <= approval.approved_amount,
-                VelaError::AmountExceedsPlanAmount
-            );
-            plan.amount
-        }
-        LoadedPlanAccount::LegacyUsage(_) => {
-            require!(
-                approval.approved_amount <= ctx.accounts.mandate.amount,
+                approval.approved_amount <= mandate.amount,
                 VelaError::AmountExceedsPlanAmount
             );
             approval.approved_amount
@@ -235,16 +213,8 @@ pub fn handler<'a, 'b, 'c, 'info>(
     // Settle the billing move as an actual Token-2022 transfer_checked.
     // The wrapped mint points at the dedicated `vela-transfer-hook` program, so the hook fires
     // during this CPI without re-entering the main protocol program.
-    let subscriber_key = ctx.accounts.subscriber.key();
-    let plan_key = ctx.accounts.plan.key();
-    let mandate_bump = [ctx.accounts.mandate.bump];
-    let mandate_signer_seeds: &[&[u8]] = &[
-        VelaMandate::SEED_PREFIX,
-        subscriber_key.as_ref(),
-        plan_key.as_ref(),
-        &mandate_bump,
-    ];
-    let mandate_signer_seed_groups = [mandate_signer_seeds];
+    let subscriber_key = mandate.subscriber;
+    let mandate_bump = [mandate.bump];
     let source_info = ctx.accounts.subscriber_wrapped_account.to_account_info();
     let mint_info = ctx.accounts.wrapped_usdc_mint.to_account_info();
     let destination_info = ctx.accounts.merchant_wrapped_account.to_account_info();
@@ -281,31 +251,46 @@ pub fn handler<'a, 'b, 'c, 'info>(
         ctx.accounts.extra_account_meta_list.to_account_info(),
         ctx.accounts.hook_program.to_account_info(),
     ];
-    invoke_signed(
-        &transfer_ix,
-        &transfer_account_infos,
-        &mandate_signer_seed_groups,
-    )?;
+    if legacy_layout {
+        let plan_key = mandate.plan;
+        let legacy_seeds: &[&[u8]] = &[
+            VelaMandate::SEED_PREFIX,
+            subscriber_key.as_ref(),
+            plan_key.as_ref(),
+            &mandate_bump,
+        ];
+        invoke_signed(&transfer_ix, &transfer_account_infos, &[legacy_seeds])?;
+    } else {
+        let merchant_key = mandate.merchant;
+        let mandate_index_bytes = mandate.mandate_index.to_le_bytes();
+        let current_seeds: &[&[u8]] = &[
+            VelaMandate::SEED_PREFIX,
+            subscriber_key.as_ref(),
+            merchant_key.as_ref(),
+            mandate_index_bytes.as_ref(),
+            &mandate_bump,
+        ];
+        invoke_signed(&transfer_ix, &transfer_account_infos, &[current_seeds])?;
+    }
 
-    let mandate_frequency =
-        i64::try_from(ctx.accounts.mandate.frequency).map_err(|_| VelaError::Overflow)?;
-    let is_usage_mandate = ctx.accounts.mandate.billing_type == BillingType::Usage;
-    let mandate = &mut ctx.accounts.mandate;
-    mandate.pulls_executed = mandate
+    let mandate_frequency = i64::try_from(mandate.frequency).map_err(|_| VelaError::Overflow)?;
+    let pulls_executed = mandate
         .pulls_executed
         .checked_add(1)
         .ok_or(VelaError::Overflow)?;
+    mandate.pulls_executed = pulls_executed;
     mandate.next_payment_due = mandate
         .next_payment_due
         .checked_add(mandate_frequency)
         .ok_or(VelaError::Overflow)?;
     mandate.last_pull_at = clock.unix_timestamp;
-    if is_usage_mandate {
-        mandate.last_billing_recorded_pull = mandate.pulls_executed;
+    if mandate.billing_type == BillingType::Usage {
+        mandate.last_billing_recorded_pull = pulls_executed;
     }
-    if mandate.pulls_executed >= mandate.max_pulls {
+    if pulls_executed >= mandate.max_pulls {
         mandate.status = MandateStatus::Expired;
     }
+    write_mandate(&ctx.accounts.mandate.to_account_info(), &mandate, legacy_layout)?;
 
     // Close PullApproval PDA and refund lamports to payer.
     let approval_info = ctx.accounts.pull_approval.to_account_info();

@@ -8,13 +8,14 @@ pub mod state;
 
 use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
-    AdjustAgentMandate, AdminCancel, AgentPull, Cancel, CreateAgentMandate, CreatePlan,
+    AdjustAgentMandate, AdminCancel, AgentPull, Cancel, CloseMandate, CreateAgentMandate, CreatePlan,
     CreateUsagePlan, DrainAgentMandate, ExecutePull, InitConfig, InitKeeperConfig,
     InitMerchantCredential, InitRecordBillingCompDef, InitValidateMandateCompDef, InitWrappedMint,
     MigratePlan, PauseAgentMandate,
     PauseProtocol, RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation,
     RequestValidation, ResumeAgentMandate, RevokeAgentMandate, SubmitUsageReport, Subscribe,
     UnpauseProtocol, Unwrap, UpdateConfig, UpdateKeeperConfig, UpdatePlan, UpdateUsagePlan,
+    UpdateMandate,
     UsageChargeOutput,
     UsageComputationCallback, ValidateMandateCallback,
     ServiceLimitInput,
@@ -71,6 +72,10 @@ mod __client_accounts_record_billing_event_callback {
 
 mod __client_accounts_cancel {
     pub use crate::instructions::__client_accounts_cancel::*;
+}
+
+mod __client_accounts_close_mandate {
+    pub use crate::instructions::__client_accounts_close_mandate::*;
 }
 
 mod __client_accounts_create_plan {
@@ -159,6 +164,10 @@ mod __client_accounts_migrate_plan {
 
 mod __client_accounts_update_plan {
     pub use crate::instructions::__client_accounts_update_plan::*;
+}
+
+mod __client_accounts_update_mandate {
+    pub use crate::instructions::__client_accounts_update_mandate::*;
 }
 
 mod __client_accounts_update_usage_plan {
@@ -437,6 +446,21 @@ pub mod vela_protocol {
         settlement_frequency: Option<u64>,
     ) -> Result<()> {
         instructions::update_usage_plan::handler(ctx, tiers, max_charge_per_period, settlement_frequency)
+    }
+
+    pub fn update_mandate(
+        ctx: Context<UpdateMandate>,
+        amount: Option<u64>,
+        frequency: Option<u64>,
+        max_pulls: Option<u64>,
+        billing_type: Option<crate::state::BillingType>,
+        plan: Option<Pubkey>,
+    ) -> Result<()> {
+        instructions::update_mandate::handler(ctx, amount, frequency, max_pulls, billing_type, plan)
+    }
+
+    pub fn close_mandate(ctx: Context<CloseMandate>) -> Result<()> {
+        instructions::close_mandate::handler(ctx)
     }
 
 }

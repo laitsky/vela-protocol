@@ -6,7 +6,7 @@ pub mod arcium_helpers;
 use std::path::{Path, PathBuf};
 
 use anchor_lang::{
-    prelude::Pubkey, AccountDeserialize, AccountSerialize, AnchorSerialize, InstructionData,
+    prelude::Pubkey, AccountDeserialize, AccountSerialize, InstructionData,
     ToAccountMetas,
 };
 use litesvm::{
@@ -1315,41 +1315,30 @@ impl TestHarness {
         max_pulls: Option<u64>,
         billing_type: Option<vela_protocol::state::BillingType>,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-        #[derive(AnchorSerialize)]
-        struct UpdateMandateArgs {
-            amount: Option<u64>,
-            frequency: Option<u64>,
-            max_pulls: Option<u64>,
-            billing_type: Option<vela_protocol::state::BillingType>,
-            plan: Option<Pubkey>,
-        }
-
         let merchant = to_anchor_pubkey(signer.pubkey());
         let current: VelaMandate = self.fetch_anchor_account(mandate);
         let plan = new_plan.unwrap_or(current.plan);
-        let data = {
-            let mut bytes = instruction_discriminator("update_mandate").to_vec();
-            let args = UpdateMandateArgs {
+        let accounts = vela_protocol::accounts::UpdateMandate {
+            merchant,
+            plan,
+            mandate: *mandate,
+            system_program: anchor_lang::system_program::ID,
+        };
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::UpdateMandate {
                 amount,
                 frequency,
                 max_pulls,
                 billing_type,
                 plan: new_plan,
-            };
-            args.serialize(&mut bytes)
-                .expect("update_mandate args should serialize");
-            bytes
-        };
-
-        let instruction = Instruction {
-            program_id: self.program_id,
-            accounts: vec![
-                AccountMeta::new(to_address(merchant), true),
-                AccountMeta::new_readonly(to_address(plan), false),
-                AccountMeta::new(to_address(*mandate), false),
-                AccountMeta::new_readonly(to_address(anchor_lang::system_program::ID), false),
-            ],
-            data,
+            }
+            .data(),
         };
         self.send_instruction(&instruction, &[signer], Some(&signer.pubkey()))
     }
@@ -1360,15 +1349,19 @@ impl TestHarness {
         subscriber: &Pubkey,
         mandate: &Pubkey,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-        let data = instruction_discriminator("close_mandate").to_vec();
+        let accounts = vela_protocol::accounts::CloseMandate {
+            authority: to_anchor_pubkey(authority.pubkey()),
+            subscriber: *subscriber,
+            mandate: *mandate,
+        };
         let instruction = Instruction {
             program_id: self.program_id,
-            accounts: vec![
-                AccountMeta::new(to_address(to_anchor_pubkey(authority.pubkey())), true),
-                AccountMeta::new(to_address(*subscriber), false),
-                AccountMeta::new(to_address(*mandate), false),
-            ],
-            data,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::CloseMandate {}.data(),
         };
         self.send_instruction(&instruction, &[authority], Some(&authority.pubkey()))
     }
@@ -1759,14 +1752,6 @@ impl TestHarness {
 
 pub fn token_2022_address() -> Address {
     Address::from(spl_token_2022::id().to_bytes())
-}
-
-fn instruction_discriminator(name: &str) -> [u8; 8] {
-    use anchor_lang::solana_program::hash::hash;
-    let preimage = format!("global:{name}");
-    let mut discriminator = [0u8; 8];
-    discriminator.copy_from_slice(&hash(preimage.as_bytes()).to_bytes()[..8]);
-    discriminator
 }
 
 pub fn spl_token_address() -> Address {
