@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { getAccount } from "@solana/spl-token";
-import { createSubscriptionFixture, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "./setup";
+import { createSubscriptionFixture, deriveMerchantCredentialMint, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "./setup";
 
 describe("cancel", () => {
   test("burns the credential and revokes delegation", async () => {
     const fixture = await createSubscriptionFixture();
+    const [merchantCredentialMint] = deriveMerchantCredentialMint(
+      fixture.merchant.publicKey,
+      fixture.programId,
+    );
 
     fixture.svm.expireBlockhash();
     await (fixture.program as any).methods
@@ -12,10 +16,12 @@ describe("cancel", () => {
       .accounts({
         authority: fixture.subscriber.publicKey,
         subscriber: fixture.subscriber.publicKey,
+        merchant: fixture.merchant.publicKey,
+        merchantState: fixture.planAddresses.merchantState,
         plan: fixture.planAddresses.plan,
         mandate: fixture.mandate,
         subscriberCredentialAccount: fixture.credentialAta,
-        credentialMint: fixture.planAddresses.credentialMint,
+        credentialMint: merchantCredentialMint,
         token2022Program: TOKEN_2022_PROGRAM_ID,
         subscriberTokenAccount: fixture.subscriberTokenAccount,
         tokenProgram: TOKEN_PROGRAM_ID,

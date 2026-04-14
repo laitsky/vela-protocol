@@ -94,6 +94,8 @@ fn test_execute_pull_paused() {
     // Minimal setup: just init config and subscribe (don't need full wrapped USDC pipeline).
     // The paused guard fires before PullApproval checks, so we only need a valid protocol_config.
     let admin = harness.merchant.insecure_clone();
+    harness.send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
     harness.send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 2, 0)
         .expect("create_plan should succeed");
 
@@ -169,6 +171,8 @@ fn test_execute_pull_paused() {
 fn test_execute_pull_after_unpause() {
     let mut harness = TestHarness::new();
     let admin = harness.merchant.insecure_clone();
+    harness.send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
     harness.send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 2, 0)
         .expect("create_plan should succeed");
 
@@ -242,6 +246,8 @@ fn test_admin_cancel() {
     let mut harness = TestHarness::new();
     let admin = harness.merchant.insecure_clone();
     harness.init_protocol_config(&admin);
+    harness.send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
 
     harness
         .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 2, 0)
@@ -256,6 +262,7 @@ fn test_admin_cancel() {
 
     let addresses = harness.derive_plan_addresses(0);
     let mandate = harness.derive_mandate_address(&subscriber_pubkey, &addresses.plan);
+    let (merchant_credential_mint, _) = harness.derive_merchant_credential_mint();
 
     harness
         .send_admin_cancel(
@@ -263,7 +270,7 @@ fn test_admin_cancel() {
             &subscriber_pubkey,
             &addresses.plan,
             &mandate,
-            &addresses.credential_mint,
+            &merchant_credential_mint,
         )
         .expect("admin_cancel should succeed");
 
@@ -274,7 +281,7 @@ fn test_admin_cancel() {
     );
 
     // Verify credential token balance is 0
-    let credential_ata = harness.derive_credential_ata(&subscriber_pubkey, &addresses.credential_mint);
+    let credential_ata = harness.derive_credential_ata(&subscriber_pubkey, &merchant_credential_mint);
     use solana_program_pack::Pack;
     use spl_token_2022::state::Account as Token2022Account;
     let credential_account =
@@ -288,6 +295,8 @@ fn test_admin_cancel_unauthorized() {
     let mut harness = TestHarness::new();
     let admin = harness.merchant.insecure_clone();
     harness.init_protocol_config(&admin);
+    harness.send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
 
     harness
         .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 2, 0)
@@ -302,6 +311,7 @@ fn test_admin_cancel_unauthorized() {
 
     let addresses = harness.derive_plan_addresses(0);
     let mandate = harness.derive_mandate_address(&subscriber_pubkey, &addresses.plan);
+    let (merchant_credential_mint, _) = harness.derive_merchant_credential_mint();
 
     let non_admin = harness.create_wallet();
     let error = harness
@@ -310,7 +320,7 @@ fn test_admin_cancel_unauthorized() {
             &subscriber_pubkey,
             &addresses.plan,
             &mandate,
-            &addresses.credential_mint,
+            &merchant_credential_mint,
         )
         .expect_err("admin_cancel should reject non-admin");
 
@@ -327,6 +337,8 @@ fn test_admin_cancel_already_cancelled() {
     let mut harness = TestHarness::new();
     let admin = harness.merchant.insecure_clone();
     harness.init_protocol_config(&admin);
+    harness.send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
 
     harness
         .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 2, 0)
@@ -341,6 +353,7 @@ fn test_admin_cancel_already_cancelled() {
 
     let addresses = harness.derive_plan_addresses(0);
     let mandate = harness.derive_mandate_address(&subscriber_pubkey, &addresses.plan);
+    let (merchant_credential_mint, _) = harness.derive_merchant_credential_mint();
 
     // First admin_cancel succeeds
     harness
@@ -349,7 +362,7 @@ fn test_admin_cancel_already_cancelled() {
             &subscriber_pubkey,
             &addresses.plan,
             &mandate,
-            &addresses.credential_mint,
+            &merchant_credential_mint,
         )
         .expect("first admin_cancel should succeed");
 
@@ -360,7 +373,7 @@ fn test_admin_cancel_already_cancelled() {
             &subscriber_pubkey,
             &addresses.plan,
             &mandate,
-            &addresses.credential_mint,
+            &merchant_credential_mint,
         )
         .expect_err("admin_cancel on cancelled mandate should fail");
 

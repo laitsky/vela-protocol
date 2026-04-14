@@ -22,6 +22,8 @@ fn test_update_usage_plan_modifies_fields() {
     let initial_settlement = 3600u64;
 
     let addresses = harness.derive_usage_plan_addresses(plan_id);
+    harness.send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
     harness.send_create_usage_plan(plan_id, unit_name, initial_tiers.clone(), initial_max_charge, initial_settlement)
         .expect("create_usage_plan should succeed");
 
@@ -74,6 +76,8 @@ fn test_update_usage_plan_rejects_non_merchant() {
     let unit_name = [0u8; 32];
     let tiers = vec![PricingTier { up_to: 0, rate_per_unit: 100, _padding: 0 }];
 
+    harness.send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
     harness.send_create_usage_plan(plan_id, unit_name, tiers, 50_000_000, 3600)
         .expect("create_usage_plan should succeed");
 
@@ -99,6 +103,8 @@ fn test_update_usage_plan_rejects_empty_update() {
     let unit_name = [0u8; 32];
     let tiers = vec![PricingTier { up_to: 0, rate_per_unit: 100, _padding: 0 }];
 
+    harness.send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
     harness.send_create_usage_plan(plan_id, unit_name, tiers, 50_000_000, 3600)
         .expect("create_usage_plan should succeed");
 
@@ -123,6 +129,8 @@ fn test_update_usage_plan_partial_update() {
     let initial_max_charge = 50_000_000u64;
     let initial_settlement = 3600u64;
 
+    harness.send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
     harness.send_create_usage_plan(plan_id, unit_name, initial_tiers, initial_max_charge, initial_settlement)
         .expect("create_usage_plan should succeed");
 

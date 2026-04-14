@@ -247,11 +247,13 @@ export async function fetchMerchantState(context: TestContext, address: PublicKe
 
 export function deriveMandateAddress(
   subscriber: PublicKey,
-  plan: PublicKey,
+  merchant: PublicKey,
+  mandateIndex: bigint,
   programId = PROGRAM_ID,
 ): PublicKey {
+  const indexSeed = new BN(mandateIndex.toString()).toArrayLike(Buffer, "le", 8);
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("mandate"), subscriber.toBuffer(), plan.toBuffer()],
+    [Buffer.from("mandate"), subscriber.toBuffer(), merchant.toBuffer(), indexSeed],
     programId,
   )[0];
 }
@@ -506,6 +508,42 @@ export async function mintUsdc(
   ]);
 }
 
+export function deriveMerchantCredentialMint(
+  merchant: PublicKey,
+  programId = PROGRAM_ID,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("merchant-credential"), merchant.toBuffer()],
+    programId,
+  );
+}
+
+export async function initMerchantCredential(
+  context: TestContext,
+): Promise<PublicKey> {
+  const [merchantState] = PublicKey.findProgramAddressSync(
+    [Buffer.from("merchant"), context.merchant.publicKey.toBuffer()],
+    context.programId,
+  );
+  const [credentialMint] = deriveMerchantCredentialMint(
+    context.merchant.publicKey,
+    context.programId,
+  );
+  context.svm.expireBlockhash();
+  await (context.program as any).methods
+    .initMerchantCredential()
+    .accounts({
+      merchant: context.merchant.publicKey,
+      merchantState,
+      credentialMint,
+      systemProgram: SystemProgram.programId,
+      token2022Program: TOKEN_2022_PROGRAM_ID,
+      rent: SYSVAR_RENT_PUBKEY,
+    })
+    .rpc();
+  return credentialMint;
+}
+
 export async function createPlan(
   context: TestContext,
   amount: bigint,
@@ -554,6 +592,8 @@ export async function createSubscriptionFixture(options?: {
   const subscriber = Keypair.generate();
   airdropSol(context.svm, subscriber.publicKey, 5n * BigInt(LAMPORTS_PER_SOL));
 
+  await initMerchantCredential(context);
+
   const planAddresses = await createPlan(
     context,
     amount,
@@ -580,9 +620,14 @@ export async function createSubscriptionFixture(options?: {
     amount * maxPulls + amount,
   );
 
-  const mandate = deriveMandateAddress(subscriber.publicKey, planAddresses.plan, context.programId);
+  // mandate_counter is 0 for the first subscription in a fresh merchant state
+  const mandate = deriveMandateAddress(subscriber.publicKey, context.merchant.publicKey, 0n, context.programId);
+  const [merchantCredentialMint] = deriveMerchantCredentialMint(
+    context.merchant.publicKey,
+    context.programId,
+  );
   const credentialAta = getAssociatedTokenAddressSync(
-    planAddresses.credentialMint,
+    merchantCredentialMint,
     subscriber.publicKey,
     false,
     TOKEN_2022_PROGRAM_ID,
@@ -594,11 +639,10 @@ export async function createSubscriptionFixture(options?: {
     .accounts({
       subscriber: subscriber.publicKey,
       merchant: context.merchant.publicKey,
+      merchantState: planAddresses.merchantState,
       plan: planAddresses.plan,
       mandate,
-      subscriberTokenAccount,
-      usdcMint,
-      credentialMint: planAddresses.credentialMint,
+      credentialMint: merchantCredentialMint,
       subscriberCredentialAccount: credentialAta,
       tokenProgram: TOKEN_PROGRAM_ID,
       token2022Program: TOKEN_2022_PROGRAM_ID,

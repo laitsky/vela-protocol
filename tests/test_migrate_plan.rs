@@ -142,6 +142,8 @@ fn test_fresh_flat_plan_is_v2() {
     let max_pulls = 12u64;
     let addresses = harness.derive_plan_addresses(0);
 
+    harness.send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
     harness.send_create_plan(amount, frequency, trial_period, max_pulls, 0)
         .expect("create_plan should succeed");
 
@@ -176,6 +178,8 @@ fn test_fresh_usage_plan_is_v2() {
 
     let addresses = harness.derive_usage_plan_addresses(plan_id);
 
+    harness.send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
     harness.send_create_usage_plan(plan_id, unit_name, tiers, max_charge, settlement_freq)
         .expect("create_usage_plan should succeed");
 
@@ -324,6 +328,8 @@ fn test_migrate_plan_idempotent_on_v2() {
     let mut harness = TestHarness::new();
 
     let addresses = harness.derive_plan_addresses(0);
+    harness.send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
     harness.send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
         .expect("create_plan should succeed");
 

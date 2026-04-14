@@ -19,6 +19,8 @@ fn test_update_flat_plan_modifies_fields() {
     let initial_max_pulls = 12u64;
 
     let addresses = harness.derive_plan_addresses(0);
+    harness.send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
     harness.send_create_plan(initial_amount, initial_frequency, initial_trial, initial_max_pulls, 0)
         .expect("create_plan should succeed");
 
@@ -66,6 +68,8 @@ fn test_update_flat_plan_modifies_fields() {
 fn test_update_flat_plan_rejects_non_merchant() {
     let mut harness = TestHarness::new();
 
+    harness.send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
     harness.send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
         .expect("create_plan should succeed");
 
@@ -88,6 +92,8 @@ fn test_update_flat_plan_rejects_non_merchant() {
 fn test_update_flat_plan_rejects_empty_update() {
     let mut harness = TestHarness::new();
 
+    harness.send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
     harness.send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
         .expect("create_plan should succeed");
 
@@ -112,6 +118,8 @@ fn test_update_flat_plan_partial_update() {
     let initial_trial = 86_400u64;
     let initial_max_pulls = 12u64;
 
+    harness.send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
     harness.send_create_plan(initial_amount, initial_frequency, initial_trial, initial_max_pulls, 0)
         .expect("create_plan should succeed");
 
