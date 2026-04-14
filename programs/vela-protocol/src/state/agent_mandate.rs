@@ -3,6 +3,7 @@ use anchor_lang::prelude::*;
 use crate::constants::{
     AGENT_DAILY_RESET_WINDOW_SECONDS, AGENT_MANDATE_MAX_SERVICES, AGENT_MANDATE_SEED,
 };
+use crate::state::{ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION};
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq, Debug)]
 pub struct ServiceLimit {
@@ -38,13 +39,51 @@ pub struct AgentMandate {
     pub status: AgentMandateStatus,
     pub services: Vec<ServiceLimit>,
     pub bump: u8,
+    pub version: u8,
+    pub _reserved: [u8; ACCOUNT_RESERVED_BYTES],
 }
 
 impl AgentMandate {
     pub const SEED_PREFIX: &'static [u8] = AGENT_MANDATE_SEED;
     pub const MAX_SERVICES: usize = AGENT_MANDATE_MAX_SERVICES;
-    pub const BASE_SIZE: usize = 32 + 32 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 1 + 1;
+    pub const BASE_SIZE: usize =
+        32 + 32 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 1 + 1 + 1 + ACCOUNT_RESERVED_BYTES;
     pub const SIZE: usize = 8 + Self::BASE_SIZE + 4 + (Self::MAX_SERVICES * ServiceLimit::SIZE);
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        authority: Pubkey,
+        agent: Pubkey,
+        daily_limit: u64,
+        daily_spent: u64,
+        daily_last_reset: i64,
+        lifetime_cap: u64,
+        total_spent: u64,
+        min_pull_amount: u64,
+        min_pull_interval: i64,
+        last_pull_at: i64,
+        status: AgentMandateStatus,
+        services: Vec<ServiceLimit>,
+        bump: u8,
+    ) -> Self {
+        Self {
+            authority,
+            agent,
+            daily_limit,
+            daily_spent,
+            daily_last_reset,
+            lifetime_cap,
+            total_spent,
+            min_pull_amount,
+            min_pull_interval,
+            last_pull_at,
+            status,
+            services,
+            bump,
+            version: CURRENT_ACCOUNT_VERSION,
+            _reserved: [0; ACCOUNT_RESERVED_BYTES],
+        }
+    }
 
     pub fn reset_daily_if_needed(&mut self, now: i64) {
         if now.saturating_sub(self.daily_last_reset) >= AGENT_DAILY_RESET_WINDOW_SECONDS {

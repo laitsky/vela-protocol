@@ -10,7 +10,8 @@ use anchor_spl::{
 use crate::{
     constants::{AGENT_MANDATE_SEED, MINT_AUTHORITY_SEED, USDC_DECIMALS},
     errors::VelaError,
-    state::{AgentMandate, AgentMandateStatus, ProtocolConfig},
+    instructions::agent_mandate_account::load_agent_mandate,
+    state::{AgentMandateStatus, ProtocolConfig},
 };
 
 #[derive(Accounts)]
@@ -23,10 +24,9 @@ pub struct DrainAgentMandate<'info> {
     #[account(
         mut,
         seeds = [AGENT_MANDATE_SEED, authority.key().as_ref(), agent.key().as_ref()],
-        bump = agent_mandate.bump,
-        constraint = agent_mandate.authority == authority.key() @ VelaError::UnauthorizedAgentMandateAuthority,
+        bump,
     )]
-    pub agent_mandate: Account<'info, AgentMandate>,
+    pub agent_mandate: UncheckedAccount<'info>,
 
     #[account(
         mut,
@@ -77,9 +77,20 @@ pub struct DrainAgentMandate<'info> {
 }
 
 pub fn handler(ctx: Context<DrainAgentMandate>) -> Result<()> {
+    let loaded_mandate = load_agent_mandate(
+        &ctx.accounts.agent_mandate.to_account_info(),
+        &ctx.accounts.authority.key(),
+        &ctx.accounts.agent.key(),
+    )?;
+    require_keys_eq!(
+        loaded_mandate.authority(),
+        ctx.accounts.authority.key(),
+        VelaError::UnauthorizedAgentMandateAuthority
+    );
+    let mandate = loaded_mandate.into_current();
     let authority_key = ctx.accounts.authority.key();
     let agent_key = ctx.accounts.agent.key();
-    let mandate_bump = [ctx.accounts.agent_mandate.bump];
+    let mandate_bump = [mandate.bump];
     let mandate_signer_seeds: &[&[u8]] = &[
         AGENT_MANDATE_SEED,
         authority_key.as_ref(),
@@ -119,9 +130,8 @@ pub fn handler(ctx: Context<DrainAgentMandate>) -> Result<()> {
     }
 
     ctx.accounts.mandate_wrapped_account.reload()?;
-    let mandate = &ctx.accounts.agent_mandate;
     emit!(AgentMandateDrained {
-        mandate: mandate.key(),
+        mandate: ctx.accounts.agent_mandate.key(),
         authority: mandate.authority,
         agent: mandate.agent,
         status: mandate.status.clone(),

@@ -38,6 +38,8 @@ pub fn create_mock_protocol_config(
         paused: false,
         paused_at: 0,
         bump: 255, // Mock bump; the actual bump would be derived
+        version: vela_protocol::state::CURRENT_ACCOUNT_VERSION,
+        _reserved: [0; vela_protocol::state::ACCOUNT_RESERVED_BYTES],
     };
 
     let mut data = Vec::new();

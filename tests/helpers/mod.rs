@@ -263,6 +263,8 @@ impl TestHarness {
                 endpoint_len: 0,
                 keeper_authority: to_anchor_pubkey(keeper_authority.pubkey()),
                 bump,
+                version: vela_protocol::state::CURRENT_ACCOUNT_VERSION,
+                _reserved: [0; vela_protocol::state::ACCOUNT_RESERVED_BYTES],
             };
             let mut data = Vec::new();
             account
@@ -1229,6 +1231,7 @@ impl TestHarness {
         let accounts = vela_protocol::accounts::PauseProtocol {
             admin: to_anchor_pubkey(admin.pubkey()),
             config,
+            system_program: anchor_lang::system_program::ID,
         };
         let instruction = Instruction {
             program_id: self.program_id,
@@ -1250,6 +1253,7 @@ impl TestHarness {
         let accounts = vela_protocol::accounts::UnpauseProtocol {
             admin: to_anchor_pubkey(admin.pubkey()),
             config,
+            system_program: anchor_lang::system_program::ID,
         };
         let instruction = Instruction {
             program_id: self.program_id,

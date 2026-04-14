@@ -1,4 +1,5 @@
 use crate::errors::VelaError;
+use crate::instructions::keeper_config_account::initialize_keeper_config;
 use crate::instructions::protocol_config_account::load_protocol_config;
 use crate::state::{KeeperConfig, KeeperMode, ProtocolConfig};
 use anchor_lang::prelude::*;
@@ -29,19 +30,21 @@ pub fn handler(
         VelaError::UnauthorizedAdmin
     );
 
-    let config = &mut ctx.accounts.keeper_config;
-    **config = KeeperConfig::new(
+    let config = initialize_keeper_config(
+        &ctx.accounts.admin.to_account_info(),
+        &ctx.accounts.keeper_config.to_account_info(),
+        &ctx.accounts.system_program.to_account_info(),
         ctx.accounts.admin.key(),
         mode.clone(),
-        keeper_endpoint.clone(),
+        keeper_endpoint,
         keeper_authority,
         ctx.bumps.keeper_config,
-    );
+    )?;
 
     emit!(KeeperConfigInitialized {
-        admin: ctx.accounts.admin.key(),
-        mode,
-        keeper_authority,
+        admin: config.admin,
+        mode: config.mode,
+        keeper_authority: config.keeper_authority,
     });
 
     Ok(())
@@ -64,12 +67,10 @@ pub struct InitKeeperConfig<'info> {
     )]
     pub protocol_config: UncheckedAccount<'info>,
     #[account(
-        init,
-        payer = admin,
-        space = KeeperConfig::SIZE,
+        mut,
         seeds = [KeeperConfig::SEED_PREFIX],
         bump,
     )]
-    pub keeper_config: Account<'info, KeeperConfig>,
+    pub keeper_config: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }

@@ -3,7 +3,8 @@ use anchor_lang::prelude::*;
 use crate::{
     constants::AGENT_MANDATE_SEED,
     errors::VelaError,
-    state::{AgentMandate, AgentMandateStatus},
+    instructions::agent_mandate_account::{load_agent_mandate, write_agent_mandate},
+    state::AgentMandateStatus,
 };
 
 #[derive(Accounts)]
@@ -16,14 +17,25 @@ pub struct ResumeAgentMandate<'info> {
     #[account(
         mut,
         seeds = [AGENT_MANDATE_SEED, authority.key().as_ref(), agent.key().as_ref()],
-        bump = agent_mandate.bump,
-        constraint = agent_mandate.authority == authority.key() @ VelaError::UnauthorizedAgentMandateAuthority,
+        bump,
     )]
-    pub agent_mandate: Account<'info, AgentMandate>,
+    pub agent_mandate: UncheckedAccount<'info>,
 }
 
 pub fn handler(ctx: Context<ResumeAgentMandate>) -> Result<()> {
-    let mandate = &mut ctx.accounts.agent_mandate;
+    let mandate_info = ctx.accounts.agent_mandate.to_account_info();
+    let loaded_mandate = load_agent_mandate(
+        &mandate_info,
+        &ctx.accounts.authority.key(),
+        &ctx.accounts.agent.key(),
+    )?;
+    require_keys_eq!(
+        loaded_mandate.authority(),
+        ctx.accounts.authority.key(),
+        VelaError::UnauthorizedAgentMandateAuthority
+    );
+    let legacy_layout = loaded_mandate.is_legacy();
+    let mut mandate = loaded_mandate.into_current();
     match mandate.status {
         AgentMandateStatus::Paused => {
             mandate.status = AgentMandateStatus::Active;
@@ -33,8 +45,10 @@ pub fn handler(ctx: Context<ResumeAgentMandate>) -> Result<()> {
         }
     }
 
+    write_agent_mandate(&mandate_info, &mandate, legacy_layout)?;
+
     emit!(AgentMandateResumed {
-        mandate: mandate.key(),
+        mandate: ctx.accounts.agent_mandate.key(),
         authority: mandate.authority,
         agent: mandate.agent,
         daily_spent: mandate.daily_spent,

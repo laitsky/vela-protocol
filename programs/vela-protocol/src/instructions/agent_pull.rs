@@ -14,7 +14,8 @@ use crate::{
         TRANSFER_HOOK_PROGRAM_ID, USDC_DECIMALS,
     },
     errors::VelaError,
-    state::{AgentMandate, AgentMandateStatus, ProtocolConfig, PullApproval},
+    instructions::agent_mandate_account::{load_agent_mandate, write_agent_mandate},
+    state::{AgentMandateStatus, ProtocolConfig, PullApproval},
 };
 
 #[derive(Accounts)]
@@ -30,9 +31,9 @@ pub struct AgentPull<'info> {
     #[account(
         mut,
         seeds = [AGENT_MANDATE_SEED, authority.key().as_ref(), agent.key().as_ref()],
-        bump = agent_mandate.bump,
+        bump,
     )]
-    pub agent_mandate: Box<Account<'info, AgentMandate>>,
+    pub agent_mandate: UncheckedAccount<'info>,
 
     #[account(
         mut,
@@ -100,9 +101,17 @@ pub fn handler<'a, 'b, 'c, 'info>(
     ctx: Context<'a, 'b, 'c, 'info, AgentPull<'info>>,
     amount: u64,
 ) -> Result<()> {
+    let mandate_info = ctx.accounts.agent_mandate.to_account_info();
+    let loaded_mandate = load_agent_mandate(
+        &mandate_info,
+        &ctx.accounts.authority.key(),
+        &ctx.accounts.agent.key(),
+    )?;
+    let legacy_layout = loaded_mandate.is_legacy();
+    let mut mandate = loaded_mandate.into_current();
     let now = Clock::get()?.unix_timestamp;
 
-    match ctx.accounts.agent_mandate.status {
+    match mandate.status {
         AgentMandateStatus::Active => {}
         AgentMandateStatus::Paused => return Err(VelaError::MandatePaused.into()),
         AgentMandateStatus::Revoked => return Err(VelaError::MandateRevoked.into()),
@@ -113,14 +122,11 @@ pub fn handler<'a, 'b, 'c, 'info>(
     );
 
     let service = ctx.accounts.service_wrapped_account.owner;
-    let service_index = ctx
-        .accounts
-        .agent_mandate
+    let service_index = mandate
         .find_service_index(&service)
         .ok_or(VelaError::UnauthorizedService)?;
 
     let (next_service_spent, next_daily_spent, next_total_spent) = {
-        let mandate = &mut ctx.accounts.agent_mandate;
         mandate.reset_service_daily_if_needed(service_index, now);
         mandate.reset_daily_if_needed(now);
 
@@ -190,7 +196,7 @@ pub fn handler<'a, 'b, 'c, 'info>(
 
     let authority_key = ctx.accounts.authority.key();
     let agent_key = ctx.accounts.agent.key();
-    let mandate_bump = [ctx.accounts.agent_mandate.bump];
+    let mandate_bump = [mandate.bump];
     let mandate_signer_seeds: &[&[u8]] = &[
         AGENT_MANDATE_SEED,
         authority_key.as_ref(),
@@ -202,7 +208,7 @@ pub fn handler<'a, 'b, 'c, 'info>(
     let source_info = ctx.accounts.mandate_wrapped_account.to_account_info();
     let mint_info = ctx.accounts.wrapped_usdc_mint.to_account_info();
     let destination_info = ctx.accounts.service_wrapped_account.to_account_info();
-    let authority_info = ctx.accounts.agent_mandate.to_account_info();
+    let authority_info = mandate_info.clone();
     let mut transfer_ix = spl_token_2022::instruction::transfer_checked(
         &spl_pubkey(ctx.accounts.token_2022_program.key),
         &spl_pubkey(source_info.key),
@@ -250,7 +256,6 @@ pub fn handler<'a, 'b, 'c, 'info>(
         .ok_or(VelaError::Overflow)?;
     **approval_info.lamports.borrow_mut() = 0;
 
-    let mandate = &mut ctx.accounts.agent_mandate;
     let service_state = mandate
         .services
         .get_mut(service_index)
@@ -259,10 +264,11 @@ pub fn handler<'a, 'b, 'c, 'info>(
     mandate.daily_spent = next_daily_spent;
     mandate.total_spent = next_total_spent;
     mandate.last_pull_at = now;
+    write_agent_mandate(&mandate_info, &mandate, legacy_layout)?;
     ctx.accounts.mandate_wrapped_account.reload()?;
 
     emit!(AgentPullExecuted {
-        mandate: mandate.key(),
+        mandate: ctx.accounts.agent_mandate.key(),
         authority: mandate.authority,
         agent: mandate.agent,
         service,

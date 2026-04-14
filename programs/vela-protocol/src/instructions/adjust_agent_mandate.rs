@@ -7,6 +7,7 @@ use anchor_spl::{
 use crate::{
     constants::AGENT_MANDATE_SEED,
     errors::VelaError,
+    instructions::agent_mandate_account::{load_agent_mandate, write_agent_mandate},
     instructions::ServiceLimitInput,
     state::{AgentMandate, AgentMandateStatus, ProtocolConfig, ServiceLimit},
 };
@@ -21,10 +22,9 @@ pub struct AdjustAgentMandate<'info> {
     #[account(
         mut,
         seeds = [AGENT_MANDATE_SEED, authority.key().as_ref(), agent.key().as_ref()],
-        bump = agent_mandate.bump,
-        constraint = agent_mandate.authority == authority.key() @ VelaError::UnauthorizedAgentMandateAuthority,
+        bump,
     )]
-    pub agent_mandate: Account<'info, AgentMandate>,
+    pub agent_mandate: UncheckedAccount<'info>,
 
     #[account(
         token::mint = wrapped_usdc_mint,
@@ -65,7 +65,19 @@ pub fn handler(
         VelaError::NoUpdateProvided
     );
 
-    let mandate = &mut ctx.accounts.agent_mandate;
+    let mandate_info = ctx.accounts.agent_mandate.to_account_info();
+    let loaded_mandate = load_agent_mandate(
+        &mandate_info,
+        &ctx.accounts.authority.key(),
+        &ctx.accounts.agent.key(),
+    )?;
+    require_keys_eq!(
+        loaded_mandate.authority(),
+        ctx.accounts.authority.key(),
+        VelaError::UnauthorizedAgentMandateAuthority
+    );
+    let legacy_layout = loaded_mandate.is_legacy();
+    let mut mandate = loaded_mandate.into_current();
     match mandate.status {
         AgentMandateStatus::Active | AgentMandateStatus::Paused => {}
         AgentMandateStatus::Revoked => {
@@ -133,8 +145,10 @@ pub fn handler(
         mandate.services = updated_services;
     }
 
+    write_agent_mandate(&mandate_info, &mandate, legacy_layout)?;
+
     emit!(AgentMandateAdjusted {
-        mandate: mandate.key(),
+        mandate: ctx.accounts.agent_mandate.key(),
         authority: mandate.authority,
         agent: mandate.agent,
         daily_limit: mandate.daily_limit,

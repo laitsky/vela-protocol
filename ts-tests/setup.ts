@@ -42,8 +42,8 @@ const MINT_AUTHORITY_SEED = Buffer.from("mint-authority");
 const EXTRA_ACCOUNT_METAS_SEED = Buffer.from("extra-account-metas");
 const APPROVAL_SEED = Buffer.from("approval");
 const EMPTY_PUBKEY = new PublicKey(new Uint8Array(32));
-const PROTOCOL_CONFIG_SIZE = 155;
-const KEEPER_CONFIG_SIZE = 203;
+const PROTOCOL_CONFIG_SIZE = 220;
+const KEEPER_CONFIG_SIZE = 268;
 const PULL_APPROVAL_SIZE = 66;
 
 export type VelaProgram = Program<any>;
@@ -94,6 +94,7 @@ function serializeProtocolConfig(admin: PublicKey, bump: number): Uint8Array {
   data.writeUInt8(0, 145);
   data.writeBigInt64LE(0n, 146);
   data.writeUInt8(bump, 154);
+  data.writeUInt8(1, 155);
   return data;
 }
 
@@ -109,6 +110,7 @@ function serializeKeeperConfig(
   data.writeUInt8(0, 169);
   keeperAuthority.toBuffer().copy(data, 170);
   data.writeUInt8(bump, 202);
+  data.writeUInt8(1, 203);
   return data;
 }
 

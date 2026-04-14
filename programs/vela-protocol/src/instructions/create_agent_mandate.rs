@@ -11,6 +11,7 @@ use anchor_spl::{
 use crate::{
     constants::{AGENT_MANDATE_SEED, MINT_AUTHORITY_SEED, USDC_DECIMALS},
     errors::VelaError,
+    instructions::agent_mandate_account::{initialize_agent_mandate, load_agent_mandate},
     state::{AgentMandate, AgentMandateStatus, ProtocolConfig, ServiceLimit},
 };
 
@@ -29,13 +30,11 @@ pub struct CreateAgentMandate<'info> {
     pub agent: UncheckedAccount<'info>,
 
     #[account(
-        init,
-        payer = authority,
-        space = AgentMandate::SIZE,
+        mut,
         seeds = [AGENT_MANDATE_SEED, authority.key().as_ref(), agent.key().as_ref()],
         bump,
     )]
-    pub agent_mandate: Account<'info, AgentMandate>,
+    pub agent_mandate: UncheckedAccount<'info>,
 
     #[account(
         mut,
@@ -125,21 +124,38 @@ pub fn handler(
         })
         .collect();
 
-    ctx.accounts.agent_mandate.set_inner(AgentMandate {
-        authority: ctx.accounts.authority.key(),
-        agent: ctx.accounts.agent.key(),
+    if !ctx.accounts.agent_mandate.data_is_empty() {
+        let _existing = load_agent_mandate(
+            &ctx.accounts.agent_mandate.to_account_info(),
+            &ctx.accounts.authority.key(),
+            &ctx.accounts.agent.key(),
+        )?;
+        return Err(VelaError::AgentMandateAlreadyExists.into());
+    }
+
+    let mandate = AgentMandate::new(
+        ctx.accounts.authority.key(),
+        ctx.accounts.agent.key(),
         daily_limit,
-        daily_spent: 0,
-        daily_last_reset: now,
+        0,
+        now,
         lifetime_cap,
-        total_spent: 0,
+        0,
         min_pull_amount,
         min_pull_interval,
-        last_pull_at: 0,
-        status: AgentMandateStatus::Active,
-        services: mapped_services,
-        bump: ctx.bumps.agent_mandate,
-    });
+        0,
+        AgentMandateStatus::Active,
+        mapped_services,
+        ctx.bumps.agent_mandate,
+    );
+    initialize_agent_mandate(
+        &ctx.accounts.authority.to_account_info(),
+        &ctx.accounts.agent_mandate.to_account_info(),
+        &ctx.accounts.system_program.to_account_info(),
+        &ctx.accounts.authority.key(),
+        &ctx.accounts.agent.key(),
+        &mandate,
+    )?;
 
     let transfer_ctx = CpiContext::new(
         ctx.accounts.spl_token_program.to_account_info(),
@@ -173,7 +189,7 @@ pub fn handler(
         agent: ctx.accounts.agent.key(),
         daily_limit,
         lifetime_cap,
-        service_count: ctx.accounts.agent_mandate.services.len() as u8,
+        service_count: mandate.services.len() as u8,
         funded_amount,
         remaining_balance: ctx.accounts.mandate_wrapped_account.amount,
     });

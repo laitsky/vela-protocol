@@ -10,7 +10,8 @@ use anchor_spl::{
 use crate::{
     constants::{AGENT_MANDATE_SEED, MINT_AUTHORITY_SEED, USDC_DECIMALS},
     errors::VelaError,
-    state::{AgentMandate, AgentMandateStatus, ProtocolConfig},
+    instructions::agent_mandate_account::{load_agent_mandate, write_agent_mandate},
+    state::{AgentMandateStatus, ProtocolConfig},
 };
 
 #[derive(Accounts)]
@@ -23,10 +24,9 @@ pub struct RevokeAgentMandate<'info> {
     #[account(
         mut,
         seeds = [AGENT_MANDATE_SEED, authority.key().as_ref(), agent.key().as_ref()],
-        bump = agent_mandate.bump,
-        constraint = agent_mandate.authority == authority.key() @ VelaError::UnauthorizedAgentMandateAuthority,
+        bump,
     )]
-    pub agent_mandate: Account<'info, AgentMandate>,
+    pub agent_mandate: UncheckedAccount<'info>,
 
     #[account(
         mut,
@@ -77,7 +77,21 @@ pub struct RevokeAgentMandate<'info> {
 }
 
 pub fn handler(ctx: Context<RevokeAgentMandate>) -> Result<()> {
-    match ctx.accounts.agent_mandate.status {
+    let mandate_info = ctx.accounts.agent_mandate.to_account_info();
+    let loaded_mandate = load_agent_mandate(
+        &mandate_info,
+        &ctx.accounts.authority.key(),
+        &ctx.accounts.agent.key(),
+    )?;
+    require_keys_eq!(
+        loaded_mandate.authority(),
+        ctx.accounts.authority.key(),
+        VelaError::UnauthorizedAgentMandateAuthority
+    );
+    let legacy_layout = loaded_mandate.is_legacy();
+    let mut mandate = loaded_mandate.into_current();
+
+    match mandate.status {
         AgentMandateStatus::Active | AgentMandateStatus::Paused => {}
         AgentMandateStatus::Revoked => {
             return Err(VelaError::InvalidAgentMandateStatusTransition.into());
@@ -86,7 +100,7 @@ pub fn handler(ctx: Context<RevokeAgentMandate>) -> Result<()> {
 
     let authority_key = ctx.accounts.authority.key();
     let agent_key = ctx.accounts.agent.key();
-    let mandate_bump = [ctx.accounts.agent_mandate.bump];
+    let mandate_bump = [mandate.bump];
     let mandate_signer_seeds: &[&[u8]] = &[
         AGENT_MANDATE_SEED,
         authority_key.as_ref(),
@@ -102,7 +116,7 @@ pub fn handler(ctx: Context<RevokeAgentMandate>) -> Result<()> {
             Burn {
                 mint: ctx.accounts.wrapped_usdc_mint.to_account_info(),
                 from: ctx.accounts.mandate_wrapped_account.to_account_info(),
-                authority: ctx.accounts.agent_mandate.to_account_info(),
+                authority: mandate_info.clone(),
             },
             &mandate_signer_seed_groups,
         );
@@ -125,12 +139,12 @@ pub fn handler(ctx: Context<RevokeAgentMandate>) -> Result<()> {
         transfer_checked(transfer_ctx, amount, USDC_DECIMALS)?;
     }
 
-    let mandate = &mut ctx.accounts.agent_mandate;
     mandate.status = AgentMandateStatus::Revoked;
+    write_agent_mandate(&mandate_info, &mandate, legacy_layout)?;
 
     ctx.accounts.mandate_wrapped_account.reload()?;
     emit!(AgentMandateRevoked {
-        mandate: mandate.key(),
+        mandate: ctx.accounts.agent_mandate.key(),
         authority: mandate.authority,
         agent: mandate.agent,
         daily_spent: mandate.daily_spent,

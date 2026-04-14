@@ -169,6 +169,7 @@ fn test_config_update_by_admin() {
     let update_accounts = vela_protocol::accounts::UpdateConfig {
         admin: to_anchor_pubkey(admin.pubkey()),
         config: config_pda,
+        system_program: anchor_lang::system_program::ID,
     };
 
     let update_instruction_data = UpdateConfig {
@@ -262,6 +263,7 @@ fn test_config_update_by_non_admin_fails() {
     let update_accounts = vela_protocol::accounts::UpdateConfig {
         admin: to_anchor_pubkey(non_admin.pubkey()),
         config: config_pda,
+        system_program: anchor_lang::system_program::ID,
     };
 
     let update_instruction_data = UpdateConfig {
