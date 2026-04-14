@@ -2,7 +2,6 @@
 mod helpers;
 
 use helpers::TestHarness;
-use anchor_lang::prelude::Pubkey;
 use vela_protocol::{
     constants::MIN_FREQUENCY_SECONDS,
     state::{PlanStatus, VelaPlan, CURRENT_ACCOUNT_VERSION, ACCOUNT_RESERVED_BYTES},
@@ -37,7 +36,6 @@ fn test_update_flat_plan_modifies_fields() {
     let new_max_pulls = 24u64;
 
     harness.send_update_plan(
-        &harness.merchant,
         0,
         Some(new_amount),
         Some(new_frequency),
@@ -73,7 +71,7 @@ fn test_update_flat_plan_rejects_non_merchant() {
 
     let imposter = harness.create_wallet();
 
-    let result = harness.send_update_plan(
+    let result = harness.send_update_plan_as(
         &imposter,
         0,
         Some(50_000_000),
@@ -94,7 +92,6 @@ fn test_update_flat_plan_rejects_empty_update() {
         .expect("create_plan should succeed");
 
     let result = harness.send_update_plan(
-        &harness.merchant,
         0,
         None,
         None,
@@ -120,9 +117,7 @@ fn test_update_flat_plan_partial_update() {
 
     // Only update amount
     let new_amount = 99_000_000u64;
-    let merchant = harness.merchant.clone();
     harness.send_update_plan(
-        &merchant,
         0,
         Some(new_amount),
         None,

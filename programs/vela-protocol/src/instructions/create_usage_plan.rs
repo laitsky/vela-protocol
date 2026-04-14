@@ -23,7 +23,7 @@ use crate::{
     constants::CREDENTIAL_DECIMALS,
     errors::VelaError,
     instructions::merchant_account::ensure_merchant_state,
-    state::{PlanStatus, PricingTier, UsagePlan},
+    state::{PlanStatus, PricingTier, UsagePlan, CURRENT_ACCOUNT_VERSION, ACCOUNT_RESERVED_BYTES},
 };
 
 #[derive(Accounts)]
@@ -277,6 +277,8 @@ pub fn handler(
         credential_mint: credential_mint_key,
         status: PlanStatus::Active,
         bump: ctx.bumps.usage_plan,
+        version: CURRENT_ACCOUNT_VERSION,
+        _reserved: [0; ACCOUNT_RESERVED_BYTES],
     });
 
     Ok(())

@@ -99,8 +99,10 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
     let plan_id_bytes = plan.plan_id().to_le_bytes();
     let plan_bump = [plan.bump()];
     let plan_seed_prefix = match &plan {
-        crate::instructions::plan_account::LoadedPlanAccount::Flat(_) => VelaPlan::SEED_PREFIX,
-        crate::instructions::plan_account::LoadedPlanAccount::Usage(_) => UsagePlan::SEED_PREFIX,
+        crate::instructions::plan_account::LoadedPlanAccount::Flat(_)
+        | crate::instructions::plan_account::LoadedPlanAccount::LegacyFlat(_) => VelaPlan::SEED_PREFIX,
+        crate::instructions::plan_account::LoadedPlanAccount::Usage(_)
+        | crate::instructions::plan_account::LoadedPlanAccount::LegacyUsage(_) => UsagePlan::SEED_PREFIX,
     };
     let signer_seeds: &[&[u8]] = &[
         plan_seed_prefix,

@@ -2,7 +2,6 @@
 mod helpers;
 
 use helpers::TestHarness;
-use anchor_lang::prelude::Pubkey;
 use vela_protocol::{
     state::{PlanStatus, PricingTier, UsagePlan, CURRENT_ACCOUNT_VERSION, ACCOUNT_RESERVED_BYTES},
 };
@@ -40,7 +39,6 @@ fn test_update_usage_plan_modifies_fields() {
     let new_settlement = 7200u64;
 
     harness.send_update_usage_plan(
-        &harness.merchant,
         plan_id,
         Some(new_tiers.clone()),
         Some(new_max_charge),
@@ -81,7 +79,7 @@ fn test_update_usage_plan_rejects_non_merchant() {
 
     let imposter = harness.create_wallet();
 
-    let result = harness.send_update_usage_plan(
+    let result = harness.send_update_usage_plan_as(
         &imposter,
         plan_id,
         None,
@@ -105,7 +103,6 @@ fn test_update_usage_plan_rejects_empty_update() {
         .expect("create_usage_plan should succeed");
 
     let result = harness.send_update_usage_plan(
-        &harness.merchant,
         plan_id,
         None,
         None,
@@ -133,7 +130,6 @@ fn test_update_usage_plan_partial_update() {
     let new_max_charge = 200_000_000u64;
     let addresses = harness.derive_usage_plan_addresses(plan_id);
     harness.send_update_usage_plan(
-        &harness.merchant,
         plan_id,
         None,
         Some(new_max_charge),

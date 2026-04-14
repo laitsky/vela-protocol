@@ -216,6 +216,20 @@ pub fn handler<'a, 'b, 'c, 'info>(
             );
             approval.approved_amount
         }
+        LoadedPlanAccount::LegacyFlat(plan) => {
+            require!(
+                plan.amount <= approval.approved_amount,
+                VelaError::AmountExceedsPlanAmount
+            );
+            plan.amount
+        }
+        LoadedPlanAccount::LegacyUsage(_) => {
+            require!(
+                approval.approved_amount <= ctx.accounts.mandate.amount,
+                VelaError::AmountExceedsPlanAmount
+            );
+            approval.approved_amount
+        }
     };
 
     // Settle the billing move as an actual Token-2022 transfer_checked.

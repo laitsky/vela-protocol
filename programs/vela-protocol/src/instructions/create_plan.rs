@@ -5,7 +5,6 @@ use anchor_lang::{
         program_error::ProgramError,
         system_instruction,
     },
-    AccountSerialize,
 };
 use solana_instruction::Instruction as SplInstruction;
 use solana_program_error::ProgramError as SplProgramError;
@@ -25,7 +24,8 @@ use crate::{
     constants::{CREDENTIAL_DECIMALS, MIN_FREQUENCY_SECONDS},
     errors::VelaError,
     instructions::merchant_account::{ensure_merchant_state, write_merchant_state},
-    state::{MerchantState, PlanStatus, VelaPlan},
+    instructions::plan_account::write_plan,
+    state::{MerchantState, PlanStatus, VelaPlan, CURRENT_ACCOUNT_VERSION, ACCOUNT_RESERVED_BYTES},
 };
 
 #[derive(Accounts)]
@@ -282,6 +282,8 @@ pub fn handler(
         status: PlanStatus::Active,
         credential_mint: credential_mint_key,
         bump: plan_bump,
+        version: CURRENT_ACCOUNT_VERSION,
+        _reserved: [0; ACCOUNT_RESERVED_BYTES],
     };
     write_plan(&ctx.accounts.plan.to_account_info(), &plan_state)?;
 
@@ -364,11 +366,4 @@ fn map_interface_error(error: SplProgramError) -> anchor_lang::error::Error {
         SplProgramError::IncorrectAuthority => ProgramError::IncorrectAuthority,
     };
     error.into()
-}
-
-fn write_plan(plan_info: &AccountInfo<'_>, plan: &VelaPlan) -> Result<()> {
-    let mut data = plan_info.try_borrow_mut_data()?;
-    let mut slice: &mut [u8] = &mut data[..];
-    plan.try_serialize(&mut slice)?;
-    Ok(())
 }

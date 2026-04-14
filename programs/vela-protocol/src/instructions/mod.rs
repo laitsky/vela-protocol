@@ -16,6 +16,7 @@ pub mod init_keeper_config;
 pub mod init_wrapped_mint;
 pub mod keeper_config_account;
 pub mod merchant_account;
+pub mod migrate_plan;
 pub mod pause_agent_mandate;
 pub mod pause_protocol;
 pub mod protocol_config_account;
@@ -30,6 +31,8 @@ pub mod subscribe;
 pub mod unpause_protocol;
 pub mod unwrap;
 pub mod update_keeper_config;
+pub mod update_plan;
+pub mod update_usage_plan;
 pub mod usage_computation_callback;
 pub mod validation_callback;
 pub mod wrap;
@@ -158,6 +161,18 @@ pub mod __client_accounts_usage_computation_callback {
     pub use super::usage_computation_callback::__client_accounts_usage_computation_callback::*;
 }
 
+pub mod __client_accounts_migrate_plan {
+    pub use super::migrate_plan::__client_accounts_migrate_plan::*;
+}
+
+pub mod __client_accounts_update_plan {
+    pub use super::update_plan::__client_accounts_update_plan::*;
+}
+
+pub mod __client_accounts_update_usage_plan {
+    pub use super::update_usage_plan::__client_accounts_update_usage_plan::*;
+}
+
 pub use admin_cancel::AdminCancel;
 pub use adjust_agent_mandate::AdjustAgentMandate;
 pub use agent_pull::AgentPull;
@@ -173,6 +188,7 @@ pub use init_comp_defs::{InitRecordBillingCompDef, InitValidateMandateCompDef};
 pub use init_config::{InitConfig, InitConfigIx, UpdateConfig, UpdateConfigIx};
 pub use init_keeper_config::InitKeeperConfig;
 pub use init_wrapped_mint::InitWrappedMint;
+pub use migrate_plan::MigratePlan;
 pub use pause_agent_mandate::PauseAgentMandate;
 pub use pause_protocol::PauseProtocol;
 pub use request_billing_record::RequestBillingRecord;
@@ -183,6 +199,8 @@ pub use subscribe::Subscribe;
 pub use unpause_protocol::UnpauseProtocol;
 pub use unwrap::Unwrap;
 pub use update_keeper_config::UpdateKeeperConfig;
+pub use update_plan::UpdatePlan;
+pub use update_usage_plan::UpdateUsagePlan;
 pub use request_usage_computation::RequestUsageComputation;
 pub use usage_computation_callback::{UsageChargeOutput, UsageComputationCallback};
 pub use validation_callback::ValidateMandateCallback;

@@ -10,10 +10,12 @@ use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
     AdjustAgentMandate, AdminCancel, AgentPull, Cancel, CreateAgentMandate, CreatePlan,
     CreateUsagePlan, DrainAgentMandate, ExecutePull, InitConfig, InitKeeperConfig,
-    InitRecordBillingCompDef, InitValidateMandateCompDef, InitWrappedMint, PauseAgentMandate,
+    InitRecordBillingCompDef, InitValidateMandateCompDef, InitWrappedMint, MigratePlan,
+    PauseAgentMandate,
     PauseProtocol, RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation,
     RequestValidation, ResumeAgentMandate, RevokeAgentMandate, SubmitUsageReport, Subscribe,
-    UnpauseProtocol, Unwrap, UpdateConfig, UpdateKeeperConfig, UsageChargeOutput,
+    UnpauseProtocol, Unwrap, UpdateConfig, UpdateKeeperConfig, UpdatePlan, UpdateUsagePlan,
+    UsageChargeOutput,
     UsageComputationCallback, ValidateMandateCallback,
     ServiceLimitInput,
     Wrap,
@@ -145,6 +147,18 @@ mod __client_accounts_request_usage_computation {
 
 mod __client_accounts_usage_computation_callback {
     pub use crate::instructions::__client_accounts_usage_computation_callback::*;
+}
+
+mod __client_accounts_migrate_plan {
+    pub use crate::instructions::__client_accounts_migrate_plan::*;
+}
+
+mod __client_accounts_update_plan {
+    pub use crate::instructions::__client_accounts_update_plan::*;
+}
+
+mod __client_accounts_update_usage_plan {
+    pub use crate::instructions::__client_accounts_update_usage_plan::*;
 }
 
 declare_id!("BhgXzh4E6e9xsgNrsPf9q1JqXKxETxjc9LBqx3D8cAKC");
@@ -390,6 +404,29 @@ pub mod vela_protocol {
         keeper_authority: Option<Pubkey>,
     ) -> Result<()> {
         instructions::update_keeper_config::handler(ctx, mode, keeper_endpoint, keeper_authority)
+    }
+
+    pub fn migrate_plan(ctx: Context<MigratePlan>) -> Result<()> {
+        instructions::migrate_plan::handler(ctx)
+    }
+
+    pub fn update_plan(
+        ctx: Context<UpdatePlan>,
+        amount: Option<u64>,
+        frequency: Option<u64>,
+        trial_period: Option<u64>,
+        max_pulls: Option<u64>,
+    ) -> Result<()> {
+        instructions::update_plan::handler(ctx, amount, frequency, trial_period, max_pulls)
+    }
+
+    pub fn update_usage_plan(
+        ctx: Context<UpdateUsagePlan>,
+        tiers: Option<Vec<PricingTier>>,
+        max_charge_per_period: Option<u64>,
+        settlement_frequency: Option<u64>,
+    ) -> Result<()> {
+        instructions::update_usage_plan::handler(ctx, tiers, max_charge_per_period, settlement_frequency)
     }
 
 }

@@ -1,5 +1,7 @@
 use anchor_lang::prelude::*;
 
+use super::ACCOUNT_RESERVED_BYTES;
+
 #[account]
 pub struct VelaPlan {
     pub merchant: Pubkey,
@@ -11,11 +13,13 @@ pub struct VelaPlan {
     pub status: PlanStatus,
     pub credential_mint: Pubkey,
     pub bump: u8,
+    pub version: u8,
+    pub _reserved: [u8; ACCOUNT_RESERVED_BYTES],
 }
 
 impl VelaPlan {
     pub const SEED_PREFIX: &'static [u8] = b"plan";
-    pub const SIZE: usize = 8 + 32 + 8 + 8 + 8 + 8 + 8 + 1 + 32 + 1;
+    pub const SIZE: usize = 8 + 32 + 8 + 8 + 8 + 8 + 8 + 1 + 32 + 1 + 1 + ACCOUNT_RESERVED_BYTES;
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]

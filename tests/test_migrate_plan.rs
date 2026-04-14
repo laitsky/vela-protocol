@@ -1,9 +1,8 @@
 #[path = "helpers/mod.rs"]
 mod helpers;
 
-use borsh::{BorshSerialize, BorshDeserialize};
-use helpers::TestHarness;
-use anchor_lang::{prelude::Pubkey, Discriminator};
+use anchor_lang::prelude::Pubkey;
+use helpers::{TestHarness, to_address};
 use vela_protocol::{
     constants::MIN_FREQUENCY_SECONDS,
     state::{
@@ -12,33 +11,56 @@ use vela_protocol::{
     },
 };
 
-/// Legacy flat plan layout without version/_reserved fields.
-#[derive(BorshSerialize, BorshDeserialize)]
-struct VelaPlanV1 {
-    merchant: Pubkey,
+/// Build V1 flat plan bytes manually (no version/_reserved fields).
+fn build_v1_flat_plan_bytes(
+    merchant: &Pubkey,
     plan_id: u64,
     amount: u64,
     frequency: u64,
     trial_period: u64,
     max_pulls: u64,
-    status: PlanStatus,
-    credential_mint: Pubkey,
+    status: &PlanStatus,
+    credential_mint: &Pubkey,
     bump: u8,
+) -> Vec<u8> {
+    let mut data = Vec::new();
+    anchor_lang::AnchorSerialize::serialize(merchant, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(&plan_id, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(&amount, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(&frequency, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(&trial_period, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(&max_pulls, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(status, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(credential_mint, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(&bump, &mut data).unwrap();
+    data
 }
 
-/// Legacy usage plan layout without version/_reserved fields.
-#[derive(BorshSerialize, BorshDeserialize)]
-struct UsagePlanV1 {
-    merchant: Pubkey,
+/// Build V1 usage plan bytes manually (no version/_reserved fields).
+fn build_v1_usage_plan_bytes(
+    merchant: &Pubkey,
     plan_id: u64,
-    unit_name: [u8; 32],
-    tiers: [PricingTier; 5],
+    unit_name: &[u8; 32],
+    tiers: &[PricingTier; 5],
     tier_count: u8,
     max_charge_per_period: u64,
     settlement_frequency: u64,
-    credential_mint: Pubkey,
-    status: PlanStatus,
+    credential_mint: &Pubkey,
+    status: &PlanStatus,
     bump: u8,
+) -> Vec<u8> {
+    let mut data = Vec::new();
+    anchor_lang::AnchorSerialize::serialize(merchant, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(&plan_id, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(unit_name, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(tiers, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(&tier_count, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(&max_charge_per_period, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(&settlement_frequency, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(credential_mint, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(status, &mut data).unwrap();
+    anchor_lang::AnchorSerialize::serialize(&bump, &mut data).unwrap();
+    data
 }
 
 fn inject_legacy_flat_plan(
@@ -53,23 +75,17 @@ fn inject_legacy_flat_plan(
     credential_mint: &Pubkey,
     bump: u8,
 ) {
-    let legacy = VelaPlanV1 {
-        merchant: *merchant,
-        plan_id,
-        amount,
-        frequency,
-        trial_period,
-        max_pulls,
-        status: PlanStatus::Active,
-        credential_mint: *credential_mint,
-        bump,
-    };
+    use anchor_lang::Discriminator;
+    let body = build_v1_flat_plan_bytes(
+        merchant, plan_id, amount, frequency, trial_period, max_pulls,
+        &PlanStatus::Active, credential_mint, bump,
+    );
     let mut full_data = Vec::new();
     full_data.extend_from_slice(&VelaPlan::DISCRIMINATOR);
-    legacy.serialize(&mut full_data).expect("legacy plan should serialize");
+    full_data.extend_from_slice(&body);
 
     harness.svm.set_account(
-        helpers::to_address(*plan_key),
+        to_address(*plan_key),
         solana_account::Account {
             lamports: 1_500_000,
             data: full_data,
@@ -85,32 +101,26 @@ fn inject_legacy_usage_plan(
     plan_key: &Pubkey,
     merchant: &Pubkey,
     plan_id: u64,
-    unit_name: [u8; 32],
-    tiers: [PricingTier; 5],
+    unit_name: &[u8; 32],
+    tiers: &[PricingTier; 5],
     tier_count: u8,
     max_charge_per_period: u64,
     settlement_frequency: u64,
     credential_mint: &Pubkey,
     bump: u8,
 ) {
-    let legacy = UsagePlanV1 {
-        merchant: *merchant,
-        plan_id,
-        unit_name,
-        tiers,
-        tier_count,
-        max_charge_per_period,
-        settlement_frequency,
-        credential_mint: *credential_mint,
-        status: PlanStatus::Active,
-        bump,
-    };
+    use anchor_lang::Discriminator;
+    let body = build_v1_usage_plan_bytes(
+        merchant, plan_id, unit_name, tiers, tier_count,
+        max_charge_per_period, settlement_frequency, credential_mint,
+        &PlanStatus::Active, bump,
+    );
     let mut full_data = Vec::new();
     full_data.extend_from_slice(&UsagePlan::DISCRIMINATOR);
-    legacy.serialize(&mut full_data).expect("legacy usage plan should serialize");
+    full_data.extend_from_slice(&body);
 
     harness.svm.set_account(
-        helpers::to_address(*plan_key),
+        to_address(*plan_key),
         solana_account::Account {
             lamports: 1_500_000,
             data: full_data,
@@ -225,7 +235,7 @@ fn test_migrate_flat_plan_preserves_business_fields() {
     assert_eq!(plan_data.len(), v1_expected_size, "V1 plan should have legacy size");
 
     // Migrate the plan
-    harness.send_migrate_plan(&harness.merchant, &addresses.plan)
+    harness.send_migrate_plan(&addresses.plan)
         .expect("migrate_plan should succeed");
 
     // Verify V2 plan data
@@ -281,8 +291,8 @@ fn test_migrate_usage_plan_preserves_business_fields() {
         &addresses.usage_plan,
         &merchant,
         plan_id,
-        [0u8; 32],
-        tiers,
+        &[0u8; 32],
+        &tiers,
         1,
         max_charge,
         settlement_freq,
@@ -291,7 +301,7 @@ fn test_migrate_usage_plan_preserves_business_fields() {
     );
 
     // Migrate the plan
-    harness.send_migrate_plan(&harness.merchant, &addresses.usage_plan)
+    harness.send_migrate_plan(&addresses.usage_plan)
         .expect("migrate_plan should succeed for usage plans");
 
     let plan: UsagePlan = harness.fetch_anchor_account(&addresses.usage_plan);
@@ -321,7 +331,7 @@ fn test_migrate_plan_idempotent_on_v2() {
     assert_eq!(before.version, CURRENT_ACCOUNT_VERSION);
 
     // Migrating an already-V2 plan should succeed without errors
-    harness.send_migrate_plan(&harness.merchant, &addresses.plan)
+    harness.send_migrate_plan(&addresses.plan)
         .expect("migrate_plan should be idempotent on V2 plans");
 
     let after: VelaPlan = harness.fetch_anchor_account(&addresses.plan);
