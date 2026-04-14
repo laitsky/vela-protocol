@@ -1708,6 +1708,72 @@ impl TestHarness {
         self.svm.send_transaction(tx)
     }
 
+    pub fn derive_legacy_mandate_address(&self, subscriber: &Pubkey, plan: &Pubkey) -> Pubkey {
+        Pubkey::find_program_address(
+            &[
+                vela_protocol::state::VelaMandate::SEED_PREFIX,
+                subscriber.as_ref(),
+                plan.as_ref(),
+            ],
+            &vela_protocol::ID,
+        )
+        .0
+    }
+
+    pub fn send_migrate_mandate(
+        &mut self,
+        subscriber: &Pubkey,
+        plan: &Pubkey,
+        legacy_mandate: &Pubkey,
+        migrated_mandate: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let admin = self.merchant.insecure_clone();
+        self.send_migrate_mandate_as(
+            &admin,
+            subscriber,
+            plan,
+            legacy_mandate,
+            migrated_mandate,
+        )
+    }
+
+    pub fn send_migrate_mandate_as(
+        &mut self,
+        admin: &Keypair,
+        subscriber: &Pubkey,
+        plan: &Pubkey,
+        legacy_mandate: &Pubkey,
+        migrated_mandate: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let config = self.derive_config();
+        let merchant = self.merchant_pubkey();
+        let (merchant_state, _) = Pubkey::find_program_address(
+            &[vela_protocol::state::MerchantState::SEED_PREFIX, merchant.as_ref()],
+            &vela_protocol::ID,
+        );
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: vec![
+                AccountMeta::new(to_address(to_anchor_pubkey(admin.pubkey())), true),
+                AccountMeta::new_readonly(to_address(config), false),
+                AccountMeta::new(to_address(merchant_state), false),
+                AccountMeta::new_readonly(to_address(*subscriber), false),
+                AccountMeta::new_readonly(to_address(merchant), false),
+                AccountMeta::new_readonly(to_address(*plan), false),
+                AccountMeta::new(to_address(*legacy_mandate), false),
+                AccountMeta::new(to_address(*migrated_mandate), false),
+                AccountMeta::new_readonly(to_address(anchor_lang::system_program::ID), false),
+                AccountMeta::new_readonly(
+                    to_address(anchor_lang::solana_program::sysvar::rent::ID),
+                    false,
+                ),
+            ],
+            data: instruction_discriminator("migrate_mandate").to_vec(),
+        };
+
+        self.send_instruction(&instruction, &[admin], Some(&admin.pubkey()))
+    }
+
     fn create_plan_instruction(
         &self,
         amount: u64,
@@ -1752,6 +1818,14 @@ impl TestHarness {
 
 pub fn token_2022_address() -> Address {
     Address::from(spl_token_2022::id().to_bytes())
+}
+
+fn instruction_discriminator(name: &str) -> [u8; 8] {
+    use anchor_lang::solana_program::hash::hash;
+    let preimage = format!("global:{name}");
+    let mut discriminator = [0u8; 8];
+    discriminator.copy_from_slice(&hash(preimage.as_bytes()).to_bytes()[..8]);
+    discriminator
 }
 
 pub fn spl_token_address() -> Address {
