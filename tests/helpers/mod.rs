@@ -26,14 +26,42 @@ use solana_transaction::versioned::VersionedTransaction;
 use spl_associated_token_account::get_associated_token_address_with_program_id;
 use spl_token::state::{Account as SplTokenAccount, Mint as SplMint};
 use vela_protocol::{
+    constants::{EXTRA_ACCOUNT_METAS_SEED, MINT_AUTHORITY_SEED},
     instructions::arcium_accounts::derive_cluster_pubkey,
     state::{
-        AgentMandate, BillingEvent, ClusterType, KeeperConfig, KeeperMode, PricingTier,
-        MerchantState, ProtocolConfig, PullApproval, UsagePlan, VelaMandate,
+        AgentMandate, BillingEvent, ClusterType, KeeperConfig, KeeperMode, MerchantState,
+        PricingTier, ProtocolConfig, PullApproval, TokenConfig, UsagePlan, VelaMandate,
     },
 };
 
 pub const AIRDROP_LAMPORTS: u64 = 10_000_000_000;
+// TODO(phase-40/41): import these legacy/test-harness-only seed prefixes from program state once
+// the protocol exposes them as shared constants.
+const LEGACY_CREDENTIAL_SEED_PREFIX: &[u8] = b"credential";
+const USAGE_CREDENTIAL_SEED_PREFIX: &[u8] = b"usage_credential";
+const MERCHANT_CREDENTIAL_SEED_PREFIX: &[u8] = b"merchant-credential";
+
+pub fn derive_mandate_v2_pda(
+    subscriber: &Pubkey,
+    merchant: &Pubkey,
+    mandate_index: u64,
+    program_id: &Pubkey,
+) -> (Pubkey, u8) {
+    let mandate_index_bytes = mandate_index.to_le_bytes();
+    Pubkey::find_program_address(
+        &[
+            VelaMandate::SEED_PREFIX,
+            subscriber.as_ref(),
+            merchant.as_ref(),
+            mandate_index_bytes.as_ref(),
+        ],
+        program_id,
+    )
+}
+
+pub fn derive_token_config_pda(mint: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[TokenConfig::SEED_PREFIX, mint.as_ref()], program_id)
+}
 
 pub struct PlanAddresses {
     pub merchant_state: Pubkey,
@@ -120,7 +148,11 @@ impl TestHarness {
             &vela_protocol::ID,
         );
         let (credential_mint, _) = Pubkey::find_program_address(
-            &[b"credential", merchant.as_ref(), plan_id_bytes.as_ref()],
+            &[
+                LEGACY_CREDENTIAL_SEED_PREFIX,
+                merchant.as_ref(),
+                plan_id_bytes.as_ref(),
+            ],
             &vela_protocol::ID,
         );
 
@@ -150,7 +182,11 @@ impl TestHarness {
             &vela_protocol::ID,
         );
         let (credential_mint, _) = Pubkey::find_program_address(
-            &[b"usage_credential", merchant.as_ref(), plan_id_bytes.as_ref()],
+            &[
+                USAGE_CREDENTIAL_SEED_PREFIX,
+                merchant.as_ref(),
+                plan_id_bytes.as_ref(),
+            ],
             &vela_protocol::ID,
         );
 
@@ -167,13 +203,10 @@ impl TestHarness {
         merchant: &Pubkey,
         mandate_index: u64,
     ) -> Pubkey {
-        Pubkey::find_program_address(
-            &[
-                vela_protocol::state::VelaMandate::SEED_PREFIX,
-                subscriber.as_ref(),
-                merchant.as_ref(),
-                mandate_index.to_le_bytes().as_ref(),
-            ],
+        derive_mandate_v2_pda(
+            subscriber,
+            merchant,
+            mandate_index,
             &vela_protocol::ID,
         )
         .0
@@ -273,15 +306,15 @@ impl TestHarness {
         .0
     }
 
-    /// Derives the mint authority PDA (seeds: [b"mint-authority"]).
+    /// Derives the mint authority PDA from the shared protocol constant.
     pub fn derive_mint_authority(&self) -> (Pubkey, u8) {
-        Pubkey::find_program_address(&[b"mint-authority"], &vela_protocol::ID)
+        Pubkey::find_program_address(&[MINT_AUTHORITY_SEED], &vela_protocol::ID)
     }
 
-    /// Derives the ExtraAccountMetaList PDA for the given mint (seeds: [b"extra-account-metas", mint]).
+    /// Derives the ExtraAccountMetaList PDA for the given mint using the shared hook seed constant.
     pub fn derive_extra_account_meta_list(&self, mint: &Pubkey) -> (Pubkey, u8) {
         Pubkey::find_program_address(
-            &[b"extra-account-metas", mint.as_ref()],
+            &[EXTRA_ACCOUNT_METAS_SEED, mint.as_ref()],
             &vela_transfer_hook::ID,
         )
     }
@@ -1613,7 +1646,7 @@ impl TestHarness {
     pub fn derive_merchant_credential_mint(&self) -> (Pubkey, u8) {
         let merchant = self.merchant_pubkey();
         Pubkey::find_program_address(
-            &[b"merchant-credential", merchant.as_ref()],
+            &[MERCHANT_CREDENTIAL_SEED_PREFIX, merchant.as_ref()],
             &vela_protocol::ID,
         )
     }
@@ -1669,7 +1702,7 @@ impl TestHarness {
             &vela_protocol::ID,
         );
         let (credential_mint, _) = Pubkey::find_program_address(
-            &[b"merchant-credential", merchant.as_ref()],
+            &[MERCHANT_CREDENTIAL_SEED_PREFIX, merchant.as_ref()],
             &vela_protocol::ID,
         );
 
