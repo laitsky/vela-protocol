@@ -4,6 +4,7 @@ use crate::instructions::arcium_accounts::{
 };
 use crate::{
     errors::VelaError,
+    instructions::protocol_config_account::load_protocol_config,
     state::{BillingType, MandateStatus, ProtocolConfig, PullApproval, VelaMandate, UsagePlan, UsageReport},
     ArciumSignerAccount, ID,
 };
@@ -51,7 +52,8 @@ pub fn request_usage_computation(
         VelaError::BillingTypeMismatch
     );
 
-    validate_protocol_config(&ctx.accounts.config)?;
+    let config = load_protocol_config(&ctx.accounts.config.to_account_info())?.into_current();
+    validate_protocol_config(&config)?;
 
     let next_request_nonce = mandate
         .validation_request_nonce
@@ -68,7 +70,7 @@ pub fn request_usage_computation(
     );
     require_keys_eq!(
         ctx.accounts.cluster_account.key(),
-        ctx.accounts.config.cluster_pubkey,
+        config.cluster_pubkey,
         VelaError::InvalidArciumAccount
     );
 
@@ -94,7 +96,7 @@ pub fn request_usage_computation(
         &ctx.accounts.cluster_account,
         &ctx.accounts.pool_account,
         &ctx.accounts.clock_account,
-        ctx.accounts.config.cluster_offset,
+        config.cluster_offset,
         computation_offset,
         circuit_name,
     )?;
@@ -136,7 +138,7 @@ pub fn request_usage_computation(
         vec![build_callback_instruction(
             &USAGE_COMPUTATION_CALLBACK_DISCRIMINATOR,
             computation_offset,
-            ctx.accounts.config.cluster_offset,
+            config.cluster_offset,
             circuit_name,
             &[
                 CallbackAccount {
@@ -171,9 +173,9 @@ pub struct RequestUsageComputation<'info> {
 
     #[account(
         seeds = [ProtocolConfig::SEED_PREFIX],
-        bump = config.bump,
+        bump,
     )]
-    pub config: Box<Account<'info, ProtocolConfig>>,
+    pub config: UncheckedAccount<'info>,
 
     /// CHECK: Validated against the canonical Arcium MXE PDA in the handler.
     pub mxe_account: UncheckedAccount<'info>,

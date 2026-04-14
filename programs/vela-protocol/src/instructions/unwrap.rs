@@ -5,7 +5,7 @@ use anchor_spl::{
     token_interface::{burn, Burn, Mint, TokenAccount},
 };
 
-use crate::{constants::USDC_DECIMALS, state::ProtocolConfig};
+use crate::{constants::USDC_DECIMALS, errors::VelaError, instructions::protocol_config_account::load_protocol_config, state::ProtocolConfig};
 
 #[derive(Accounts)]
 pub struct Unwrap<'info> {
@@ -13,18 +13,16 @@ pub struct Unwrap<'info> {
 
     #[account(
         seeds = [ProtocolConfig::SEED_PREFIX],
-        bump = config.bump,
+        bump,
     )]
-    pub config: Account<'info, ProtocolConfig>,
+    pub config: UncheckedAccount<'info>,
 
     /// The SPL USDC mint (Token program, not Token-2022).
     pub spl_usdc_mint: Account<'info, SplMint>,
 
     /// The Token-2022 wrapped USDC mint (must match config.wrapped_usdc_mint).
-    #[account(
-        mut,
-        address = config.wrapped_usdc_mint,
-    )]
+    /// CHECK: Validated in handler against loaded protocol_config.wrapped_usdc_mint.
+    #[account(mut)]
     pub wrapped_usdc_mint: Box<InterfaceAccount<'info, Mint>>,
 
     /// User's Token-2022 wrapped USDC account (source to burn from).
@@ -45,10 +43,8 @@ pub struct Unwrap<'info> {
     pub user_usdc_account: Account<'info, SplTokenAccount>,
 
     /// Protocol's SPL USDC vault (releases USDC to user, must match config.wrapping_vault).
-    #[account(
-        mut,
-        address = config.wrapping_vault,
-    )]
+    /// CHECK: Validated in handler against loaded protocol_config.wrapping_vault.
+    #[account(mut)]
     pub wrapping_vault: Account<'info, SplTokenAccount>,
 
     /// CHECK: PDA used as vault authority and mint authority. Seeds: [b"mint-authority"]
@@ -63,6 +59,18 @@ pub struct Unwrap<'info> {
 }
 
 pub fn handler(ctx: Context<Unwrap>, amount: u64) -> Result<()> {
+    let config = load_protocol_config(&ctx.accounts.config.to_account_info())?;
+    require_keys_eq!(
+        ctx.accounts.wrapped_usdc_mint.key(),
+        config.wrapped_usdc_mint(),
+        VelaError::UsdcMintMismatch
+    );
+    require_keys_eq!(
+        ctx.accounts.wrapping_vault.key(),
+        config.wrapping_vault(),
+        VelaError::VaultMismatch
+    );
+
     // Step 1: Burn wrapped USDC from user's Token-2022 account.
     // User is the authority for their own token account.
     let burn_ctx = CpiContext::new(

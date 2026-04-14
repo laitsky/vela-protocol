@@ -4,6 +4,7 @@ use crate::instructions::arcium_accounts::{
 };
 use crate::{
     errors::VelaError,
+    instructions::protocol_config_account::load_protocol_config,
     state::{BillingEvent, ProtocolConfig, VelaMandate, VelaPlan},
     ArciumSignerAccount, ID,
 };
@@ -31,7 +32,8 @@ pub fn request_billing_record(
         ctx.accounts.mandate.last_billing_recorded_pull < ctx.accounts.mandate.pulls_executed,
         VelaError::BillingEventAlreadyExists
     );
-    validate_protocol_config(&ctx.accounts.config)?;
+    let config = load_protocol_config(&ctx.accounts.config.to_account_info())?.into_current();
+    validate_protocol_config(&config)?;
 
     let next_request_nonce = ctx.accounts.mandate.billing_request_nonce
         .checked_add(1)
@@ -47,7 +49,7 @@ pub fn request_billing_record(
     );
     require_keys_eq!(
         ctx.accounts.cluster_account.key(),
-        ctx.accounts.config.cluster_pubkey,
+        config.cluster_pubkey,
         VelaError::InvalidArciumAccount
     );
 
@@ -60,7 +62,7 @@ pub fn request_billing_record(
         &ctx.accounts.cluster_account,
         &ctx.accounts.pool_account,
         &ctx.accounts.clock_account,
-        ctx.accounts.config.cluster_offset,
+        config.cluster_offset,
         computation_offset,
         RECORD_BILLING_EVENT_CIRCUIT,
     )?;
@@ -105,7 +107,7 @@ pub fn request_billing_record(
         vec![build_callback_instruction(
             &RECORD_BILLING_EVENT_CALLBACK_DISCRIMINATOR,
             computation_offset,
-            ctx.accounts.config.cluster_offset,
+            config.cluster_offset,
             RECORD_BILLING_EVENT_CIRCUIT,
             &[
                 CallbackAccount {
@@ -140,9 +142,9 @@ pub struct RequestBillingRecord<'info> {
 
     #[account(
         seeds = [ProtocolConfig::SEED_PREFIX],
-        bump = config.bump,
+        bump,
     )]
-    pub config: Box<Account<'info, ProtocolConfig>>,
+    pub config: UncheckedAccount<'info>,
 
     /// CHECK: Validated against the canonical Arcium MXE PDA in the handler.
     pub mxe_account: UncheckedAccount<'info>,

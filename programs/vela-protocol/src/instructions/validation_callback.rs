@@ -4,6 +4,7 @@ use crate::instructions::arcium_accounts::{
 };
 use crate::{
     errors::VelaError,
+    instructions::protocol_config_account::load_protocol_config,
     state::{BillingType, ProtocolConfig, PullApproval, VelaMandate},
     validate_callback_ixs,
 };
@@ -35,9 +36,11 @@ pub fn validate_mandate_callback(
         &ctx.accounts.comp_def_account,
         VALIDATE_MANDATE_CIRCUIT,
     )?;
-    validate_protocol_config(&ctx.accounts.config)?;
+    let loaded_config = load_protocol_config(&ctx.accounts.config.to_account_info())?;
+    let config = loaded_config.into_current();
+    validate_protocol_config(&config)?;
     validate_callback_binding(
-        &ctx.accounts.config,
+        &config,
         &ctx.accounts.cluster_account,
         &ctx.accounts.computation_account,
         derive_validation_computation_offset(
@@ -102,9 +105,9 @@ pub struct ValidateMandateCallback<'info> {
 
     #[account(
         seeds = [ProtocolConfig::SEED_PREFIX],
-        bump = config.bump,
+        bump,
     )]
-    pub config: Account<'info, ProtocolConfig>,
+    pub config: UncheckedAccount<'info>,
 
     pub mandate: Account<'info, VelaMandate>,
 }

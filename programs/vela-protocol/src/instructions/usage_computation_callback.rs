@@ -4,6 +4,7 @@ use crate::instructions::arcium_accounts::{
 };
 use crate::{
     errors::VelaError,
+    instructions::protocol_config_account::load_protocol_config,
     state::{ProtocolConfig, PullApproval, VelaMandate, UsageReport},
     validate_callback_ixs,
 };
@@ -39,9 +40,11 @@ pub fn usage_charge_callback(
     output: SignedComputationOutputs<UsageChargeOutput>,
 ) -> Result<()> {
     validate_usage_callback_accounts(&ctx.accounts.mxe_account, &ctx.accounts.comp_def_account)?;
-    validate_protocol_config(&ctx.accounts.config)?;
+    let loaded_config = load_protocol_config(&ctx.accounts.config.to_account_info())?;
+    let config = loaded_config.into_current();
+    validate_protocol_config(&config)?;
     validate_callback_binding(
-        &ctx.accounts.config,
+        &config,
         &ctx.accounts.cluster_account,
         &ctx.accounts.computation_account,
         derive_usage_computation_offset(
@@ -112,9 +115,9 @@ pub struct UsageComputationCallback<'info> {
 
     #[account(
         seeds = [ProtocolConfig::SEED_PREFIX],
-        bump = config.bump,
+        bump,
     )]
-    pub config: Account<'info, ProtocolConfig>,
+    pub config: UncheckedAccount<'info>,
 
     pub mandate: Account<'info, VelaMandate>,
 

@@ -5,7 +5,7 @@ use anchor_spl::{
     token_interface::{mint_to, Mint, MintTo, TokenAccount},
 };
 
-use crate::{constants::USDC_DECIMALS, errors::VelaError, state::ProtocolConfig};
+use crate::{constants::USDC_DECIMALS, errors::VelaError, instructions::protocol_config_account::load_protocol_config, state::ProtocolConfig};
 
 #[derive(Accounts)]
 pub struct Wrap<'info> {
@@ -13,18 +13,16 @@ pub struct Wrap<'info> {
 
     #[account(
         seeds = [ProtocolConfig::SEED_PREFIX],
-        bump = config.bump,
+        bump,
     )]
-    pub config: Account<'info, ProtocolConfig>,
+    pub config: UncheckedAccount<'info>,
 
     /// The SPL USDC mint (Token program, not Token-2022).
     pub spl_usdc_mint: Account<'info, SplMint>,
 
     /// The Token-2022 wrapped USDC mint (must match config.wrapped_usdc_mint).
-    #[account(
-        mut,
-        address = config.wrapped_usdc_mint,
-    )]
+    /// CHECK: Validated in handler against loaded protocol_config.wrapped_usdc_mint.
+    #[account(mut)]
     pub wrapped_usdc_mint: Box<InterfaceAccount<'info, Mint>>,
 
     /// Subscriber's SPL USDC token account (source of SPL USDC deposit).
@@ -47,9 +45,9 @@ pub struct Wrap<'info> {
     pub destination_authority: UncheckedAccount<'info>,
 
     /// Protocol's SPL USDC vault (receives subscriber deposit, must match config.wrapping_vault).
+    /// CHECK: Validated in handler against loaded protocol_config.wrapping_vault.
     #[account(
         mut,
-        address = config.wrapping_vault,
         constraint = wrapping_vault.mint == spl_usdc_mint.key() @ VelaError::UsdcMintMismatch,
         constraint = wrapping_vault.owner == mint_authority.key() @ VelaError::VaultMismatch,
     )]
@@ -67,10 +65,21 @@ pub struct Wrap<'info> {
 }
 
 pub fn handler(ctx: Context<Wrap>, amount: u64) -> Result<()> {
+    let config = load_protocol_config(&ctx.accounts.config.to_account_info())?;
     // Validate that wrapped mint has been initialized (D-03)
     require!(
-        ctx.accounts.config.wrapped_usdc_mint != Pubkey::default(),
+        config.wrapped_usdc_mint() != Pubkey::default(),
         VelaError::WrappedMintNotInitialized
+    );
+    require_keys_eq!(
+        ctx.accounts.wrapped_usdc_mint.key(),
+        config.wrapped_usdc_mint(),
+        VelaError::UsdcMintMismatch
+    );
+    require_keys_eq!(
+        ctx.accounts.wrapping_vault.key(),
+        config.wrapping_vault(),
+        VelaError::VaultMismatch
     );
     require_keys_eq!(
         ctx.accounts.destination_wrapped_account.owner,

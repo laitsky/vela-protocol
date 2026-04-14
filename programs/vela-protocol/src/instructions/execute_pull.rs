@@ -2,11 +2,7 @@ use anchor_lang::{
     prelude::*,
     solana_program::program::invoke_signed,
 };
-use anchor_spl::{
-    token::{TokenAccount as SplTokenAccount},
-    token_2022::Token2022,
-    token_interface::{Mint, TokenAccount},
-};
+use anchor_spl::token_2022::Token2022;
 use solana_instruction::{AccountMeta as SplAccountMeta, Instruction as SplInstruction};
 use solana_program_error::ProgramError as SplProgramError;
 use solana_pubkey::Pubkey as SplPubkey;
@@ -16,7 +12,11 @@ use crate::{
         EXTRA_ACCOUNT_METAS_SEED, TRANSFER_HOOK_PROGRAM_ID, USDC_DECIMALS,
     },
     errors::VelaError,
-    instructions::plan_account::{load_plan_account, require_plan_billing_type, LoadedPlanAccount},
+    instructions::{
+        keeper_config_account::load_keeper_config,
+        plan_account::{load_plan_account, require_plan_billing_type, LoadedPlanAccount},
+        protocol_config_account::load_protocol_config,
+    },
     state::{BillingType, KeeperConfig, MandateStatus, PlanStatus, ProtocolConfig, PullApproval, VelaMandate},
 };
 
@@ -33,10 +33,9 @@ pub struct ExecutePull<'info> {
 
     #[account(
         seeds = [KeeperConfig::SEED_PREFIX],
-        bump = keeper_config.bump,
-        constraint = keeper_config.keeper_authority == payer.key() @ VelaError::UnauthorizedKeeper
+        bump,
     )]
-    pub keeper_config: Box<Account<'info, KeeperConfig>>,
+    pub keeper_config: UncheckedAccount<'info>,
 
     /// CHECK: Deserialized and validated manually to support both flat and usage plans.
     pub plan: UncheckedAccount<'info>,
@@ -53,29 +52,19 @@ pub struct ExecutePull<'info> {
     pub mandate: Box<Account<'info, VelaMandate>>,
 
     /// Subscriber's Token-2022 wrapped USDC account (source of the transfer).
-    #[account(
-        mut,
-        token::mint = wrapped_usdc_mint,
-        token::authority = mandate,
-        token::token_program = token_2022_program,
-    )]
-    pub subscriber_wrapped_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    /// CHECK: Token account mint and authority validated in handler.
+    #[account(mut)]
+    pub subscriber_wrapped_account: UncheckedAccount<'info>,
 
     /// Merchant's Token-2022 wrapped USDC account (destination of the transfer).
-    #[account(
-        mut,
-        token::mint = wrapped_usdc_mint,
-        token::authority = merchant,
-        token::token_program = token_2022_program,
-    )]
-    pub merchant_wrapped_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    /// CHECK: Token account mint and authority validated in handler.
+    #[account(mut)]
+    pub merchant_wrapped_account: UncheckedAccount<'info>,
 
     /// The Token-2022 wrapped USDC mint charged by the billing transfer.
-    #[account(
-        mut,
-        address = protocol_config.wrapped_usdc_mint,
-    )]
-    pub wrapped_usdc_mint: Box<InterfaceAccount<'info, Mint>>,
+    /// CHECK: Validated in handler against loaded protocol_config.wrapped_usdc_mint.
+    #[account(mut)]
+    pub wrapped_usdc_mint: UncheckedAccount<'info>,
 
     /// CHECK: The handler validates the PDA derivation, ownership, and deserializes PullApproval manually.
     #[account(mut)]
@@ -83,15 +72,13 @@ pub struct ExecutePull<'info> {
 
     #[account(
         seeds = [ProtocolConfig::SEED_PREFIX],
-        bump = protocol_config.bump,
+        bump,
     )]
-    pub protocol_config: Box<Account<'info, ProtocolConfig>>,
+    pub protocol_config: UncheckedAccount<'info>,
 
-    #[account(
-        mut,
-        address = protocol_config.wrapping_vault,
-    )]
-    pub wrapping_vault: Box<Account<'info, SplTokenAccount>>,
+    /// CHECK: Wrapping vault validated in handler against loaded protocol_config.wrapping_vault.
+    #[account(mut)]
+    pub wrapping_vault: UncheckedAccount<'info>,
 
     /// CHECK: Dedicated transfer-hook validator program.
     #[account(
@@ -117,9 +104,26 @@ pub struct ExecutePull<'info> {
 pub fn handler<'a, 'b, 'c, 'info>(
     ctx: Context<'a, 'b, 'c, 'info, ExecutePull<'info>>,
 ) -> Result<()> {
+    let keeper_config = load_keeper_config(&ctx.accounts.keeper_config.to_account_info())?;
+    require_keys_eq!(
+        ctx.accounts.payer.key(),
+        keeper_config.keeper_authority(),
+        VelaError::UnauthorizedKeeper
+    );
+    let protocol_config = load_protocol_config(&ctx.accounts.protocol_config.to_account_info())?;
     require!(
-        !ctx.accounts.protocol_config.paused,
+        !protocol_config.paused(),
         VelaError::ProtocolPaused
+    );
+    require_keys_eq!(
+        ctx.accounts.wrapped_usdc_mint.key(),
+        protocol_config.wrapped_usdc_mint(),
+        VelaError::UsdcMintMismatch
+    );
+    require_keys_eq!(
+        ctx.accounts.wrapping_vault.key(),
+        protocol_config.wrapping_vault(),
+        VelaError::VaultMismatch
     );
     let plan = load_plan_account(&ctx.accounts.plan.to_account_info())?;
     require_plan_billing_type(&plan, &ctx.accounts.mandate.billing_type)?;

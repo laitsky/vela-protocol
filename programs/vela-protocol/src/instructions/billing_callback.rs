@@ -4,6 +4,7 @@ use crate::instructions::arcium_accounts::{
 };
 use crate::{
     errors::VelaError,
+    instructions::protocol_config_account::load_protocol_config,
     state::{BillingEvent, ProtocolConfig, VelaMandate, VelaPlan},
     validate_callback_ixs,
 };
@@ -35,9 +36,11 @@ pub fn record_billing_event_callback(
         &ctx.accounts.comp_def_account,
         RECORD_BILLING_EVENT_CIRCUIT,
     )?;
-    validate_protocol_config(&ctx.accounts.config)?;
+    let loaded_config = load_protocol_config(&ctx.accounts.config.to_account_info())?;
+    let config = loaded_config.into_current();
+    validate_protocol_config(&config)?;
     validate_callback_binding(
-        &ctx.accounts.config,
+        &config,
         &ctx.accounts.cluster_account,
         &ctx.accounts.computation_account,
         derive_billing_computation_offset(
@@ -114,9 +117,9 @@ pub struct RecordBillingEventCallback<'info> {
 
     #[account(
         seeds = [ProtocolConfig::SEED_PREFIX],
-        bump = config.bump,
+        bump,
     )]
-    pub config: Account<'info, ProtocolConfig>,
+    pub config: UncheckedAccount<'info>,
 
     #[account(mut)]
     pub mandate: Account<'info, VelaMandate>,
