@@ -1,0 +1,144 @@
+use anchor_lang::{
+    prelude::*,
+    solana_program::{program::invoke, system_instruction},
+    AccountSerialize, Discriminator,
+};
+
+use crate::state::{
+    ClusterType, ProtocolConfig, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION,
+};
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ProtocolConfigV1 {
+    pub admin: Pubkey,
+    pub cluster_pubkey: Pubkey,
+    pub cluster_type: ClusterType,
+    pub cluster_offset: u64,
+    pub wrapped_usdc_mint: Pubkey,
+    pub wrapping_vault: Pubkey,
+    pub paused: bool,
+    pub paused_at: i64,
+    pub bump: u8,
+}
+
+pub enum LoadedProtocolConfig {
+    Legacy(ProtocolConfigV1),
+    Current(ProtocolConfig),
+}
+
+impl LoadedProtocolConfig {
+    pub fn admin(&self) -> Pubkey {
+        match self {
+            Self::Legacy(config) => config.admin,
+            Self::Current(config) => config.admin,
+        }
+    }
+
+    pub fn into_current(self) -> ProtocolConfig {
+        match self {
+            Self::Legacy(legacy) => ProtocolConfig {
+                admin: legacy.admin,
+                cluster_pubkey: legacy.cluster_pubkey,
+                cluster_type: legacy.cluster_type,
+                cluster_offset: legacy.cluster_offset,
+                wrapped_usdc_mint: legacy.wrapped_usdc_mint,
+                wrapping_vault: legacy.wrapping_vault,
+                paused: legacy.paused,
+                paused_at: legacy.paused_at,
+                bump: legacy.bump,
+                version: CURRENT_ACCOUNT_VERSION,
+                _reserved: [0; ACCOUNT_RESERVED_BYTES],
+            },
+            Self::Current(current) => current,
+        }
+    }
+}
+
+pub fn load_protocol_config(config_info: &AccountInfo<'_>) -> Result<LoadedProtocolConfig> {
+    validate_protocol_config_address(config_info.key)?;
+
+    if *config_info.owner != crate::ID {
+        return Err(ProgramError::IncorrectProgramId.into());
+    }
+
+    let data = config_info.try_borrow_data()?;
+    if data.len() < ProtocolConfig::DISCRIMINATOR.len()
+        || !data.starts_with(&ProtocolConfig::DISCRIMINATOR)
+    {
+        return Err(ProgramError::InvalidAccountData.into());
+    }
+
+    let mut slice: &[u8] = &data;
+    if let Ok(config) = ProtocolConfig::try_deserialize(&mut slice) {
+        if !slice.is_empty() || config.version != CURRENT_ACCOUNT_VERSION {
+            return Err(ProgramError::InvalidAccountData.into());
+        }
+        return Ok(LoadedProtocolConfig::Current(config));
+    }
+
+    let mut legacy_slice: &[u8] = &data[ProtocolConfig::DISCRIMINATOR.len()..];
+    let legacy = ProtocolConfigV1::deserialize(&mut legacy_slice)
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    if !legacy_slice.is_empty() {
+        return Err(ProgramError::InvalidAccountData.into());
+    }
+    Ok(LoadedProtocolConfig::Legacy(legacy))
+}
+
+pub fn upgrade_protocol_config<'info>(
+    payer: &AccountInfo<'info>,
+    config_info: &AccountInfo<'info>,
+    system_program: &AccountInfo<'info>,
+) -> Result<ProtocolConfig> {
+    let mut config = load_protocol_config(config_info)?.into_current();
+
+    resize_protocol_config_account(payer, config_info, system_program)?;
+
+    config.version = CURRENT_ACCOUNT_VERSION;
+    config._reserved = [0; ACCOUNT_RESERVED_BYTES];
+    write_protocol_config(config_info, &config)?;
+
+    Ok(config)
+}
+
+pub fn write_protocol_config(config_info: &AccountInfo<'_>, config: &ProtocolConfig) -> Result<()> {
+    let mut data = config_info.try_borrow_mut_data()?;
+    let mut slice: &mut [u8] = &mut data[..];
+    config.try_serialize(&mut slice)?;
+    Ok(())
+}
+
+fn resize_protocol_config_account<'info>(
+    payer: &AccountInfo<'info>,
+    config_info: &AccountInfo<'info>,
+    system_program: &AccountInfo<'info>,
+) -> Result<()> {
+    let rent = Rent::get()?;
+    let required_lamports = rent.minimum_balance(ProtocolConfig::SIZE);
+    let current_lamports = config_info.lamports();
+    if current_lamports < required_lamports {
+        invoke(
+            &system_instruction::transfer(
+                payer.key,
+                config_info.key,
+                required_lamports - current_lamports,
+            ),
+            &[payer.clone(), config_info.clone(), system_program.clone()],
+        )?;
+    }
+
+    if config_info.data_len() < ProtocolConfig::SIZE {
+        config_info.resize(ProtocolConfig::SIZE)?;
+    }
+
+    Ok(())
+}
+
+fn validate_protocol_config_address(config: &Pubkey) -> Result<()> {
+    let (expected, _) = Pubkey::find_program_address(&[ProtocolConfig::SEED_PREFIX], &crate::ID);
+    if *config != expected {
+        return Err(ProgramError::InvalidSeeds.into());
+    }
+
+    Ok(())
+}

@@ -27,6 +27,9 @@ use crate::{
         WRAPPED_USDC_NAME, WRAPPED_USDC_SYMBOL, WRAPPED_USDC_URI,
     },
     errors::VelaError,
+    instructions::protocol_config_account::{
+        load_protocol_config, upgrade_protocol_config, write_protocol_config,
+    },
     state::ProtocolConfig,
 };
 
@@ -43,10 +46,9 @@ pub struct InitWrappedMint<'info> {
     #[account(
         mut,
         seeds = [ProtocolConfig::SEED_PREFIX],
-        bump = config.bump,
-        has_one = admin,
+        bump,
     )]
-    pub config: Account<'info, ProtocolConfig>,
+    pub config: UncheckedAccount<'info>,
 
     /// CHECK: PDA used as mint authority, freeze authority, update authority,
     /// permanent delegate, and vault owner. Seeds: [b"mint-authority"]
@@ -82,8 +84,20 @@ pub struct InitWrappedMint<'info> {
 }
 
 pub fn handler(ctx: Context<InitWrappedMint>) -> Result<()> {
+    let config_info = ctx.accounts.config.to_account_info();
+    let existing_config = load_protocol_config(&config_info)?;
+    require_keys_eq!(
+        existing_config.admin(),
+        ctx.accounts.admin.key(),
+        VelaError::UnauthorizedAdmin
+    );
+    let mut config = upgrade_protocol_config(
+        &ctx.accounts.admin.to_account_info(),
+        &config_info,
+        &ctx.accounts.system_program.to_account_info(),
+    )?;
     require!(
-        ctx.accounts.config.wrapped_usdc_mint == Pubkey::default(),
+        config.wrapped_usdc_mint == Pubkey::default(),
         VelaError::WrappedMintAlreadyInitialized
     );
 
@@ -232,8 +246,9 @@ pub fn handler(ctx: Context<InitWrappedMint>) -> Result<()> {
         VelaError::VaultMismatch
     );
 
-    ctx.accounts.config.wrapped_usdc_mint = mint_key;
-    ctx.accounts.config.wrapping_vault = ctx.accounts.wrapping_vault.key();
+    config.wrapped_usdc_mint = mint_key;
+    config.wrapping_vault = ctx.accounts.wrapping_vault.key();
+    write_protocol_config(&config_info, &config)?;
 
     Ok(())
 }

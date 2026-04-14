@@ -1,4 +1,5 @@
 use crate::errors::VelaError;
+use crate::instructions::protocol_config_account::load_protocol_config;
 use crate::state::{KeeperConfig, KeeperMode, ProtocolConfig};
 use anchor_lang::prelude::*;
 
@@ -21,14 +22,21 @@ pub fn handler(
         VelaError::InvalidKeeperAuthority
     );
 
+    let protocol_config = load_protocol_config(&ctx.accounts.protocol_config.to_account_info())?;
+    require_keys_eq!(
+        protocol_config.admin(),
+        ctx.accounts.admin.key(),
+        VelaError::UnauthorizedAdmin
+    );
+
     let config = &mut ctx.accounts.keeper_config;
-    config.admin = ctx.accounts.admin.key();
-    config.mode = mode.clone();
-    config.endpoint_len = keeper_endpoint.len() as u8;
-    config.keeper_endpoint = [0u8; 128];
-    config.keeper_endpoint[..keeper_endpoint.len()].copy_from_slice(&keeper_endpoint);
-    config.keeper_authority = keeper_authority;
-    config.bump = ctx.bumps.keeper_config;
+    **config = KeeperConfig::new(
+        ctx.accounts.admin.key(),
+        mode.clone(),
+        keeper_endpoint.clone(),
+        keeper_authority,
+        ctx.bumps.keeper_config,
+    );
 
     emit!(KeeperConfigInitialized {
         admin: ctx.accounts.admin.key(),
@@ -52,10 +60,9 @@ pub struct InitKeeperConfig<'info> {
     pub admin: Signer<'info>,
     #[account(
         seeds = [ProtocolConfig::SEED_PREFIX],
-        bump = protocol_config.bump,
-        constraint = protocol_config.admin == admin.key() @ VelaError::UnauthorizedAdmin
+        bump,
     )]
-    pub protocol_config: Account<'info, ProtocolConfig>,
+    pub protocol_config: UncheckedAccount<'info>,
     #[account(
         init,
         payer = admin,

@@ -1,4 +1,7 @@
 use crate::instructions::arcium_accounts::validate_cluster_configuration;
+use crate::instructions::protocol_config_account::{
+    load_protocol_config, upgrade_protocol_config, write_protocol_config,
+};
 use crate::errors::VelaError;
 use crate::state::{ClusterType, ProtocolConfig};
 use anchor_lang::prelude::*;
@@ -20,20 +23,33 @@ pub struct UpdateConfigIx {
 pub fn init_config(ctx: Context<InitConfig>, ix: InitConfigIx) -> Result<()> {
     validate_cluster_configuration(&ix.cluster_pubkey, ix.cluster_offset)?;
     let config = &mut ctx.accounts.config;
-    config.admin = ctx.accounts.admin.key();
-    config.cluster_pubkey = ix.cluster_pubkey;
-    config.cluster_type = ix.cluster_type;
-    config.cluster_offset = ix.cluster_offset;
-    config.bump = ctx.bumps.config;
+    **config = ProtocolConfig::new(
+        ctx.accounts.admin.key(),
+        ix.cluster_pubkey,
+        ix.cluster_type,
+        ix.cluster_offset,
+        ctx.bumps.config,
+    );
     Ok(())
 }
 
 pub fn update_config(ctx: Context<UpdateConfig>, ix: UpdateConfigIx) -> Result<()> {
     validate_cluster_configuration(&ix.cluster_pubkey, ix.cluster_offset)?;
-    let config = &mut ctx.accounts.config;
+    let existing = load_protocol_config(&ctx.accounts.config.to_account_info())?;
+    require_keys_eq!(
+        ctx.accounts.admin.key(),
+        existing.admin(),
+        VelaError::UnauthorizedAdmin
+    );
+    let mut config = upgrade_protocol_config(
+        &ctx.accounts.admin.to_account_info(),
+        &ctx.accounts.config.to_account_info(),
+        &ctx.accounts.system_program.to_account_info(),
+    )?;
     config.cluster_pubkey = ix.cluster_pubkey;
     config.cluster_type = ix.cluster_type;
     config.cluster_offset = ix.cluster_offset;
+    write_protocol_config(&ctx.accounts.config.to_account_info(), &config)?;
     Ok(())
 }
 
@@ -54,14 +70,12 @@ pub struct InitConfig<'info> {
 
 #[derive(Accounts)]
 pub struct UpdateConfig<'info> {
-    #[account(
-        constraint = admin.key() == config.admin @ VelaError::UnauthorizedAdmin
-    )]
     pub admin: Signer<'info>,
     #[account(
         mut,
         seeds = [ProtocolConfig::SEED_PREFIX],
-        bump = config.bump,
+        bump,
     )]
-    pub config: Account<'info, ProtocolConfig>,
+    pub config: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
 }

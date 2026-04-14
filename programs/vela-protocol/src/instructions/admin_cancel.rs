@@ -7,7 +7,10 @@ use spl_token_2022::instruction::burn;
 
 use crate::{
     errors::VelaError,
-    instructions::plan_account::{load_plan_account, require_plan_billing_type},
+    instructions::{
+        plan_account::{load_plan_account, require_plan_billing_type},
+        protocol_config_account::load_protocol_config,
+    },
     state::{MandateStatus, ProtocolConfig, VelaMandate, VelaPlan},
 };
 
@@ -15,15 +18,14 @@ use crate::{
 pub struct AdminCancel<'info> {
     #[account(
         mut,
-        constraint = admin.key() == protocol_config.admin @ VelaError::UnauthorizedAdmin
     )]
     pub admin: Signer<'info>,
 
     #[account(
         seeds = [ProtocolConfig::SEED_PREFIX],
-        bump = protocol_config.bump,
+        bump,
     )]
-    pub protocol_config: Account<'info, ProtocolConfig>,
+    pub protocol_config: UncheckedAccount<'info>,
 
     /// CHECK: Validated in handler as mandate.subscriber.
     pub subscriber: UncheckedAccount<'info>,
@@ -47,6 +49,12 @@ pub struct AdminCancel<'info> {
 }
 
 pub fn handler(ctx: Context<AdminCancel>) -> Result<()> {
+    let protocol_config = load_protocol_config(&ctx.accounts.protocol_config.to_account_info())?;
+    require_keys_eq!(
+        ctx.accounts.admin.key(),
+        protocol_config.admin(),
+        VelaError::UnauthorizedAdmin
+    );
     let plan = load_plan_account(&ctx.accounts.plan.to_account_info())?;
     require_plan_billing_type(&plan, &ctx.accounts.mandate.billing_type)?;
     require_keys_eq!(
