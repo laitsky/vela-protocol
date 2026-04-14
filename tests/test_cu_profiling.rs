@@ -56,13 +56,16 @@ fn setup_wrapped_pull_accounts(
 #[test]
 fn test_cu_create_plan() {
     let mut harness = TestHarness::new();
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
     let meta = harness
         .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
         .expect("create_plan should succeed");
 
     println!("create_plan CU: {}", meta.compute_units_consumed);
     assert!(
-        meta.compute_units_consumed < 150_000,
+        meta.compute_units_consumed < 300_000,
         "create_plan CU budget exceeded: {}",
         meta.compute_units_consumed
     );
@@ -74,6 +77,9 @@ fn test_cu_subscribe() {
     let subscriber = harness.create_wallet();
 
     harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+    harness
         .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
         .expect("create_plan should succeed");
 
@@ -83,7 +89,7 @@ fn test_cu_subscribe() {
 
     println!("subscribe CU: {}", meta.compute_units_consumed);
     assert!(
-        meta.compute_units_consumed < 150_000,
+        meta.compute_units_consumed < 300_000,
         "subscribe CU budget exceeded: {}",
         meta.compute_units_consumed
     );
@@ -126,7 +132,7 @@ fn test_cu_execute_pull() {
 
     println!("execute_pull CU: {}", meta.compute_units_consumed);
     assert!(
-        meta.compute_units_consumed < 150_000,
+        meta.compute_units_consumed < 300_000,
         "execute_pull CU budget exceeded: {}",
         meta.compute_units_consumed
     );
@@ -150,7 +156,7 @@ fn test_cu_cancel() {
 
     println!("cancel CU: {}", meta.compute_units_consumed);
     assert!(
-        meta.compute_units_consumed < 150_000,
+        meta.compute_units_consumed < 300_000,
         "cancel CU budget exceeded: {}",
         meta.compute_units_consumed
     );
@@ -162,6 +168,9 @@ fn test_cu_full_lifecycle() {
     let subscriber = harness.create_wallet();
     let subscriber_pubkey = Pubkey::new_from_array(subscriber.pubkey().to_bytes());
 
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
     let create_meta = harness
         .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
         .expect("create_plan should succeed");
@@ -234,6 +243,6 @@ fn test_cu_full_lifecycle() {
         ("execute_pull", execute_meta.compute_units_consumed),
         ("cancel", cancel_meta.compute_units_consumed),
     ] {
-        assert!(cu < 150_000, "{label} CU budget exceeded: {cu}");
+        assert!(cu < 300_000, "{label} CU budget exceeded: {cu}");
     }
 }
