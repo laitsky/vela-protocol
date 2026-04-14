@@ -148,8 +148,28 @@ fn keeper_config_info<'a>(bytes: &'a mut Vec<u8>, lamports: &'a mut u64) -> Acco
     )
 }
 
-fn init_keeper_config(harness: &mut TestHarness, admin: &Keypair, keeper_authority: Pubkey) -> Pubkey {
-    let protocol_config = harness.init_protocol_config(admin);
+fn serialize_protocol_config(config: &ProtocolConfig) -> Vec<u8> {
+    let mut data = ProtocolConfig::DISCRIMINATOR.to_vec();
+    config
+        .serialize(&mut data)
+        .expect("protocol config should serialize");
+    data
+}
+
+fn serialize_keeper_config(config: &KeeperConfig) -> Vec<u8> {
+    let mut data = KeeperConfig::DISCRIMINATOR.to_vec();
+    config
+        .serialize(&mut data)
+        .expect("keeper config should serialize");
+    data
+}
+
+fn init_keeper_config(
+    harness: &mut TestHarness,
+    admin: &Keypair,
+    protocol_config: Pubkey,
+    keeper_authority: Pubkey,
+) -> Pubkey {
     let (keeper_config, _) = keeper_config_address();
     let accounts = vela_protocol::accounts::InitKeeperConfig {
         admin: to_anchor_pubkey(admin.pubkey()),
@@ -228,11 +248,114 @@ fn test_protocol_and_keeper_loaders_accept_legacy_singletons() {
 }
 
 #[test]
+fn test_config_loaders_reject_unsupported_v2_versions() {
+    let admin = Pubkey::new_unique();
+    let mut protocol_bytes = serialize_protocol_config(&ProtocolConfig::new(
+        admin,
+        Pubkey::new_unique(),
+        ClusterType::Cerberus,
+        456,
+        protocol_config_address().1,
+    ));
+    let mut keeper_bytes = serialize_keeper_config(&KeeperConfig::new(
+        admin,
+        KeeperMode::Centralized,
+        b"https://vela.dev".to_vec(),
+        Pubkey::new_unique(),
+        keeper_config_address().1,
+    ));
+
+    let protocol_version_offset = protocol_bytes.len() - 1 - 64;
+    protocol_bytes[protocol_version_offset] = 9;
+    let keeper_version_offset = keeper_bytes.len() - 1 - 64;
+    keeper_bytes[keeper_version_offset] = 9;
+
+    let mut protocol_lamports = 10_000_000;
+    let protocol_err = load_protocol_config(&protocol_config_info(
+        &mut protocol_bytes,
+        &mut protocol_lamports,
+    ))
+    .err()
+    .expect("unsupported protocol config version should be rejected");
+    assert_eq!(
+        protocol_err,
+        anchor_lang::error::Error::from(anchor_lang::prelude::ProgramError::InvalidAccountData)
+    );
+
+    let mut keeper_lamports = 10_000_000;
+    let keeper_err =
+        load_keeper_config(&keeper_config_info(&mut keeper_bytes, &mut keeper_lamports))
+            .err()
+            .expect("unsupported keeper config version should be rejected");
+    assert_eq!(
+        keeper_err,
+        anchor_lang::error::Error::from(anchor_lang::prelude::ProgramError::InvalidAccountData)
+    );
+}
+
+#[test]
+fn test_config_loaders_reject_malformed_legacy_payloads() {
+    let admin = Pubkey::new_unique();
+    let keeper_authority = Pubkey::new_unique();
+    let (protocol_key, protocol_bump) = protocol_config_address();
+    let (keeper_key, keeper_bump) = keeper_config_address();
+    let mut harness = TestHarness::new();
+
+    write_legacy_protocol_config(&mut harness, protocol_key, admin, protocol_bump);
+    write_legacy_keeper_config(
+        &mut harness,
+        keeper_key,
+        admin,
+        keeper_authority,
+        keeper_bump,
+    );
+
+    let mut protocol_bytes = harness
+        .svm
+        .get_account(&to_address(protocol_key))
+        .expect("protocol config should exist")
+        .data;
+    protocol_bytes.push(1);
+    let mut protocol_lamports = 10_000_000;
+    let protocol_err = load_protocol_config(&protocol_config_info(
+        &mut protocol_bytes,
+        &mut protocol_lamports,
+    ))
+    .err()
+    .expect("legacy protocol config with trailing bytes should be rejected");
+    assert_eq!(
+        protocol_err,
+        anchor_lang::error::Error::from(anchor_lang::prelude::ProgramError::InvalidAccountData)
+    );
+
+    let mut keeper_bytes = harness
+        .svm
+        .get_account(&to_address(keeper_key))
+        .expect("keeper config should exist")
+        .data;
+    keeper_bytes.push(1);
+    let mut keeper_lamports = 10_000_000;
+    let keeper_err =
+        load_keeper_config(&keeper_config_info(&mut keeper_bytes, &mut keeper_lamports))
+            .err()
+            .expect("legacy keeper config with trailing bytes should be rejected");
+    assert_eq!(
+        keeper_err,
+        anchor_lang::error::Error::from(anchor_lang::prelude::ProgramError::InvalidAccountData)
+    );
+}
+
+#[test]
 fn test_init_config_and_keeper_config_write_versioned_accounts() {
     let mut harness = TestHarness::new();
     let admin = harness.create_wallet();
     let protocol_config = harness.init_protocol_config(&admin);
-    let keeper_config = init_keeper_config(&mut harness, &admin, to_anchor_pubkey(admin.pubkey()));
+    let keeper_config = init_keeper_config(
+        &mut harness,
+        &admin,
+        protocol_config,
+        to_anchor_pubkey(admin.pubkey()),
+    );
 
     let protocol: ProtocolConfig = harness.fetch_anchor_account(&protocol_config);
     let keeper: KeeperConfig = harness.fetch_anchor_account(&keeper_config);
