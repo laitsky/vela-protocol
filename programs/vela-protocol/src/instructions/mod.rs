@@ -19,6 +19,7 @@ pub mod init_wrapped_mint;
 pub mod keeper_config_account;
 pub mod mandate_account;
 pub mod merchant_account;
+pub mod migrate_mandate;
 pub mod migrate_plan;
 pub mod pause_agent_mandate;
 pub mod pause_protocol;
@@ -177,6 +178,10 @@ pub mod __client_accounts_migrate_plan {
     pub use super::migrate_plan::__client_accounts_migrate_plan::*;
 }
 
+pub mod __client_accounts_migrate_mandate {
+    pub use super::migrate_mandate::__client_accounts_migrate_mandate::*;
+}
+
 pub mod __client_accounts_update_plan {
     pub use super::update_plan::__client_accounts_update_plan::*;
 }
@@ -206,6 +211,7 @@ pub use init_config::{InitConfig, InitConfigIx, UpdateConfig, UpdateConfigIx};
 pub use init_keeper_config::InitKeeperConfig;
 pub use init_merchant_credential::InitMerchantCredential;
 pub use init_wrapped_mint::InitWrappedMint;
+pub use migrate_mandate::MigrateMandate;
 pub use migrate_plan::MigratePlan;
 pub use pause_agent_mandate::PauseAgentMandate;
 pub use pause_protocol::PauseProtocol;

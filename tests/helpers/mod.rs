@@ -1768,7 +1768,7 @@ impl TestHarness {
                     false,
                 ),
             ],
-            data: instruction_discriminator("migrate_mandate").to_vec(),
+            data: vela_protocol::instruction::MigrateMandate {}.data(),
         };
 
         self.send_instruction(&instruction, &[admin], Some(&admin.pubkey()))
@@ -1818,14 +1818,6 @@ impl TestHarness {
 
 pub fn token_2022_address() -> Address {
     Address::from(spl_token_2022::id().to_bytes())
-}
-
-fn instruction_discriminator(name: &str) -> [u8; 8] {
-    use anchor_lang::solana_program::hash::hash;
-    let preimage = format!("global:{name}");
-    let mut discriminator = [0u8; 8];
-    discriminator.copy_from_slice(&hash(preimage.as_bytes()).to_bytes()[..8]);
-    discriminator
 }
 
 pub fn spl_token_address() -> Address {

@@ -11,7 +11,7 @@ use crate::instructions::{
     AdjustAgentMandate, AdminCancel, AgentPull, Cancel, CloseMandate, CreateAgentMandate, CreatePlan,
     CreateUsagePlan, DrainAgentMandate, ExecutePull, InitConfig, InitKeeperConfig,
     InitMerchantCredential, InitRecordBillingCompDef, InitValidateMandateCompDef, InitWrappedMint,
-    MigratePlan, PauseAgentMandate,
+    MigrateMandate, MigratePlan, PauseAgentMandate,
     PauseProtocol, RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation,
     RequestValidation, ResumeAgentMandate, RevokeAgentMandate, SubmitUsageReport, Subscribe,
     UnpauseProtocol, Unwrap, UpdateConfig, UpdateKeeperConfig, UpdatePlan, UpdateUsagePlan,
@@ -160,6 +160,10 @@ mod __client_accounts_usage_computation_callback {
 
 mod __client_accounts_migrate_plan {
     pub use crate::instructions::__client_accounts_migrate_plan::*;
+}
+
+mod __client_accounts_migrate_mandate {
+    pub use crate::instructions::__client_accounts_migrate_mandate::*;
 }
 
 mod __client_accounts_update_plan {
@@ -427,6 +431,10 @@ pub mod vela_protocol {
 
     pub fn migrate_plan(ctx: Context<MigratePlan>) -> Result<()> {
         instructions::migrate_plan::handler(ctx)
+    }
+
+    pub fn migrate_mandate(ctx: Context<MigrateMandate>) -> Result<()> {
+        instructions::migrate_mandate::handler(ctx)
     }
 
     pub fn update_plan(

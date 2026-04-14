@@ -155,6 +155,10 @@ name = "test_migrate_plan"
 path = "../../tests/test_migrate_plan.rs"
 
 [[test]]
+name = "test_migrate_mandate"
+path = "../../tests/test_migrate_mandate.rs"
+
+[[test]]
 name = "test_update_plan"
 path = "../../tests/test_update_plan.rs"
 
