@@ -179,7 +179,7 @@ fn resize_merchant_state_account<'info>(
     Ok(())
 }
 
-fn validate_merchant_state_address(merchant_state: &Pubkey, merchant: &Pubkey) -> Result<()> {
+pub fn validate_merchant_state_address(merchant_state: &Pubkey, merchant: &Pubkey) -> Result<()> {
     let (expected, _) = Pubkey::find_program_address(
         &[MerchantState::SEED_PREFIX, merchant.as_ref()],
         &crate::ID,
@@ -190,4 +190,36 @@ fn validate_merchant_state_address(merchant_state: &Pubkey, merchant: &Pubkey) -
     }
 
     Ok(())
+}
+
+/// Centralized resolver for the merchant credential mint.
+///
+/// Resolves from MerchantState first (D-10, D-12). If MerchantState has a non-default
+/// `credential_mint`, returns it. Otherwise falls back to the provided plan credential mint
+/// for backward compatibility during migration (CRED-05).
+///
+/// Later plans will call this from `subscribe`, `cancel`, and `admin_cancel` instead of
+/// directly reading from the plan account.
+pub fn resolve_merchant_credential_mint(
+    merchant_state_info: &AccountInfo<'_>,
+    merchant: &Pubkey,
+    plan_credential_mint: &Pubkey,
+) -> Result<Pubkey> {
+    // If the account doesn't exist or isn't owned by our program, fall back to plan credential
+    if merchant_state_info.data_is_empty() || *merchant_state_info.owner != crate::ID {
+        return Ok(*plan_credential_mint);
+    }
+
+    // Try to load the merchant state
+    match load_merchant_state(merchant_state_info, merchant) {
+        Ok(loaded) => {
+            let state = loaded.into_current();
+            if state.credential_mint != Pubkey::default() {
+                Ok(state.credential_mint)
+            } else {
+                Ok(*plan_credential_mint)
+            }
+        }
+        Err(_) => Ok(*plan_credential_mint),
+    }
 }

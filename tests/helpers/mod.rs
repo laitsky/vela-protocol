@@ -1483,6 +1483,7 @@ impl TestHarness {
             data: vela_protocol::instruction::InitMerchantCredential {}.data(),
         };
 
+        self.svm.expire_blockhash();
         let merchant_pk = self.merchant.pubkey();
         let blockhash = self.svm.latest_blockhash();
         let message = Message::new_with_blockhash(&[instruction], Some(&merchant_pk), &blockhash);
