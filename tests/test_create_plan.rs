@@ -1,30 +1,27 @@
 #[path = "helpers/mod.rs"]
 mod helpers;
 
-use helpers::{token_2022_address, TestHarness};
+use helpers::TestHarness;
 use anchor_lang::prelude::Pubkey;
-use spl_token_2022::{
-    extension::{
-        metadata_pointer::MetadataPointer,
-        non_transferable::NonTransferable,
-        BaseStateWithExtensions,
-        StateWithExtensions,
-    },
-    state::Mint,
-};
+use spl_token_2022::{extension::StateWithExtensions, state::Mint};
 use vela_protocol::{
     constants::{CREDENTIAL_DECIMALS, MIN_FREQUENCY_SECONDS},
-    state::{MerchantState, PlanStatus, VelaPlan},
+    state::{MerchantState, PlanStatus, PricingTier, UsagePlan, VelaPlan},
 };
 
 #[test]
-fn test_create_plan_initializes_plan_and_credential_mint() {
+fn test_create_plan_initializes_plan_after_merchant_bootstrap() {
     let mut harness = TestHarness::new();
     let amount = 25_000_000;
     let frequency = MIN_FREQUENCY_SECONDS;
     let trial_period = 86_400;
     let max_pulls = 12;
     let addresses = harness.derive_plan_addresses(0);
+    let (merchant_credential_mint, _) = harness.derive_merchant_credential_mint();
+
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
 
     let meta = harness
         .send_create_plan(amount, frequency, trial_period, max_pulls, 0)
@@ -35,7 +32,7 @@ fn test_create_plan_initializes_plan_and_credential_mint() {
     let merchant_state: MerchantState = harness.fetch_anchor_account(&addresses.merchant_state);
     assert_eq!(merchant_state.merchant, harness.merchant_pubkey());
     assert_eq!(merchant_state.plan_count, 1);
-    assert_eq!(merchant_state.credential_mint, Pubkey::default());
+    assert_eq!(merchant_state.credential_mint, merchant_credential_mint);
     assert_eq!(merchant_state.mandate_counter, 0);
     assert_eq!(merchant_state.version, 1);
     assert_eq!(merchant_state._reserved, [0u8; 64]);
@@ -48,18 +45,12 @@ fn test_create_plan_initializes_plan_and_credential_mint() {
     assert_eq!(plan.trial_period, trial_period);
     assert_eq!(plan.max_pulls, max_pulls);
     assert!(matches!(plan.status, PlanStatus::Active));
-    assert_eq!(plan.credential_mint, addresses.credential_mint);
+    assert_eq!(plan.credential_mint, merchant_credential_mint);
 
-    assert_eq!(
-        harness.fetch_account_owner(&addresses.credential_mint),
-        token_2022_address()
-    );
-    let mint_data = harness.fetch_account_data(&addresses.credential_mint);
+    let mint_data = harness.fetch_account_data(&merchant_credential_mint);
     let mint = StateWithExtensions::<Mint>::unpack(&mint_data)
         .expect("credential mint should unpack with Token-2022 extensions");
     assert_eq!(mint.base.decimals, CREDENTIAL_DECIMALS);
-    assert!(mint.get_extension::<NonTransferable>().is_ok());
-    assert!(mint.get_extension::<MetadataPointer>().is_ok());
 }
 
 #[test]
@@ -86,6 +77,20 @@ fn test_create_plan_rejects_zero_max_pulls() {
     assert!(
         format!("{:?}", error.err).contains("Custom(6010)"),
         "expected MaxPullsTooLow custom error, got {:?}",
+        error.err,
+    );
+}
+
+#[test]
+fn test_create_plan_requires_merchant_credential_bootstrap() {
+    let mut harness = TestHarness::new();
+    let error = harness
+        .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
+        .expect_err("create_plan must reject unbootstrapped merchants");
+
+    assert!(
+        format!("{:?}", error.err).contains("Custom(6300)"),
+        "expected MigrationPreconditionFailed custom error, got {:?}",
         error.err,
     );
 }
@@ -134,7 +139,6 @@ fn test_create_plan_uses_merchant_credential_after_bootstrap() {
 #[test]
 fn test_create_usage_plan_uses_merchant_credential_after_bootstrap() {
     let mut harness = TestHarness::new();
-    use vela_protocol::state::PricingTier;
 
     // Bootstrap merchant credential first (40-07)
     harness
@@ -163,11 +167,39 @@ fn test_create_usage_plan_uses_merchant_credential_after_bootstrap() {
         .expect("create_usage_plan should succeed after merchant bootstrap");
 
     let addresses = harness.derive_usage_plan_addresses(0);
-    let plan: vela_protocol::state::UsagePlan = harness.fetch_anchor_account(&addresses.usage_plan);
+    let plan: UsagePlan = harness.fetch_anchor_account(&addresses.usage_plan);
 
     // New usage plans should reference the merchant credential mint
     assert_eq!(
         plan.credential_mint, merchant_credential_mint,
         "create_usage_plan must use merchant credential mint after bootstrap (CRED-01)"
+    );
+}
+
+#[test]
+fn test_create_usage_plan_requires_merchant_credential_bootstrap() {
+    let mut harness = TestHarness::new();
+    let mut unit_name = [0u8; 32];
+    unit_name[..9].copy_from_slice(b"api_calls");
+    let tiers = vec![
+        PricingTier {
+            up_to: 1_000,
+            rate_per_unit: 10_000,
+            _padding: 0,
+        },
+        PricingTier {
+            up_to: 0,
+            rate_per_unit: 8_000,
+            _padding: 0,
+        },
+    ];
+
+    let error = harness
+        .send_create_usage_plan(0, unit_name, tiers, 75_000_000, MIN_FREQUENCY_SECONDS * 2)
+        .expect_err("create_usage_plan must reject unbootstrapped merchants");
+    assert!(
+        format!("{:?}", error.err).contains("Custom(6300)"),
+        "expected MigrationPreconditionFailed custom error, got {:?}",
+        error.err,
     );
 }

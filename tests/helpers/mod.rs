@@ -594,10 +594,14 @@ impl TestHarness {
         plan_id: u64,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let addresses = self.derive_plan_addresses(plan_id);
+        // Read the plan's credential_mint field — may be merchant credential (post-40-08)
+        // or plan-scoped credential (legacy).
+        let plan: vela_protocol::state::VelaPlan = self.fetch_anchor_account(&addresses.plan);
+        let credential_mint = plan.credential_mint;
         self.send_subscribe_to_plan(
             subscriber,
             &addresses.plan,
-            &addresses.credential_mint,
+            &credential_mint,
         )
     }
 
@@ -609,6 +613,13 @@ impl TestHarness {
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let mandate =
             self.derive_mandate_address(&to_anchor_pubkey(subscriber.pubkey()), plan);
+        let (merchant_state, _) = Pubkey::find_program_address(
+            &[
+                vela_protocol::state::MerchantState::SEED_PREFIX,
+                self.merchant_pubkey().as_ref(),
+            ],
+            &vela_protocol::ID,
+        );
         let credential_ata = self.derive_credential_ata(
             &to_anchor_pubkey(subscriber.pubkey()),
             credential_mint,
@@ -617,6 +628,7 @@ impl TestHarness {
         let accounts = vela_protocol::accounts::Subscribe {
             subscriber: to_anchor_pubkey(subscriber.pubkey()),
             merchant: self.merchant_pubkey(),
+            merchant_state,
             plan: *plan,
             mandate,
             credential_mint: *credential_mint,
@@ -878,15 +890,17 @@ impl TestHarness {
         subscriber_token_account: &Pubkey,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let addresses = self.derive_plan_addresses(plan_id);
+        let plan: vela_protocol::state::VelaPlan = self.fetch_anchor_account(&addresses.plan);
+        let credential_mint = plan.credential_mint;
         let subscriber_credential_account =
-            self.derive_credential_ata(subscriber, &addresses.credential_mint);
+            self.derive_credential_ata(subscriber, &credential_mint);
         let accounts = vec![
             AccountMeta::new(to_address(to_anchor_pubkey(authority.pubkey())), true),
             AccountMeta::new_readonly(to_address(*subscriber), false),
             AccountMeta::new_readonly(to_address(addresses.plan), false),
             AccountMeta::new(to_address(*mandate), false),
             AccountMeta::new(to_address(subscriber_credential_account), false),
-            AccountMeta::new(to_address(addresses.credential_mint), false),
+            AccountMeta::new(to_address(credential_mint), false),
             AccountMeta::new_readonly(token_2022_address(), false),
             AccountMeta::new(to_address(*subscriber_token_account), false),
             AccountMeta::new_readonly(Address::from(spl_token::id().to_bytes()), false),
@@ -931,8 +945,11 @@ impl TestHarness {
     ) -> SubscriptionFixture {
         let subscriber = self.create_wallet();
         let subscriber_pubkey = to_anchor_pubkey(subscriber.pubkey());
+        self.send_init_merchant_credential()
+            .expect("init_merchant_credential should succeed");
         self.send_create_plan(amount, frequency, trial_period, max_pulls, 0)
             .expect("create_plan should succeed");
+        let (merchant_credential_mint, _) = self.derive_merchant_credential_mint();
 
         // Create a mock SPL USDC mint (used for the wrapping vault backing)
         let usdc_mint = self.create_spl_mint(&subscriber, 6);
@@ -954,7 +971,7 @@ impl TestHarness {
             subscriber,
             plan: plan_addresses.plan,
             mandate,
-            credential_mint: plan_addresses.credential_mint,
+            credential_mint: merchant_credential_mint,
             usdc_mint,
             subscriber_token_account,
             merchant_token_account,

@@ -1,8 +1,6 @@
 #[path = "helpers/mod.rs"]
 mod helpers;
 
-use std::collections::BTreeMap;
-
 use anchor_lang::prelude::Pubkey;
 use helpers::TestHarness;
 use solana_program_pack::Pack;
@@ -12,8 +10,7 @@ use spl_token_2022::{
     extension::{BaseStateWithExtensions, StateWithExtensions},
     state::{Account as Token2022Account, Mint},
 };
-use spl_token_metadata_interface::state::TokenMetadata;
-use vela_protocol::constants::MIN_FREQUENCY_SECONDS;
+use vela_protocol::constants::{CREDENTIAL_DECIMALS, MIN_FREQUENCY_SECONDS};
 use vela_protocol::state::VelaMandate;
 
 #[test]
@@ -61,52 +58,35 @@ fn test_credential_is_non_transferable() {
 }
 
 #[test]
-fn test_credential_has_metadata() {
+fn test_credential_mint_is_merchant_scoped() {
     let mut harness = TestHarness::new();
     let fixture = harness.subscribe_fixture(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4);
+    let (merchant_credential_mint, _) = harness.derive_merchant_credential_mint();
     let mint_data = harness.fetch_account_data(&fixture.credential_mint);
     let mint = StateWithExtensions::<Mint>::unpack(&mint_data)
         .expect("credential mint should unpack with extensions");
-    let metadata = mint
-        .get_variable_len_extension::<TokenMetadata>()
-        .expect("token metadata should be present");
-    let metadata_map = metadata
-        .additional_metadata
-        .iter()
-        .cloned()
-        .collect::<BTreeMap<_, _>>();
-    let mandate: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
-    let now = harness.current_timestamp();
 
-    assert_eq!(metadata.name, "Vela Plan #0");
-    assert_eq!(metadata.symbol, "VELA");
-    assert_eq!(metadata.mint, SplPubkey::new_from_array(fixture.credential_mint.to_bytes()));
-    assert_eq!(
-        metadata_map.get("plan_tier").map(String::as_str),
-        Some("Vela Plan #0")
-    );
-    assert_eq!(metadata_map.get("plan_id").map(String::as_str), Some("0"));
-    assert_eq!(
-        metadata_map
-            .get("subscription_start_source")
-            .map(String::as_str),
-        Some("VelaMandate.start_date")
-    );
+    assert_eq!(fixture.credential_mint, merchant_credential_mint);
+    assert_eq!(mint.base.decimals, CREDENTIAL_DECIMALS);
     assert!(
-        !metadata_map.contains_key("start_date"),
-        "shared credential metadata should not duplicate subscriber-specific start dates"
+        mint.get_extension::<spl_token_2022::extension::non_transferable::NonTransferable>()
+            .is_ok(),
+        "merchant credential mint should be non-transferable"
     );
-    assert_eq!(mandate.start_date, now);
-    assert_eq!(mandate.next_payment_due, now + mandate.frequency as i64);
 }
 
 #[test]
-fn test_credential_per_plan_mint() {
+fn test_credential_merchant_mint_shared_across_plans() {
     let mut harness = TestHarness::new();
     let subscriber_one = harness.create_wallet();
     let subscriber_one_pubkey = Pubkey::new_from_array(subscriber_one.pubkey().to_bytes());
     let subscriber_two = harness.create_wallet();
     let subscriber_two_pubkey = Pubkey::new_from_array(subscriber_two.pubkey().to_bytes());
+    let (merchant_credential_mint, _) = harness.derive_merchant_credential_mint();
+
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
 
     harness
         .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
@@ -117,7 +97,10 @@ fn test_credential_per_plan_mint() {
 
     let plan_a = harness.derive_plan_addresses(0);
     let plan_b = harness.derive_plan_addresses(1);
-    assert_ne!(plan_a.credential_mint, plan_b.credential_mint);
+    let plan_a_record: vela_protocol::state::VelaPlan = harness.fetch_anchor_account(&plan_a.plan);
+    let plan_b_record: vela_protocol::state::VelaPlan = harness.fetch_anchor_account(&plan_b.plan);
+    assert_eq!(plan_a_record.credential_mint, merchant_credential_mint);
+    assert_eq!(plan_b_record.credential_mint, merchant_credential_mint);
 
     // Subscribe three different subscribers/plans (no USDC accounts needed anymore)
     harness
@@ -131,11 +114,11 @@ fn test_credential_per_plan_mint() {
         .expect("second subscriber should join plan A");
 
     let plan_a_credential_one =
-        harness.derive_credential_ata(&subscriber_one_pubkey, &plan_a.credential_mint);
+        harness.derive_credential_ata(&subscriber_one_pubkey, &merchant_credential_mint);
     let plan_a_credential_two =
-        harness.derive_credential_ata(&subscriber_two_pubkey, &plan_a.credential_mint);
+        harness.derive_credential_ata(&subscriber_two_pubkey, &merchant_credential_mint);
     let plan_b_credential_one =
-        harness.derive_credential_ata(&subscriber_one_pubkey, &plan_b.credential_mint);
+        harness.derive_credential_ata(&subscriber_one_pubkey, &merchant_credential_mint);
 
     let credential_one_a =
         Token2022Account::unpack_from_slice(&harness.fetch_account_data(&plan_a_credential_one))
@@ -149,16 +132,19 @@ fn test_credential_per_plan_mint() {
 
     assert_eq!(
         credential_one_a.mint,
-        SplPubkey::new_from_array(plan_a.credential_mint.to_bytes())
+        SplPubkey::new_from_array(merchant_credential_mint.to_bytes())
     );
     assert_eq!(
         credential_two_a.mint,
-        SplPubkey::new_from_array(plan_a.credential_mint.to_bytes())
+        SplPubkey::new_from_array(merchant_credential_mint.to_bytes())
     );
     assert_eq!(
         credential_one_b.mint,
-        SplPubkey::new_from_array(plan_b.credential_mint.to_bytes())
+        SplPubkey::new_from_array(merchant_credential_mint.to_bytes())
     );
+    assert_eq!(credential_one_a.amount, 2);
+    assert_eq!(credential_two_a.amount, 1);
+    assert_eq!(credential_one_b.amount, 2);
 }
 
 // --- Phase 40-07: Merchant Credential Bootstrap Tests ---

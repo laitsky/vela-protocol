@@ -1,13 +1,19 @@
 #[path = "helpers/mod.rs"]
 mod helpers;
 
+use anchor_lang::AccountSerialize;
 use helpers::TestHarness;
+use solana_account::Account;
+use solana_address::Address;
 use solana_program_pack::Pack;
 use solana_signer::Signer;
 use spl_token_2022::state::Account as Token2022Account;
 use vela_protocol::{
     constants::MIN_FREQUENCY_SECONDS,
-    state::{BillingType, MandateStatus, PlanStatus, PricingTier, VelaMandate, VelaPlan, UsagePlan},
+    state::{
+        BillingType, MandateStatus, MerchantState, PlanStatus, PricingTier, VelaMandate, VelaPlan,
+        UsagePlan, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION,
+    },
 };
 
 use anchor_lang::prelude::Pubkey;
@@ -27,6 +33,10 @@ fn setup_subscription_fixture() -> (
     let addresses = harness.derive_plan_addresses(0);
 
     harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+
+    harness
         .send_create_plan(amount, frequency, 0, max_pulls, 0)
         .expect("create_plan should succeed");
 
@@ -36,8 +46,91 @@ fn setup_subscription_fixture() -> (
         subscriber,
         plan,
         addresses.plan,
-        addresses.credential_mint,
+        plan.credential_mint,
     )
+}
+
+fn seed_legacy_flat_plan(harness: &mut TestHarness, plan_id: u64) -> (Pubkey, Pubkey) {
+    let merchant = harness.merchant_pubkey();
+    let plan_addresses = harness.derive_plan_addresses(plan_id);
+    let (merchant_state, merchant_state_bump) = Pubkey::find_program_address(
+        &[MerchantState::SEED_PREFIX, merchant.as_ref()],
+        &vela_protocol::ID,
+    );
+    let (_, plan_bump) = Pubkey::find_program_address(
+        &[
+            VelaPlan::SEED_PREFIX,
+            merchant.as_ref(),
+            plan_id.to_le_bytes().as_ref(),
+        ],
+        &vela_protocol::ID,
+    );
+
+    let merchant_state_record = MerchantState {
+        merchant,
+        plan_count: plan_id + 1,
+        bump: merchant_state_bump,
+        credential_mint: Pubkey::default(),
+        mandate_counter: 0,
+        version: CURRENT_ACCOUNT_VERSION,
+        _reserved: [0; ACCOUNT_RESERVED_BYTES],
+    };
+    let mut merchant_state_data = Vec::new();
+    merchant_state_record
+        .try_serialize(&mut merchant_state_data)
+        .expect("merchant state should serialize");
+    harness
+        .svm
+        .set_account(
+            Address::from(merchant_state.to_bytes()),
+            Account {
+                lamports: 1_000_000,
+                data: merchant_state_data,
+                owner: harness.program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
+        )
+        .expect("merchant_state should be seeded");
+
+    let plan_record = VelaPlan {
+        merchant,
+        plan_id,
+        amount: 25_000_000,
+        frequency: MIN_FREQUENCY_SECONDS,
+        trial_period: 0,
+        max_pulls: 4,
+        status: PlanStatus::Active,
+        credential_mint: plan_addresses.credential_mint,
+        bump: plan_bump,
+        version: CURRENT_ACCOUNT_VERSION,
+        _reserved: [0; ACCOUNT_RESERVED_BYTES],
+    };
+    let mut plan_data = Vec::new();
+    plan_record
+        .try_serialize(&mut plan_data)
+        .expect("plan should serialize");
+    harness
+        .svm
+        .set_account(
+            Address::from(plan_addresses.plan.to_bytes()),
+            Account {
+                lamports: 1_000_000,
+                data: plan_data,
+                owner: harness.program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
+        )
+        .expect("legacy plan should be seeded");
+
+    harness.inject_token_2022_mint(
+        &plan_addresses.credential_mint,
+        &plan_addresses.plan,
+        0,
+    );
+
+    (plan_addresses.plan, plan_addresses.credential_mint)
 }
 
 #[test]
@@ -95,6 +188,9 @@ fn test_subscribe_trial_period_extends_expiry_from_first_bill() {
     let trial_period = MIN_FREQUENCY_SECONDS * 2;
     let addresses = harness.derive_plan_addresses(0);
 
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
     harness
         .send_create_plan(amount, frequency, trial_period, max_pulls, 0)
         .expect("create_plan should succeed");
@@ -162,6 +258,11 @@ fn test_subscribe_usage_plan_creates_usage_mandate() {
     let max_charge_per_period = 75_000_000u64;
     let now = harness.current_timestamp();
     let addresses = harness.derive_usage_plan_addresses(plan_id);
+    let (merchant_credential_mint, _) = harness.derive_merchant_credential_mint();
+
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
 
     let mut unit_name = [0u8; 32];
     unit_name[..9].copy_from_slice(b"api_calls");
@@ -190,7 +291,7 @@ fn test_subscribe_usage_plan_creates_usage_mandate() {
 
     let plan: UsagePlan = harness.fetch_anchor_account(&addresses.usage_plan);
     harness
-        .send_subscribe_to_plan(&subscriber, &addresses.usage_plan, &addresses.credential_mint)
+        .send_subscribe_to_plan(&subscriber, &addresses.usage_plan, &merchant_credential_mint)
         .expect("usage plan subscribe should succeed");
 
     let subscriber_pubkey = Pubkey::new_from_array(subscriber.pubkey().to_bytes());
@@ -213,12 +314,16 @@ fn test_subscribe_usage_plan_creates_usage_mandate() {
     assert_eq!(plan.max_charge_per_period, max_charge_per_period);
     assert_eq!(plan.settlement_frequency, settlement_frequency);
     assert_eq!(plan.tier_count, tiers.len() as u8);
+    assert_eq!(plan.credential_mint, merchant_credential_mint);
 
-    let credential_ata = harness.derive_credential_ata(&subscriber_pubkey, &addresses.credential_mint);
+    let credential_ata = harness.derive_credential_ata(&subscriber_pubkey, &merchant_credential_mint);
     let credential_account =
         Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata))
             .expect("credential account should unpack");
-    assert_eq!(credential_account.mint.to_string(), addresses.credential_mint.to_string());
+    assert_eq!(
+        credential_account.mint.to_string(),
+        merchant_credential_mint.to_string()
+    );
     assert_eq!(credential_account.owner.to_string(), subscriber_pubkey.to_string());
     assert_eq!(credential_account.amount, 1);
 }
@@ -282,12 +387,8 @@ fn test_subscribe_legacy_plan_fallback() {
     let subscriber = harness.create_wallet();
     let subscriber_pubkey = Pubkey::new_from_array(subscriber.pubkey().to_bytes());
 
-    // Create a legacy plan (no merchant credential bootstrap)
-    harness
-        .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
-        .expect("create_plan should succeed");
-
-    let plan_addresses = harness.derive_plan_addresses(0);
+    // Seed a pre-bootstrap legacy plan + plan-scoped credential mint (CRED-05 migration path).
+    let (_legacy_plan, legacy_credential_mint) = seed_legacy_flat_plan(&mut harness, 0);
 
     // Subscribe to the legacy plan -- should fall back to plan credential (CRED-05)
     harness
@@ -297,14 +398,14 @@ fn test_subscribe_legacy_plan_fallback() {
     // Verify credential was minted from the plan-scoped credential mint
     let credential_ata = harness.derive_credential_ata(
         &subscriber_pubkey,
-        &plan_addresses.credential_mint,
+        &legacy_credential_mint,
     );
     let credential_account =
         Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata))
             .expect("credential account should unpack");
     assert_eq!(
         credential_account.mint.to_string(),
-        plan_addresses.credential_mint.to_string(),
+        legacy_credential_mint.to_string(),
         "credential must be from plan mint for legacy plans (CRED-05)"
     );
     assert_eq!(credential_account.amount, 1);
