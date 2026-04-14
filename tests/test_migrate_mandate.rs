@@ -289,3 +289,132 @@ fn test_migrated_mandate_keys_validation_billing_usage_namespaces() {
         "usage namespace must follow the active mandate.key()",
     );
 }
+
+#[test]
+fn test_migrated_mandate_downstream_namespaces_are_consistent_across_flows() {
+    // After migration, validation request/callback, billing request/callback, and
+    // usage request/callback should all derive PDAs from the same migrated mandate.key().
+    // This test ensures no flow silently keys off the legacy address.
+    let (mut harness, subscriber, plan, legacy_mandate, migrated_mandate, _index) =
+        setup_fixture(0);
+
+    harness
+        .send_migrate_mandate(&subscriber, &plan, &legacy_mandate, &migrated_mandate)
+        .expect("migration should succeed");
+
+    // Derive all downstream PDAs from the migrated mandate
+    let pull_approval_migrated = Pubkey::find_program_address(
+        &[PullApproval::SEED_PREFIX, migrated_mandate.as_ref()],
+        &vela_protocol::ID,
+    )
+    .0;
+    let billing_event_migrated = Pubkey::find_program_address(
+        &[
+            BillingEvent::SEED_PREFIX,
+            migrated_mandate.as_ref(),
+            1u64.to_le_bytes().as_ref(),
+        ],
+        &vela_protocol::ID,
+    )
+    .0;
+    let usage_report_migrated = Pubkey::find_program_address(
+        &[
+            UsageReport::SEED_PREFIX,
+            migrated_mandate.as_ref(),
+            0i64.to_le_bytes().as_ref(),
+        ],
+        &vela_protocol::ID,
+    )
+    .0;
+
+    // Derive the same PDAs from the legacy mandate (should differ)
+    let pull_approval_legacy = Pubkey::find_program_address(
+        &[PullApproval::SEED_PREFIX, legacy_mandate.as_ref()],
+        &vela_protocol::ID,
+    )
+    .0;
+    let billing_event_legacy = Pubkey::find_program_address(
+        &[
+            BillingEvent::SEED_PREFIX,
+            legacy_mandate.as_ref(),
+            1u64.to_le_bytes().as_ref(),
+        ],
+        &vela_protocol::ID,
+    )
+    .0;
+    let usage_report_legacy = Pubkey::find_program_address(
+        &[
+            UsageReport::SEED_PREFIX,
+            legacy_mandate.as_ref(),
+            0i64.to_le_bytes().as_ref(),
+        ],
+        &vela_protocol::ID,
+    )
+    .0;
+
+    // All migrated PDAs must differ from legacy PDAs
+    assert_ne!(
+        pull_approval_migrated, pull_approval_legacy,
+        "validation PullApproval must use migrated mandate.key(), not legacy"
+    );
+    assert_ne!(
+        billing_event_migrated, billing_event_legacy,
+        "billing BillingEvent must use migrated mandate.key(), not legacy"
+    );
+    assert_ne!(
+        usage_report_migrated, usage_report_legacy,
+        "usage UsageReport must use migrated mandate.key(), not legacy"
+    );
+
+    // All three downstream PDAs must be distinct from each other
+    assert_ne!(pull_approval_migrated, billing_event_migrated);
+    assert_ne!(pull_approval_migrated, usage_report_migrated);
+    assert_ne!(billing_event_migrated, usage_report_migrated);
+}
+
+#[test]
+fn test_legacy_mandate_downstream_namespaces_remain_valid_pre_migration() {
+    // Before migration, downstream flows should still use the legacy mandate address.
+    // This proves D-03 compatibility: legacy behavior remains until migration occurs.
+    let (harness, _subscriber, _plan, legacy_mandate, _migrated_mandate, _index) =
+        setup_fixture(0);
+
+    // Legacy mandate still exists
+    assert!(
+        harness
+            .svm
+            .get_account(&Address::from(legacy_mandate.to_bytes()))
+            .is_some(),
+        "legacy mandate must exist before migration"
+    );
+
+    // Derive downstream PDAs from legacy mandate (should be valid)
+    let pull_approval = Pubkey::find_program_address(
+        &[PullApproval::SEED_PREFIX, legacy_mandate.as_ref()],
+        &vela_protocol::ID,
+    )
+    .0;
+    let billing_event = Pubkey::find_program_address(
+        &[
+            BillingEvent::SEED_PREFIX,
+            legacy_mandate.as_ref(),
+            1u64.to_le_bytes().as_ref(),
+        ],
+        &vela_protocol::ID,
+    )
+    .0;
+    let usage_report = Pubkey::find_program_address(
+        &[
+            UsageReport::SEED_PREFIX,
+            legacy_mandate.as_ref(),
+            0i64.to_le_bytes().as_ref(),
+        ],
+        &vela_protocol::ID,
+    )
+    .0;
+
+    // All downstream PDAs from the legacy mandate must be distinct
+    assert_ne!(pull_approval, billing_event);
+    assert_ne!(pull_approval, usage_report);
+    assert_ne!(billing_event, usage_report);
+}

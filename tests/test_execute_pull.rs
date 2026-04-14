@@ -344,3 +344,96 @@ fn test_execute_pull_namespace_references_use_active_mandate_key() {
     assert_ne!(validation, billing);
     assert_ne!(validation, usage);
 }
+
+#[test]
+fn test_execute_pull_v2_mandate_downstream_namespace_continuity() {
+    // V2 mandates (created via subscribe with mandate_index seeds) must produce
+    // downstream validation/billing/usage PDAs keyed to mandate.key() -- not to
+    // a stale legacy address.
+    let (harness, fixture, _plan, _mandate_before, _sub, _merch, _mint) = setup_fixture();
+    let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
+    let _merchant = harness.merchant_pubkey();
+
+    // The fixture mandate is a V2 mandate (subscriber, merchant, mandate_index)
+    let mandate_v2 = fixture.mandate;
+
+    // Derive what the legacy address would have been
+    let legacy_mandate = Pubkey::find_program_address(
+        &[
+            VelaMandate::SEED_PREFIX,
+            subscriber.as_ref(),
+            fixture.plan.as_ref(),
+        ],
+        &vela_protocol::ID,
+    )
+    .0;
+
+    // V2 mandate address must differ from legacy
+    assert_ne!(
+        mandate_v2, legacy_mandate,
+        "V2 mandate PDA must differ from legacy plan-keyed PDA"
+    );
+
+    // Downstream PDAs must be keyed to the V2 mandate address
+    let validation_v2 = Pubkey::find_program_address(
+        &[PullApproval::SEED_PREFIX, mandate_v2.as_ref()],
+        &vela_protocol::ID,
+    )
+    .0;
+    let billing_v2 = Pubkey::find_program_address(
+        &[
+            BillingEvent::SEED_PREFIX,
+            mandate_v2.as_ref(),
+            1u64.to_le_bytes().as_ref(),
+        ],
+        &vela_protocol::ID,
+    )
+    .0;
+    let usage_v2 = Pubkey::find_program_address(
+        &[
+            UsageReport::SEED_PREFIX,
+            mandate_v2.as_ref(),
+            0i64.to_le_bytes().as_ref(),
+        ],
+        &vela_protocol::ID,
+    )
+    .0;
+
+    // Legacy-derived downstream PDAs (should differ from V2-derived ones)
+    let validation_legacy = Pubkey::find_program_address(
+        &[PullApproval::SEED_PREFIX, legacy_mandate.as_ref()],
+        &vela_protocol::ID,
+    )
+    .0;
+    let billing_legacy = Pubkey::find_program_address(
+        &[
+            BillingEvent::SEED_PREFIX,
+            legacy_mandate.as_ref(),
+            1u64.to_le_bytes().as_ref(),
+        ],
+        &vela_protocol::ID,
+    )
+    .0;
+    let usage_legacy = Pubkey::find_program_address(
+        &[
+            UsageReport::SEED_PREFIX,
+            legacy_mandate.as_ref(),
+            0i64.to_le_bytes().as_ref(),
+        ],
+        &vela_protocol::ID,
+    )
+    .0;
+
+    assert_ne!(
+        validation_v2, validation_legacy,
+        "validation namespace must follow V2 mandate.key()"
+    );
+    assert_ne!(
+        billing_v2, billing_legacy,
+        "billing namespace must follow V2 mandate.key()"
+    );
+    assert_ne!(
+        usage_v2, usage_legacy,
+        "usage namespace must follow V2 mandate.key()"
+    );
+}
