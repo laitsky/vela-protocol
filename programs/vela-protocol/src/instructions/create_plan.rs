@@ -1,29 +1,19 @@
 use anchor_lang::{
     prelude::*,
     solana_program::{
-        program::{invoke, invoke_signed},
+        program::invoke_signed,
         program_error::ProgramError,
         system_instruction,
     },
 };
-use solana_instruction::Instruction as SplInstruction;
-use solana_program_error::ProgramError as SplProgramError;
 use solana_pubkey::Pubkey as SplPubkey;
-use spl_pod::optional_keys::OptionalNonZeroPubkey;
-use spl_token_2022::{
-    extension::{metadata_pointer, ExtensionType},
-    instruction::{initialize_mint2, initialize_non_transferable_mint, initialize_permanent_delegate},
-    state::Mint,
-};
-use spl_token_metadata_interface::{
-    instruction::update_field,
-    state::{Field, TokenMetadata},
-};
 
 use crate::{
-    constants::{CREDENTIAL_DECIMALS, MIN_FREQUENCY_SECONDS},
+    constants::MIN_FREQUENCY_SECONDS,
     errors::VelaError,
-    instructions::merchant_account::{ensure_merchant_state, write_merchant_state},
+    instructions::merchant_account::{
+        ensure_merchant_state, resolve_merchant_credential_mint, write_merchant_state,
+    },
     instructions::plan_account::write_plan,
     state::{MerchantState, PlanStatus, VelaPlan, CURRENT_ACCOUNT_VERSION, ACCOUNT_RESERVED_BYTES},
 };
@@ -91,7 +81,7 @@ pub fn handler(
     if plan_key != expected_plan_key {
         return Err(ProgramError::InvalidSeeds.into());
     }
-    let (expected_credential_key, credential_bump) = Pubkey::find_program_address(
+    let (expected_credential_key, _) = Pubkey::find_program_address(
         &[b"credential", merchant_key.as_ref(), plan_id_bytes.as_ref()],
         &crate::ID,
     );
@@ -102,45 +92,18 @@ pub fn handler(
         return Err(ProgramError::AccountAlreadyInitialized.into());
     }
 
-    let credential_name = format!("Vela Plan #{plan_id}");
-    let credential_symbol = "VELA".to_string();
-    let credential_uri = String::new();
-    let additional_metadata = vec![
-        ("plan_tier".to_string(), credential_name.clone()),
-        ("plan_id".to_string(), plan_id.to_string()),
-        (
-            "subscription_start_source".to_string(),
-            "VelaMandate.start_date".to_string(),
-        ),
-    ];
-    let token_metadata = TokenMetadata {
-        update_authority: OptionalNonZeroPubkey::try_from(Some(spl_pubkey(&plan_key)))
-            .map_err(map_interface_error)?,
-        mint: spl_pubkey(&credential_mint_key),
-        name: credential_name.clone(),
-        symbol: credential_symbol.clone(),
-        uri: credential_uri.clone(),
-        additional_metadata: additional_metadata.clone(),
-    };
+    // Resolve credential mint: merchant-first (D-10), plan-scoped fallback (CRED-05)
+    let resolved_credential_mint = resolve_merchant_credential_mint(
+        &merchant_state_info,
+        &merchant_key,
+        &credential_mint_key,
+    )?;
+    require!(
+        merchant_state.credential_mint != Pubkey::default()
+            && resolved_credential_mint == merchant_state.credential_mint,
+        VelaError::MigrationPreconditionFailed
+    );
 
-    let mint_extensions = [
-        ExtensionType::NonTransferable,
-        ExtensionType::MetadataPointer,
-        ExtensionType::PermanentDelegate,
-    ];
-    let mint_len = ExtensionType::try_calculate_account_len::<Mint>(&mint_extensions)
-        .map_err(map_interface_error)?;
-    let funded_mint_len = mint_len
-        .checked_add(token_metadata.tlv_size_of().map_err(map_interface_error)?)
-        .ok_or(VelaError::Overflow)?;
-    let mint_rent = ctx.accounts.rent.minimum_balance(funded_mint_len);
-
-    let credential_signer_seeds: &[&[u8]] = &[
-        b"credential",
-        merchant_key.as_ref(),
-        plan_id_bytes.as_ref(),
-        &[credential_bump],
-    ];
     let plan_signer_seeds: &[&[u8]] = &[
         VelaPlan::SEED_PREFIX,
         merchant_key.as_ref(),
@@ -165,113 +128,6 @@ pub fn handler(
         &[plan_signer_seeds],
     )?;
 
-    invoke_signed(
-        &system_instruction::create_account(
-            &merchant_key,
-            &credential_mint_key,
-            mint_rent,
-            mint_len as u64,
-            &ctx.accounts.token_2022_program.key(),
-        ),
-        &[
-            ctx.accounts.merchant.to_account_info(),
-            ctx.accounts.credential_mint.to_account_info(),
-            ctx.accounts.system_program.to_account_info(),
-        ],
-        &[credential_signer_seeds],
-    )?;
-
-    invoke(
-        &convert_instruction(
-            initialize_non_transferable_mint(
-                &token_2022_program_id,
-                &spl_pubkey(&credential_mint_key),
-            )
-            .map_err(map_interface_error)?,
-        ),
-        &[ctx.accounts.credential_mint.to_account_info()],
-    )?;
-
-    // Initialize PermanentDelegate extension -- plan PDA is the permanent delegate,
-    // enabling admin_cancel to burn credential tokens without subscriber consent.
-    let init_permanent_delegate_ix = initialize_permanent_delegate(
-        &token_2022_program_id,
-        &spl_pubkey(&credential_mint_key),
-        &spl_pubkey(&plan_key),
-    )
-    .map_err(map_interface_error)?;
-    invoke(
-        &convert_instruction(init_permanent_delegate_ix),
-        &[ctx.accounts.credential_mint.to_account_info()],
-    )?;
-
-    invoke(
-        &convert_instruction(
-            metadata_pointer::instruction::initialize(
-                &token_2022_program_id,
-                &spl_pubkey(&credential_mint_key),
-                Some(spl_pubkey(&plan_key)),
-                Some(spl_pubkey(&credential_mint_key)),
-            )
-            .map_err(map_interface_error)?,
-        ),
-        &[ctx.accounts.credential_mint.to_account_info()],
-    )?;
-
-    invoke(
-        &convert_instruction(
-            initialize_mint2(
-                &token_2022_program_id,
-                &spl_pubkey(&credential_mint_key),
-                &spl_pubkey(&plan_key),
-                None,
-                CREDENTIAL_DECIMALS,
-            )
-            .map_err(map_interface_error)?,
-        ),
-        &[ctx.accounts.credential_mint.to_account_info()],
-    )?;
-
-    let metadata_ix = convert_instruction(spl_token_metadata_interface::instruction::initialize(
-        &token_2022_program_id,
-        &spl_pubkey(&credential_mint_key),
-        &spl_pubkey(&plan_key),
-        &spl_pubkey(&credential_mint_key),
-        &spl_pubkey(&plan_key),
-        credential_name,
-        credential_symbol,
-        credential_uri,
-    ));
-    invoke_signed(
-        &metadata_ix,
-        &[
-            ctx.accounts.credential_mint.to_account_info(),
-            ctx.accounts.plan.to_account_info(),
-            ctx.accounts.credential_mint.to_account_info(),
-            ctx.accounts.plan.to_account_info(),
-        ],
-        &[plan_signer_seeds],
-    )?;
-
-    for (key, value) in additional_metadata {
-        let update_ix = convert_instruction(update_field(
-            &token_2022_program_id,
-            &spl_pubkey(&credential_mint_key),
-            &spl_pubkey(&plan_key),
-            Field::Key(key),
-            value,
-        ));
-        invoke_signed(
-            &update_ix,
-            &[
-                ctx.accounts.token_2022_program.to_account_info(),
-                ctx.accounts.credential_mint.to_account_info(),
-                ctx.accounts.plan.to_account_info(),
-            ],
-            &[plan_signer_seeds],
-        )?;
-    }
-
     let plan_state = VelaPlan {
         merchant: merchant_key,
         plan_id,
@@ -280,7 +136,7 @@ pub fn handler(
         trial_period,
         max_pulls,
         status: PlanStatus::Active,
-        credential_mint: credential_mint_key,
+        credential_mint: resolved_credential_mint,
         bump: plan_bump,
         version: CURRENT_ACCOUNT_VERSION,
         _reserved: [0; ACCOUNT_RESERVED_BYTES],
@@ -296,74 +152,6 @@ pub fn handler(
     Ok(())
 }
 
-fn spl_pubkey(key: &Pubkey) -> SplPubkey {
-    SplPubkey::from(key.to_bytes())
-}
-
 fn anchor_pubkey(key: SplPubkey) -> Pubkey {
     Pubkey::new_from_array(key.to_bytes())
-}
-
-fn convert_instruction(
-    ix: SplInstruction,
-) -> anchor_lang::solana_program::instruction::Instruction {
-    anchor_lang::solana_program::instruction::Instruction {
-        program_id: anchor_pubkey(ix.program_id),
-        accounts: ix
-            .accounts
-            .into_iter()
-            .map(|meta| {
-                if meta.is_writable {
-                    anchor_lang::solana_program::instruction::AccountMeta::new(
-                        anchor_pubkey(meta.pubkey),
-                        meta.is_signer,
-                    )
-                } else {
-                    anchor_lang::solana_program::instruction::AccountMeta::new_readonly(
-                        anchor_pubkey(meta.pubkey),
-                        meta.is_signer,
-                    )
-                }
-            })
-            .collect(),
-        data: ix.data,
-    }
-}
-
-fn map_interface_error(error: SplProgramError) -> anchor_lang::error::Error {
-    let error = match error {
-        SplProgramError::Custom(code) => ProgramError::Custom(code),
-        SplProgramError::InvalidArgument => ProgramError::InvalidArgument,
-        SplProgramError::InvalidInstructionData => ProgramError::InvalidInstructionData,
-        SplProgramError::InvalidAccountData => ProgramError::InvalidAccountData,
-        SplProgramError::AccountDataTooSmall => ProgramError::AccountDataTooSmall,
-        SplProgramError::InsufficientFunds => ProgramError::InsufficientFunds,
-        SplProgramError::IncorrectProgramId => ProgramError::IncorrectProgramId,
-        SplProgramError::MissingRequiredSignature => ProgramError::MissingRequiredSignature,
-        SplProgramError::AccountAlreadyInitialized => ProgramError::AccountAlreadyInitialized,
-        SplProgramError::UninitializedAccount => ProgramError::UninitializedAccount,
-        SplProgramError::NotEnoughAccountKeys => ProgramError::NotEnoughAccountKeys,
-        SplProgramError::AccountBorrowFailed => ProgramError::AccountBorrowFailed,
-        SplProgramError::MaxSeedLengthExceeded => ProgramError::MaxSeedLengthExceeded,
-        SplProgramError::InvalidSeeds => ProgramError::InvalidSeeds,
-        SplProgramError::BorshIoError => ProgramError::BorshIoError("borsh io error".into()),
-        SplProgramError::AccountNotRentExempt => ProgramError::AccountNotRentExempt,
-        SplProgramError::UnsupportedSysvar => ProgramError::UnsupportedSysvar,
-        SplProgramError::IllegalOwner => ProgramError::IllegalOwner,
-        SplProgramError::MaxAccountsDataAllocationsExceeded => {
-            ProgramError::MaxAccountsDataAllocationsExceeded
-        }
-        SplProgramError::InvalidRealloc => ProgramError::InvalidRealloc,
-        SplProgramError::MaxInstructionTraceLengthExceeded => {
-            ProgramError::MaxInstructionTraceLengthExceeded
-        }
-        SplProgramError::BuiltinProgramsMustConsumeComputeUnits => {
-            ProgramError::BuiltinProgramsMustConsumeComputeUnits
-        }
-        SplProgramError::InvalidAccountOwner => ProgramError::InvalidAccountOwner,
-        SplProgramError::ArithmeticOverflow => ProgramError::ArithmeticOverflow,
-        SplProgramError::Immutable => ProgramError::Immutable,
-        SplProgramError::IncorrectAuthority => ProgramError::IncorrectAuthority,
-    };
-    error.into()
 }

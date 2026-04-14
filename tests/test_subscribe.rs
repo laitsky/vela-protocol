@@ -41,12 +41,13 @@ fn setup_subscription_fixture() -> (
         .expect("create_plan should succeed");
 
     let plan: VelaPlan = harness.fetch_anchor_account(&addresses.plan);
+    let credential_mint = plan.credential_mint;
     (
         harness,
         subscriber,
         plan,
         addresses.plan,
-        plan.credential_mint,
+        credential_mint,
     )
 }
 

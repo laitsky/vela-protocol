@@ -10,8 +10,9 @@ use spl_token_2022::instruction::mint_to;
 
 use crate::{
     errors::VelaError,
+    instructions::merchant_account::resolve_merchant_credential_mint,
     instructions::plan_account::load_plan_account,
-    state::{MandateStatus, PlanStatus, VelaMandate, VelaPlan, UsagePlan},
+    state::{MandateStatus, MerchantState, PlanStatus, VelaMandate, VelaPlan, UsagePlan},
 };
 
 #[derive(Accounts)]
@@ -21,6 +22,10 @@ pub struct Subscribe<'info> {
 
     /// CHECK: Used for plan and mint PDA validation only.
     pub merchant: UncheckedAccount<'info>,
+
+    /// CHECK: MerchantState PDA for merchant-credential resolution.
+    #[account(seeds = [MerchantState::SEED_PREFIX, merchant.key().as_ref()], bump)]
+    pub merchant_state: UncheckedAccount<'info>,
 
     /// CHECK: Deserialized and validated manually so the same instruction can accept
     /// either a flat `VelaPlan` PDA or a usage `UsagePlan` PDA.
@@ -61,7 +66,15 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
     let plan = load_plan_account(&ctx.accounts.plan.to_account_info())?;
     require!(*plan.status() == PlanStatus::Active, VelaError::PlanNotActive);
     require_keys_eq!(ctx.accounts.merchant.key(), plan.merchant());
-    require_keys_eq!(ctx.accounts.credential_mint.key(), plan.credential_mint());
+
+    // Resolve credential mint: merchant-first (D-12), plan-scoped fallback (CRED-05)
+    let resolved_credential_mint = resolve_merchant_credential_mint(
+        &ctx.accounts.merchant_state.to_account_info(),
+        &plan.merchant(),
+        &plan.credential_mint(),
+    )?;
+    require_keys_eq!(ctx.accounts.credential_mint.key(), resolved_credential_mint);
+
     require_keys_eq!(
         ctx.accounts.token_2022_program.key(),
         anchor_pubkey(spl_token_2022::id())
@@ -97,24 +110,59 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
 
     let merchant_key = plan.merchant();
     let plan_id_bytes = plan.plan_id().to_le_bytes();
-    let plan_bump = [plan.bump()];
-    let plan_seed_prefix = match &plan {
+    let plan_bump_seed = [plan.bump()];
+    let merchant_state_bump_seed = [ctx.bumps.merchant_state];
+
+    let (legacy_credential_seed_prefix, plan_seed_prefix) = match &plan {
         crate::instructions::plan_account::LoadedPlanAccount::Flat(_)
-        | crate::instructions::plan_account::LoadedPlanAccount::LegacyFlat(_) => VelaPlan::SEED_PREFIX,
+        | crate::instructions::plan_account::LoadedPlanAccount::LegacyFlat(_) => {
+            (b"credential".as_slice(), VelaPlan::SEED_PREFIX)
+        }
         crate::instructions::plan_account::LoadedPlanAccount::Usage(_)
-        | crate::instructions::plan_account::LoadedPlanAccount::LegacyUsage(_) => UsagePlan::SEED_PREFIX,
+        | crate::instructions::plan_account::LoadedPlanAccount::LegacyUsage(_) => {
+            (b"usage_credential".as_slice(), UsagePlan::SEED_PREFIX)
+        }
     };
-    let signer_seeds: &[&[u8]] = &[
-        plan_seed_prefix,
-        merchant_key.as_ref(),
-        plan_id_bytes.as_ref(),
-        &plan_bump,
-    ];
+    let (legacy_plan_credential_mint, _) = Pubkey::find_program_address(
+        &[
+            legacy_credential_seed_prefix,
+            merchant_key.as_ref(),
+            plan_id_bytes.as_ref(),
+        ],
+        &crate::ID,
+    );
+
+    // Determine signing authority for the mint_to CPI:
+    // - Merchant credential: merchant_state PDA is the mint authority
+    // - Plan-scoped credential: plan PDA is the mint authority
+    let is_merchant_credential = resolved_credential_mint != legacy_plan_credential_mint;
+
+    let (signer_seeds, mint_authority): (Vec<&[u8]>, Pubkey) = if is_merchant_credential {
+        (
+            vec![
+                MerchantState::SEED_PREFIX,
+                merchant_key.as_ref(),
+                merchant_state_bump_seed.as_ref(),
+            ],
+            ctx.accounts.merchant_state.key(),
+        )
+    } else {
+        (
+            vec![
+                plan_seed_prefix,
+                merchant_key.as_ref(),
+                plan_id_bytes.as_ref(),
+                plan_bump_seed.as_ref(),
+            ],
+            ctx.accounts.plan.key(),
+        )
+    };
+
     let mint_ix = mint_to(
         &spl_token_2022::id(),
         &spl_pubkey(ctx.accounts.credential_mint.key()),
         &spl_pubkey(ctx.accounts.subscriber_credential_account.key()),
-        &spl_pubkey(ctx.accounts.plan.key()),
+        &spl_pubkey(mint_authority),
         &[],
         1,
     )
@@ -124,9 +172,13 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
         &[
             ctx.accounts.credential_mint.to_account_info(),
             ctx.accounts.subscriber_credential_account.to_account_info(),
-            ctx.accounts.plan.to_account_info(),
+            if is_merchant_credential {
+                ctx.accounts.merchant_state.to_account_info()
+            } else {
+                ctx.accounts.plan.to_account_info()
+            },
         ],
-        &[signer_seeds],
+        &[signer_seeds.as_slice()],
     )?;
 
     let clock = Clock::get()?;

@@ -11,7 +11,6 @@ use spl_token_2022::{
     state::{Account as Token2022Account, Mint},
 };
 use vela_protocol::constants::{CREDENTIAL_DECIMALS, MIN_FREQUENCY_SECONDS};
-use vela_protocol::state::VelaMandate;
 
 #[test]
 fn test_credential_is_non_transferable() {

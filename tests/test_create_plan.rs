@@ -2,7 +2,6 @@
 mod helpers;
 
 use helpers::TestHarness;
-use anchor_lang::prelude::Pubkey;
 use spl_token_2022::{extension::StateWithExtensions, state::Mint};
 use vela_protocol::{
     constants::{CREDENTIAL_DECIMALS, MIN_FREQUENCY_SECONDS},
