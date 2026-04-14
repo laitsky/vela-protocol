@@ -6,7 +6,8 @@ pub mod arcium_helpers;
 use std::path::{Path, PathBuf};
 
 use anchor_lang::{
-    prelude::Pubkey, AccountDeserialize, AccountSerialize, InstructionData, ToAccountMetas,
+    prelude::Pubkey, AccountDeserialize, AccountSerialize, AnchorSerialize, InstructionData,
+    ToAccountMetas,
 };
 use litesvm::{
     types::{FailedTransactionMetadata, TransactionMetadata},
@@ -28,7 +29,7 @@ use vela_protocol::{
     instructions::arcium_accounts::derive_cluster_pubkey,
     state::{
         AgentMandate, BillingEvent, ClusterType, KeeperConfig, KeeperMode, PricingTier,
-        ProtocolConfig, PullApproval, UsagePlan,
+        MerchantState, ProtocolConfig, PullApproval, UsagePlan, VelaMandate,
     },
 };
 
@@ -160,12 +161,78 @@ impl TestHarness {
         }
     }
 
+    pub fn derive_mandate_address_by_index(
+        &self,
+        subscriber: &Pubkey,
+        merchant: &Pubkey,
+        mandate_index: u64,
+    ) -> Pubkey {
+        Pubkey::find_program_address(
+            &[
+                vela_protocol::state::VelaMandate::SEED_PREFIX,
+                subscriber.as_ref(),
+                merchant.as_ref(),
+                mandate_index.to_le_bytes().as_ref(),
+            ],
+            &vela_protocol::ID,
+        )
+        .0
+    }
+
+    pub fn derive_mandate_address_v2(
+        &self,
+        subscriber: &Pubkey,
+        merchant: &Pubkey,
+        mandate_index: u64,
+    ) -> Pubkey {
+        self.derive_mandate_address_by_index(subscriber, merchant, mandate_index)
+    }
+
     pub fn derive_mandate_address(&self, subscriber: &Pubkey, plan: &Pubkey) -> Pubkey {
+        let merchant = self.merchant_pubkey();
+        let (merchant_state, _) = Pubkey::find_program_address(
+            &[MerchantState::SEED_PREFIX, merchant.as_ref()],
+            &vela_protocol::ID,
+        );
+        if self.svm.get_account(&to_address(merchant_state)).is_some() {
+            let state: MerchantState = self.fetch_anchor_account(&merchant_state);
+            for mandate_index in 0..state.mandate_counter {
+                let candidate =
+                    self.derive_mandate_address_by_index(subscriber, &merchant, mandate_index);
+                if self.svm.get_account(&to_address(candidate)).is_none() {
+                    continue;
+                }
+                let mandate: VelaMandate = self.fetch_anchor_account(&candidate);
+                if mandate.subscriber == *subscriber && mandate.merchant == merchant && mandate.plan == *plan {
+                    return candidate;
+                }
+            }
+        }
+
+        // Legacy fallback for pre-40-09 mandates.
         Pubkey::find_program_address(
             &[
                 vela_protocol::state::VelaMandate::SEED_PREFIX,
                 subscriber.as_ref(),
                 plan.as_ref(),
+            ],
+            &vela_protocol::ID,
+        )
+        .0
+    }
+
+    pub fn derive_mandate_address_v2(
+        &self,
+        subscriber: &Pubkey,
+        merchant: &Pubkey,
+        mandate_index: u64,
+    ) -> Pubkey {
+        Pubkey::find_program_address(
+            &[
+                vela_protocol::state::VelaMandate::SEED_PREFIX,
+                subscriber.as_ref(),
+                merchant.as_ref(),
+                mandate_index.to_le_bytes().as_ref(),
             ],
             &vela_protocol::ID,
         )
@@ -611,8 +678,7 @@ impl TestHarness {
         plan: &Pubkey,
         credential_mint: &Pubkey,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-        let mandate =
-            self.derive_mandate_address(&to_anchor_pubkey(subscriber.pubkey()), plan);
+        let subscriber_pubkey = to_anchor_pubkey(subscriber.pubkey());
         let (merchant_state, _) = Pubkey::find_program_address(
             &[
                 vela_protocol::state::MerchantState::SEED_PREFIX,
@@ -620,8 +686,14 @@ impl TestHarness {
             ],
             &vela_protocol::ID,
         );
+        let state: MerchantState = self.fetch_anchor_account(&merchant_state);
+        let mandate = self.derive_mandate_address_by_index(
+            &subscriber_pubkey,
+            &self.merchant_pubkey(),
+            state.mandate_counter,
+        );
         let credential_ata = self.derive_credential_ata(
-            &to_anchor_pubkey(subscriber.pubkey()),
+            &subscriber_pubkey,
             credential_mint,
         );
 
@@ -1231,6 +1303,94 @@ impl TestHarness {
         self.svm.send_transaction(tx)
     }
 
+    pub fn send_update_mandate(
+        &mut self,
+        mandate: &Pubkey,
+        new_plan: Option<Pubkey>,
+        amount: Option<u64>,
+        frequency: Option<u64>,
+        max_pulls: Option<u64>,
+        billing_type: Option<vela_protocol::state::BillingType>,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        self.send_update_mandate_as(
+            &self.merchant.insecure_clone(),
+            mandate,
+            new_plan,
+            amount,
+            frequency,
+            max_pulls,
+            billing_type,
+        )
+    }
+
+    pub fn send_update_mandate_as(
+        &mut self,
+        signer: &Keypair,
+        mandate: &Pubkey,
+        new_plan: Option<Pubkey>,
+        amount: Option<u64>,
+        frequency: Option<u64>,
+        max_pulls: Option<u64>,
+        billing_type: Option<vela_protocol::state::BillingType>,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        #[derive(AnchorSerialize)]
+        struct UpdateMandateArgs {
+            amount: Option<u64>,
+            frequency: Option<u64>,
+            max_pulls: Option<u64>,
+            billing_type: Option<vela_protocol::state::BillingType>,
+            plan: Option<Pubkey>,
+        }
+
+        let merchant = to_anchor_pubkey(signer.pubkey());
+        let current: VelaMandate = self.fetch_anchor_account(mandate);
+        let plan = new_plan.unwrap_or(current.plan);
+        let data = {
+            let mut bytes = instruction_discriminator("update_mandate").to_vec();
+            let args = UpdateMandateArgs {
+                amount,
+                frequency,
+                max_pulls,
+                billing_type,
+                plan: new_plan,
+            };
+            args.serialize(&mut bytes)
+                .expect("update_mandate args should serialize");
+            bytes
+        };
+
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: vec![
+                AccountMeta::new(to_address(merchant), true),
+                AccountMeta::new_readonly(to_address(plan), false),
+                AccountMeta::new(to_address(*mandate), false),
+                AccountMeta::new_readonly(to_address(anchor_lang::system_program::ID), false),
+            ],
+            data,
+        };
+        self.send_instruction(&instruction, &[signer], Some(&signer.pubkey()))
+    }
+
+    pub fn send_close_mandate(
+        &mut self,
+        authority: &Keypair,
+        subscriber: &Pubkey,
+        mandate: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let data = instruction_discriminator("close_mandate").to_vec();
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: vec![
+                AccountMeta::new(to_address(to_anchor_pubkey(authority.pubkey())), true),
+                AccountMeta::new(to_address(*subscriber), false),
+                AccountMeta::new(to_address(*mandate), false),
+            ],
+            data,
+        };
+        self.send_instruction(&instruction, &[authority], Some(&authority.pubkey()))
+    }
+
     fn send_instruction(
         &mut self,
         instruction: &Instruction,
@@ -1390,6 +1550,66 @@ impl TestHarness {
         let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&self.merchant])
             .expect("transaction should sign");
         self.svm.send_transaction(tx)
+    }
+
+    pub fn send_update_mandate(
+        &mut self,
+        merchant: &Keypair,
+        mandate: &Pubkey,
+        plan: &Pubkey,
+        amount: Option<u64>,
+        frequency: Option<u64>,
+        max_pulls: Option<u64>,
+        billing_type: Option<vela_protocol::state::BillingType>,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let accounts = vela_protocol::accounts::UpdateMandate {
+            merchant: to_anchor_pubkey(merchant.pubkey()),
+            mandate: *mandate,
+            plan: *plan,
+            system_program: anchor_lang::system_program::ID,
+        };
+
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::UpdateMandate {
+                amount,
+                frequency,
+                max_pulls,
+                billing_type,
+            }
+            .data(),
+        };
+        self.send_instruction(&instruction, &[merchant], Some(&merchant.pubkey()))
+    }
+
+    pub fn send_close_mandate(
+        &mut self,
+        authority: &Keypair,
+        subscriber: &Pubkey,
+        mandate: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let accounts = vela_protocol::accounts::CloseMandate {
+            authority: to_anchor_pubkey(authority.pubkey()),
+            subscriber: *subscriber,
+            mandate: *mandate,
+            system_program: anchor_lang::system_program::ID,
+        };
+
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::CloseMandate {}.data(),
+        };
+        self.send_instruction(&instruction, &[authority], Some(&authority.pubkey()))
     }
 
     /// Send update_plan signed by an arbitrary signer (for rejection tests).
@@ -1617,6 +1837,14 @@ impl TestHarness {
 
 pub fn token_2022_address() -> Address {
     Address::from(spl_token_2022::id().to_bytes())
+}
+
+fn instruction_discriminator(name: &str) -> [u8; 8] {
+    use anchor_lang::solana_program::hash::hash;
+    let preimage = format!("global:{name}");
+    let mut discriminator = [0u8; 8];
+    discriminator.copy_from_slice(&hash(preimage.as_bytes()).to_bytes()[..8]);
+    discriminator
 }
 
 pub fn spl_token_address() -> Address {

@@ -4,6 +4,7 @@ mod helpers;
 use helpers::{SubscriptionFixture, TestHarness};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
+use spl_token_2022::state::Account as Token2022Account;
 use vela_protocol::{
     constants::MIN_FREQUENCY_SECONDS,
     state::{MandateStatus, VelaMandate, VelaPlan},
@@ -225,5 +226,93 @@ fn test_next_pull_requires_billing_record_finalization() {
         format!("{:?}", error.err).contains("Custom(6019)"),
         "expected PendingBillingRecord custom error, got {:?}",
         error.err,
+    );
+}
+
+#[test]
+fn test_execute_pull_uses_mandate_values_after_plan_update() {
+    let (mut harness, fixture, plan_before, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) =
+        setup_fixture();
+    let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
+
+    // plan update: mutate flat-plan amount/frequency after subscription.
+    harness
+        .send_update_plan(
+            plan_before.plan_id,
+            Some(plan_before.amount + 5_000_000),
+            Some(plan_before.frequency * 2),
+            None,
+            None,
+        )
+        .expect("update_plan should succeed");
+
+    harness.set_clock_timestamp(mandate_before.next_payment_due);
+    harness.create_pull_approval_with_amount(
+        &fixture.mandate,
+        mandate_before.next_payment_due,
+        true,
+        mandate_before.amount,
+    );
+
+    harness
+        .send_execute_pull(
+            &fixture.subscriber,
+            &subscriber,
+            plan_before.plan_id,
+            &sub_wrapped,
+            &merch_wrapped,
+            &wrapped_mint,
+        )
+        .expect("execute_pull should continue using mandate amount/frequency after plan update");
+
+    let mandate_after: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
+    assert_eq!(mandate_after.pulls_executed, 1);
+    assert_eq!(
+        mandate_after.next_payment_due,
+        mandate_before.next_payment_due + mandate_before.frequency as i64
+    );
+}
+
+#[test]
+fn test_execute_pull_uses_mandate_amount_after_plan_update() {
+    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) = setup_fixture();
+    let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
+    let updated_plan_amount = plan.amount * 2;
+
+    harness
+        .send_update_plan(
+            plan.plan_id,
+            Some(updated_plan_amount),
+            None,
+            None,
+            None,
+        )
+        .expect("update_plan should succeed");
+
+    harness.set_clock_timestamp(mandate_before.next_payment_due);
+    harness.create_pull_approval_with_amount(
+        &fixture.mandate,
+        mandate_before.next_payment_due,
+        true,
+        updated_plan_amount,
+    );
+
+    harness
+        .send_execute_pull(
+            &fixture.subscriber,
+            &subscriber,
+            plan.plan_id,
+            &sub_wrapped,
+            &merch_wrapped,
+            &wrapped_mint,
+        )
+        .expect("execute_pull should use mandate-stored amount/frequency after plan update");
+
+    let merchant_wrapped =
+        Token2022Account::unpack_from_slice(&harness.fetch_account_data(&merch_wrapped))
+            .expect("merchant wrapped account should unpack");
+    assert_eq!(
+        merchant_wrapped.amount, mandate_before.amount,
+        "execute_pull must settle using mandate.amount, not updated plan amount",
     );
 }

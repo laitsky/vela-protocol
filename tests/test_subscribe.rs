@@ -470,3 +470,92 @@ fn test_subscribe_credential_persists_across_plan_changes() {
         "subscriber should have 2 credential tokens from the same merchant mint"
     );
 }
+
+#[test]
+fn test_subscribe_uses_merchant_mandate_counter_for_reseeded_pda() {
+    let mut harness = TestHarness::new();
+    let subscriber_a = harness.create_wallet();
+    let subscriber_b = harness.create_wallet();
+    let subscriber_a_pubkey = Pubkey::new_from_array(subscriber_a.pubkey().to_bytes());
+    let subscriber_b_pubkey = Pubkey::new_from_array(subscriber_b.pubkey().to_bytes());
+
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+    harness
+        .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
+        .expect("create_plan should succeed");
+
+    let merchant = harness.merchant_pubkey();
+    let (merchant_state_key, _) = Pubkey::find_program_address(
+        &[MerchantState::SEED_PREFIX, merchant.as_ref()],
+        &vela_protocol::ID,
+    );
+    let merchant_state_before: MerchantState = harness.fetch_anchor_account(&merchant_state_key);
+    assert_eq!(merchant_state_before.mandate_counter, 0);
+
+    harness
+        .send_subscribe(&subscriber_a, 0)
+        .expect("subscribe A should succeed");
+    let merchant_state_after_a: MerchantState = harness.fetch_anchor_account(&merchant_state_key);
+    assert_eq!(merchant_state_after_a.mandate_counter, 1);
+
+    harness
+        .send_subscribe(&subscriber_b, 0)
+        .expect("subscribe B should succeed");
+    let merchant_state_after_b: MerchantState = harness.fetch_anchor_account(&merchant_state_key);
+    assert_eq!(merchant_state_after_b.mandate_counter, 2);
+
+    let first_mandate = harness.derive_mandate_address_by_index(&subscriber_a_pubkey, &merchant, 0);
+    let second_mandate = harness.derive_mandate_address_by_index(&subscriber_b_pubkey, &merchant, 1);
+    assert_ne!(first_mandate, second_mandate);
+
+    let first_record: VelaMandate = harness.fetch_anchor_account(&first_mandate);
+    let second_record: VelaMandate = harness.fetch_anchor_account(&second_mandate);
+    assert_eq!(first_record.subscriber, subscriber_a_pubkey);
+    assert_eq!(second_record.subscriber, subscriber_b_pubkey);
+}
+
+#[test]
+fn test_subscribe_uses_merchant_index_mandate_seed() {
+    let (mut harness, subscriber, plan, plan_address, _credential_mint) =
+        setup_subscription_fixture();
+    let subscriber_pubkey = Pubkey::new_from_array(subscriber.pubkey().to_bytes());
+    let addresses = harness.derive_plan_addresses(plan.plan_id);
+
+    let merchant_state_before: MerchantState =
+        harness.fetch_anchor_account(&addresses.merchant_state);
+    let expected_v2_mandate = harness.derive_mandate_address_v2(
+        &subscriber_pubkey,
+        &harness.merchant_pubkey(),
+        merchant_state_before.mandate_counter,
+    );
+    let legacy_plan_seeded_mandate = harness.derive_mandate_address(&subscriber_pubkey, &plan_address);
+
+    harness
+        .send_subscribe(&subscriber, plan.plan_id)
+        .expect("subscribe should succeed");
+
+    let merchant_state_after: MerchantState =
+        harness.fetch_anchor_account(&addresses.merchant_state);
+    assert_eq!(
+        merchant_state_after.mandate_counter,
+        merchant_state_before.mandate_counter + 1,
+        "merchant mandate_counter must increment monotonically"
+    );
+
+    assert!(
+        harness
+            .svm
+            .get_account(&solana_address::Address::from(expected_v2_mandate.to_bytes()))
+            .is_some(),
+        "subscribe must create a mandate at the merchant/index-seeded address",
+    );
+    assert!(
+        harness
+            .svm
+            .get_account(&solana_address::Address::from(legacy_plan_seeded_mandate.to_bytes()))
+            .is_none(),
+        "new mandates must not use plan-seeded mandate PDA",
+    );
+}
