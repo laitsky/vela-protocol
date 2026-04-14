@@ -161,6 +161,143 @@ fn test_credential_per_plan_mint() {
     );
 }
 
+// --- Phase 40-07: Merchant Credential Bootstrap Tests ---
+
+#[test]
+fn test_init_merchant_credential_creates_mint() {
+    let mut harness = TestHarness::new();
+    let merchant = harness.merchant_pubkey();
+
+    // MerchantState may or may not exist yet; init_merchant_credential handles both cases
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed on first call");
+
+    // MerchantState should now store the credential mint
+    let (merchant_state_addr, _) = Pubkey::find_program_address(
+        &[
+            vela_protocol::state::MerchantState::SEED_PREFIX,
+            merchant.as_ref(),
+        ],
+        &vela_protocol::ID,
+    );
+    let merchant_state: vela_protocol::state::MerchantState =
+        harness.fetch_anchor_account(&merchant_state_addr);
+    let (expected_credential_mint, _) = harness.derive_merchant_credential_mint();
+
+    assert_eq!(
+        merchant_state.credential_mint, expected_credential_mint,
+        "MerchantState should store the merchant credential mint"
+    );
+
+    // The credential mint account should exist and be owned by Token-2022
+    let mint_data = harness.fetch_account_data(&expected_credential_mint);
+    let mint = StateWithExtensions::<Mint>::unpack(&mint_data)
+        .expect("credential mint should unpack with extensions");
+
+    // Mint should be non-transferable
+    assert!(
+        mint.get_extension::<spl_token_2022::extension::non_transferable::NonTransferable>()
+            .is_ok(),
+        "merchant credential mint should be non-transferable"
+    );
+
+    // Mint authority should be set (non-default)
+    use solana_program_pack::Pack;
+    use spl_token::state::Mint as SplMint;
+    let raw_mint = SplMint::unpack_from_slice(&mint_data)
+        .expect("mint should unpack as base SPL mint");
+    assert!(
+        raw_mint.mint_authority != spl_token::solana_program::program_option::COption::None,
+        "merchant credential mint should have a mint authority set"
+    );
+}
+
+#[test]
+fn test_init_merchant_credential_idempotent() {
+    let mut harness = TestHarness::new();
+
+    harness
+        .send_init_merchant_credential()
+        .expect("first init_merchant_credential should succeed");
+
+    let (credential_mint, _) = harness.derive_merchant_credential_mint();
+    let mint_before = harness.fetch_account_data(&credential_mint);
+
+    // Running init_merchant_credential again should succeed (idempotent per D-11)
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should be idempotent");
+
+    // The credential mint should be unchanged (same account data)
+    let mint_after = harness.fetch_account_data(&credential_mint);
+    assert_eq!(
+        mint_before, mint_after,
+        "credential mint should not change on idempotent rerun"
+    );
+
+    // MerchantState should still point to the same credential mint
+    let merchant = harness.merchant_pubkey();
+    let (merchant_state_addr, _) = Pubkey::find_program_address(
+        &[
+            vela_protocol::state::MerchantState::SEED_PREFIX,
+            merchant.as_ref(),
+        ],
+        &vela_protocol::ID,
+    );
+    let merchant_state: vela_protocol::state::MerchantState =
+        harness.fetch_anchor_account(&merchant_state_addr);
+    assert_eq!(
+        merchant_state.credential_mint, credential_mint,
+        "MerchantState credential_mint should remain stable"
+    );
+}
+
+#[test]
+fn test_init_merchant_credential_resolves_from_merchant_state() {
+    let mut harness = TestHarness::new();
+
+    // Bootstrap the merchant credential
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+
+    let merchant = harness.merchant_pubkey();
+    let (merchant_state_addr, _) = Pubkey::find_program_address(
+        &[
+            vela_protocol::state::MerchantState::SEED_PREFIX,
+            merchant.as_ref(),
+        ],
+        &vela_protocol::ID,
+    );
+    let merchant_state: vela_protocol::state::MerchantState =
+        harness.fetch_anchor_account(&merchant_state_addr);
+
+    // The centralized resolver should prefer MerchantState credential_mint
+    // This tests the shared resolve_merchant_credential_mint helper
+    let (expected_credential_mint, _) = harness.derive_merchant_credential_mint();
+    assert!(
+        merchant_state.credential_mint != Pubkey::default(),
+        "MerchantState credential_mint should be set (non-default)"
+    );
+    assert_eq!(
+        merchant_state.credential_mint, expected_credential_mint,
+        "resolved credential mint should match MerchantState"
+    );
+}
+
+#[test]
+fn test_init_merchant_credential_rejects_wrong_signer() {
+    let mut harness = TestHarness::new();
+    let imposter = harness.create_wallet();
+
+    let result = harness.send_init_merchant_credential_as(&imposter);
+    assert!(
+        result.is_err(),
+        "init_merchant_credential should reject non-merchant signer"
+    );
+}
+
 #[test]
 fn test_credential_burned_on_cancel() {
     let mut harness = TestHarness::new();

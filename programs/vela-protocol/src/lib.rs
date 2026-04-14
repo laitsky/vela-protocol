@@ -10,8 +10,8 @@ use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
     AdjustAgentMandate, AdminCancel, AgentPull, Cancel, CreateAgentMandate, CreatePlan,
     CreateUsagePlan, DrainAgentMandate, ExecutePull, InitConfig, InitKeeperConfig,
-    InitRecordBillingCompDef, InitValidateMandateCompDef, InitWrappedMint, MigratePlan,
-    PauseAgentMandate,
+    InitMerchantCredential, InitRecordBillingCompDef, InitValidateMandateCompDef, InitWrappedMint,
+    MigratePlan, PauseAgentMandate,
     PauseProtocol, RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation,
     RequestValidation, ResumeAgentMandate, RevokeAgentMandate, SubmitUsageReport, Subscribe,
     UnpauseProtocol, Unwrap, UpdateConfig, UpdateKeeperConfig, UpdatePlan, UpdateUsagePlan,
@@ -131,6 +131,10 @@ mod __client_accounts_update_config {
 
 mod __client_accounts_init_keeper_config {
     pub use crate::instructions::__client_accounts_init_keeper_config::*;
+}
+
+mod __client_accounts_init_merchant_credential {
+    pub use crate::instructions::__client_accounts_init_merchant_credential::*;
 }
 
 mod __client_accounts_update_keeper_config {
@@ -395,6 +399,12 @@ pub mod vela_protocol {
         keeper_authority: Pubkey,
     ) -> Result<()> {
         instructions::init_keeper_config::handler(ctx, mode, keeper_endpoint, keeper_authority)
+    }
+
+    pub fn init_merchant_credential(
+        ctx: Context<InitMerchantCredential>,
+    ) -> Result<()> {
+        instructions::init_merchant_credential::handler(ctx)
     }
 
     pub fn update_keeper_config(

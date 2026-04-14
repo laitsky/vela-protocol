@@ -1443,6 +1443,90 @@ impl TestHarness {
         self.send_instruction(&instruction, &[signer], Some(&signer.pubkey()))
     }
 
+    /// Derives the merchant credential mint PDA: seeds = ["merchant-credential", merchant].
+    pub fn derive_merchant_credential_mint(&self) -> (Pubkey, u8) {
+        let merchant = self.merchant_pubkey();
+        Pubkey::find_program_address(
+            &[b"merchant-credential", merchant.as_ref()],
+            &vela_protocol::ID,
+        )
+    }
+
+    /// Send init_merchant_credential instruction (merchant credential bootstrap).
+    /// Creates per-merchant credential mint and stores it on MerchantState.
+    pub fn send_init_merchant_credential(
+        &mut self,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let merchant = self.merchant_pubkey();
+        let (merchant_state, _) = Pubkey::find_program_address(
+            &[vela_protocol::state::MerchantState::SEED_PREFIX, merchant.as_ref()],
+            &vela_protocol::ID,
+        );
+        let (credential_mint, _) = self.derive_merchant_credential_mint();
+
+        let accounts = vela_protocol::accounts::InitMerchantCredential {
+            merchant,
+            merchant_state,
+            credential_mint,
+            system_program: anchor_lang::system_program::ID,
+            token_2022_program: token_2022_anchor_id(),
+            rent: anchor_lang::solana_program::sysvar::rent::ID,
+        };
+
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::InitMerchantCredential {}.data(),
+        };
+
+        let merchant_pk = self.merchant.pubkey();
+        let blockhash = self.svm.latest_blockhash();
+        let message = Message::new_with_blockhash(&[instruction], Some(&merchant_pk), &blockhash);
+        let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&self.merchant])
+            .expect("transaction should sign");
+        self.svm.send_transaction(tx)
+    }
+
+    /// Send init_merchant_credential signed by an arbitrary signer (for rejection tests).
+    pub fn send_init_merchant_credential_as(
+        &mut self,
+        signer: &Keypair,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let merchant = to_anchor_pubkey(signer.pubkey());
+        let (merchant_state, _) = Pubkey::find_program_address(
+            &[vela_protocol::state::MerchantState::SEED_PREFIX, merchant.as_ref()],
+            &vela_protocol::ID,
+        );
+        let (credential_mint, _) = Pubkey::find_program_address(
+            &[b"merchant-credential", merchant.as_ref()],
+            &vela_protocol::ID,
+        );
+
+        let accounts = vela_protocol::accounts::InitMerchantCredential {
+            merchant,
+            merchant_state,
+            credential_mint,
+            system_program: anchor_lang::system_program::ID,
+            token_2022_program: token_2022_anchor_id(),
+            rent: anchor_lang::solana_program::sysvar::rent::ID,
+        };
+
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::InitMerchantCredential {}.data(),
+        };
+        self.send_instruction(&instruction, &[signer], Some(&signer.pubkey()))
+    }
+
     pub fn send_migrate_plan(
         &mut self,
         plan: &Pubkey,

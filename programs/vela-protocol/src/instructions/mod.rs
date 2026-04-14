@@ -13,6 +13,7 @@ pub mod execute_pull;
 pub mod init_comp_defs;
 pub mod init_config;
 pub mod init_keeper_config;
+pub mod init_merchant_credential;
 pub mod init_wrapped_mint;
 pub mod keeper_config_account;
 pub mod merchant_account;
@@ -59,6 +60,10 @@ pub mod __client_accounts_unpause_protocol {
 
 pub mod __client_accounts_init_keeper_config {
     pub use super::init_keeper_config::__client_accounts_init_keeper_config::*;
+}
+
+pub mod __client_accounts_init_merchant_credential {
+    pub use super::init_merchant_credential::__client_accounts_init_merchant_credential::*;
 }
 
 pub mod __client_accounts_update_keeper_config {
@@ -187,6 +192,7 @@ pub use execute_pull::ExecutePull;
 pub use init_comp_defs::{InitRecordBillingCompDef, InitValidateMandateCompDef};
 pub use init_config::{InitConfig, InitConfigIx, UpdateConfig, UpdateConfigIx};
 pub use init_keeper_config::InitKeeperConfig;
+pub use init_merchant_credential::InitMerchantCredential;
 pub use init_wrapped_mint::InitWrappedMint;
 pub use migrate_plan::MigratePlan;
 pub use pause_agent_mandate::PauseAgentMandate;
