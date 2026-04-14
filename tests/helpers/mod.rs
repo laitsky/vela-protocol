@@ -221,24 +221,6 @@ impl TestHarness {
         .0
     }
 
-    pub fn derive_mandate_address_v2(
-        &self,
-        subscriber: &Pubkey,
-        merchant: &Pubkey,
-        mandate_index: u64,
-    ) -> Pubkey {
-        Pubkey::find_program_address(
-            &[
-                vela_protocol::state::VelaMandate::SEED_PREFIX,
-                subscriber.as_ref(),
-                merchant.as_ref(),
-                mandate_index.to_le_bytes().as_ref(),
-            ],
-            &vela_protocol::ID,
-        )
-        .0
-    }
-
     pub fn derive_credential_ata(&self, owner: &Pubkey, mint: &Pubkey) -> Pubkey {
         to_anchor_pubkey(get_associated_token_address_with_program_id(
             &to_address(*owner),
@@ -1550,66 +1532,6 @@ impl TestHarness {
         let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&self.merchant])
             .expect("transaction should sign");
         self.svm.send_transaction(tx)
-    }
-
-    pub fn send_update_mandate(
-        &mut self,
-        merchant: &Keypair,
-        mandate: &Pubkey,
-        plan: &Pubkey,
-        amount: Option<u64>,
-        frequency: Option<u64>,
-        max_pulls: Option<u64>,
-        billing_type: Option<vela_protocol::state::BillingType>,
-    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-        let accounts = vela_protocol::accounts::UpdateMandate {
-            merchant: to_anchor_pubkey(merchant.pubkey()),
-            mandate: *mandate,
-            plan: *plan,
-            system_program: anchor_lang::system_program::ID,
-        };
-
-        let instruction = Instruction {
-            program_id: self.program_id,
-            accounts: accounts
-                .to_account_metas(None)
-                .into_iter()
-                .map(convert_account_meta)
-                .collect(),
-            data: vela_protocol::instruction::UpdateMandate {
-                amount,
-                frequency,
-                max_pulls,
-                billing_type,
-            }
-            .data(),
-        };
-        self.send_instruction(&instruction, &[merchant], Some(&merchant.pubkey()))
-    }
-
-    pub fn send_close_mandate(
-        &mut self,
-        authority: &Keypair,
-        subscriber: &Pubkey,
-        mandate: &Pubkey,
-    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-        let accounts = vela_protocol::accounts::CloseMandate {
-            authority: to_anchor_pubkey(authority.pubkey()),
-            subscriber: *subscriber,
-            mandate: *mandate,
-            system_program: anchor_lang::system_program::ID,
-        };
-
-        let instruction = Instruction {
-            program_id: self.program_id,
-            accounts: accounts
-                .to_account_metas(None)
-                .into_iter()
-                .map(convert_account_meta)
-                .collect(),
-            data: vela_protocol::instruction::CloseMandate {}.data(),
-        };
-        self.send_instruction(&instruction, &[authority], Some(&authority.pubkey()))
     }
 
     /// Send update_plan signed by an arbitrary signer (for rejection tests).
