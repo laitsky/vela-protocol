@@ -10,8 +10,12 @@ use spl_token_2022::instruction::burn;
 
 use crate::{
     errors::VelaError,
-    instructions::plan_account::{load_plan_account, require_plan_billing_type},
-    state::{MandateStatus, VelaMandate},
+    instructions::{
+        mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
+        merchant_account::resolve_merchant_credential_mint,
+        plan_account::{load_plan_account, require_plan_billing_type},
+    },
+    state::{MandateStatus, MerchantState},
 };
 
 #[derive(Accounts)]
@@ -22,11 +26,18 @@ pub struct Cancel<'info> {
     /// CHECK: Used for mandate and ATA validation.
     pub subscriber: UncheckedAccount<'info>,
 
+    /// CHECK: Used to validate merchant_state PDA.
+    pub merchant: UncheckedAccount<'info>,
+
+    /// CHECK: MerchantState PDA for merchant-first credential resolution.
+    #[account(seeds = [MerchantState::SEED_PREFIX, merchant.key().as_ref()], bump)]
+    pub merchant_state: UncheckedAccount<'info>,
+
     /// CHECK: Deserialized and validated manually to support both flat and usage plans.
     pub plan: UncheckedAccount<'info>,
 
     #[account(mut)]
-    pub mandate: Account<'info, VelaMandate>,
+    pub mandate: UncheckedAccount<'info>,
 
     #[account(mut)]
     /// CHECK: ATA address is validated against subscriber + credential mint in the handler.
@@ -46,17 +57,27 @@ pub struct Cancel<'info> {
 }
 
 pub fn handler(ctx: Context<Cancel>) -> Result<()> {
+    let loaded_mandate = load_mandate_account(&ctx.accounts.mandate.to_account_info())?;
+    validate_loaded_mandate_address(&ctx.accounts.mandate.key(), &loaded_mandate)?;
+    let legacy_layout = loaded_mandate.is_legacy();
+    let mut mandate = loaded_mandate.into_current();
     let plan = load_plan_account(&ctx.accounts.plan.to_account_info())?;
-    require_plan_billing_type(&plan, &ctx.accounts.mandate.billing_type)?;
+    require_plan_billing_type(&plan, &mandate.billing_type)?;
     require_keys_eq!(
         ctx.accounts.token_2022_program.key(),
         anchor_pubkey(spl_token_2022::id())
     );
-    require_keys_eq!(ctx.accounts.mandate.plan, ctx.accounts.plan.key());
-    require_keys_eq!(ctx.accounts.mandate.merchant, plan.merchant());
-    require_keys_eq!(ctx.accounts.credential_mint.key(), plan.credential_mint());
+    require_keys_eq!(ctx.accounts.plan.key(), mandate.plan);
+    require_keys_eq!(ctx.accounts.merchant.key(), plan.merchant());
+    require_keys_eq!(mandate.merchant, plan.merchant());
+    let resolved_credential_mint = resolve_merchant_credential_mint(
+        &ctx.accounts.merchant_state.to_account_info(),
+        &plan.merchant(),
+        &plan.credential_mint(),
+    )?;
+    require_keys_eq!(ctx.accounts.credential_mint.key(), resolved_credential_mint);
     require!(
-        ctx.accounts.mandate.subscriber == ctx.accounts.subscriber.key(),
+        mandate.subscriber == ctx.accounts.subscriber.key(),
         VelaError::UnauthorizedCancel
     );
     require!(
@@ -68,7 +89,7 @@ pub fn handler(ctx: Context<Cancel>) -> Result<()> {
         VelaError::UnauthorizedCancel
     );
     require!(
-        ctx.accounts.mandate.status == MandateStatus::Active,
+        mandate.status == MandateStatus::Active,
         VelaError::MandateNotActive
     );
 
@@ -109,7 +130,12 @@ pub fn handler(ctx: Context<Cancel>) -> Result<()> {
     );
     revoke(revoke_ctx)?;
 
-    ctx.accounts.mandate.status = MandateStatus::Cancelled;
+    mandate.status = MandateStatus::Cancelled;
+    write_mandate(
+        &ctx.accounts.mandate.to_account_info(),
+        &mandate,
+        legacy_layout,
+    )?;
 
     Ok(())
 }

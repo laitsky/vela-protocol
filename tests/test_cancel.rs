@@ -185,78 +185,104 @@ fn test_cancel_cu_budget() {
 
 #[test]
 fn test_cancel_and_admin_cancel_support_legacy_and_v2_mandates() {
-    let (mut harness, fixture, plan) = setup_fixture();
-    let subscriber_pubkey =
-        anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
-    let admin = harness.merchant.insecure_clone();
-    harness.init_protocol_config(&admin);
+    let (mut harness_v2, fixture_v2, _plan_v2) = setup_fixture();
+    let subscriber_v2 =
+        anchor_lang::prelude::Pubkey::new_from_array(fixture_v2.subscriber.pubkey().to_bytes());
+    let admin_v2 = harness_v2.merchant.insecure_clone();
+    harness_v2.init_protocol_config(&admin_v2);
 
     // V2 path with admin_cancel.
-    harness
+    harness_v2
         .send_admin_cancel(
-            &admin,
-            &subscriber_pubkey,
-            &fixture.plan,
-            &fixture.mandate,
-            &fixture.credential_mint,
+            &admin_v2,
+            &subscriber_v2,
+            &fixture_v2.plan,
+            &fixture_v2.mandate,
+            &fixture_v2.credential_mint,
         )
         .expect("admin_cancel should support V2 mandates");
-    let v2_mandate: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
+    let v2_mandate: VelaMandate = harness_v2.fetch_anchor_account(&fixture_v2.mandate);
     assert!(matches!(v2_mandate.status, MandateStatus::Cancelled));
 
     // legacy path with subscriber cancel.
+    let (mut harness_legacy, fixture_legacy, plan_legacy) = setup_fixture();
+    let subscriber_legacy =
+        anchor_lang::prelude::Pubkey::new_from_array(fixture_legacy.subscriber.pubkey().to_bytes());
     let legacy_mandate = inject_legacy_mandate(
-        &mut harness,
-        &subscriber_pubkey,
-        &fixture.plan,
-        plan.amount,
-        plan.frequency,
-        plan.max_pulls,
+        &mut harness_legacy,
+        &subscriber_legacy,
+        &fixture_legacy.plan,
+        plan_legacy.amount,
+        plan_legacy.frequency,
+        plan_legacy.max_pulls,
     );
-    harness
+    harness_legacy
         .send_cancel(
-            &fixture.subscriber,
-            &subscriber_pubkey,
-            plan.plan_id,
+            &fixture_legacy.subscriber,
+            &subscriber_legacy,
+            plan_legacy.plan_id,
             &legacy_mandate,
-            &fixture.subscriber_token_account,
+            &fixture_legacy.subscriber_token_account,
         )
         .expect("cancel should support legacy mandates");
 }
 
 #[test]
 fn test_cancel_merchant_first_and_fallback_credential_resolution() {
-    let (mut harness, fixture, plan) = setup_fixture();
-    let subscriber_pubkey =
-        anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
+    let (mut harness_merchant, fixture_merchant, plan_merchant) = setup_fixture();
+    let subscriber_merchant =
+        anchor_lang::prelude::Pubkey::new_from_array(fixture_merchant.subscriber.pubkey().to_bytes());
 
     // merchant-first resolution for V2 mandates.
-    harness
+    harness_merchant
         .send_cancel(
-            &fixture.subscriber,
-            &subscriber_pubkey,
-            plan.plan_id,
-            &fixture.mandate,
-            &fixture.subscriber_token_account,
+            &fixture_merchant.subscriber,
+            &subscriber_merchant,
+            plan_merchant.plan_id,
+            &fixture_merchant.mandate,
+            &fixture_merchant.subscriber_token_account,
         )
         .expect("cancel should burn merchant credential first");
 
     // fallback resolution for legacy mandates.
-    let legacy_mandate = inject_legacy_mandate(
-        &mut harness,
-        &subscriber_pubkey,
-        &fixture.plan,
-        plan.amount,
-        plan.frequency,
-        plan.max_pulls,
+    let (mut harness_fallback, fixture_fallback, mut plan_fallback) = setup_fixture();
+    let subscriber_fallback =
+        anchor_lang::prelude::Pubkey::new_from_array(fixture_fallback.subscriber.pubkey().to_bytes());
+    let fallback_mint = anchor_lang::prelude::Pubkey::new_unique();
+    harness_fallback.inject_token_2022_mint(&fallback_mint, &fixture_fallback.plan, 1);
+    let fallback_ata = harness_fallback.derive_credential_ata(&subscriber_fallback, &fallback_mint);
+    harness_fallback.inject_token_2022_account(
+        &fallback_ata,
+        &fallback_mint,
+        &subscriber_fallback,
+        1,
     );
-    harness
+
+    let mut merchant_state: vela_protocol::state::MerchantState =
+        harness_fallback.fetch_anchor_account(&harness_fallback.derive_plan_addresses(plan_fallback.plan_id).merchant_state);
+    merchant_state.credential_mint = anchor_lang::prelude::Pubkey::default();
+    harness_fallback.overwrite_anchor_account(
+        &harness_fallback.derive_plan_addresses(plan_fallback.plan_id).merchant_state,
+        &merchant_state,
+    );
+    plan_fallback.credential_mint = fallback_mint;
+    harness_fallback.overwrite_anchor_account(&fixture_fallback.plan, &plan_fallback);
+
+    let legacy_mandate = inject_legacy_mandate(
+        &mut harness_fallback,
+        &subscriber_fallback,
+        &fixture_fallback.plan,
+        plan_fallback.amount,
+        plan_fallback.frequency,
+        plan_fallback.max_pulls,
+    );
+    harness_fallback
         .send_cancel(
-            &fixture.subscriber,
-            &subscriber_pubkey,
-            plan.plan_id,
+            &fixture_fallback.subscriber,
+            &subscriber_fallback,
+            plan_fallback.plan_id,
             &legacy_mandate,
-            &fixture.subscriber_token_account,
+            &fixture_fallback.subscriber_token_account,
         )
         .expect("cancel should fallback to plan credential for legacy namespace");
 }

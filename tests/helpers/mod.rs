@@ -945,12 +945,19 @@ impl TestHarness {
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let addresses = self.derive_plan_addresses(plan_id);
         let plan: vela_protocol::state::VelaPlan = self.fetch_anchor_account(&addresses.plan);
+        let merchant = self.merchant_pubkey();
+        let (merchant_state, _) = Pubkey::find_program_address(
+            &[vela_protocol::state::MerchantState::SEED_PREFIX, merchant.as_ref()],
+            &vela_protocol::ID,
+        );
         let credential_mint = plan.credential_mint;
         let subscriber_credential_account =
             self.derive_credential_ata(subscriber, &credential_mint);
         let accounts = vec![
             AccountMeta::new(to_address(to_anchor_pubkey(authority.pubkey())), true),
             AccountMeta::new_readonly(to_address(*subscriber), false),
+            AccountMeta::new_readonly(to_address(merchant), false),
+            AccountMeta::new_readonly(to_address(merchant_state), false),
             AccountMeta::new_readonly(to_address(addresses.plan), false),
             AccountMeta::new(to_address(*mandate), false),
             AccountMeta::new(to_address(subscriber_credential_account), false),
@@ -1428,11 +1435,18 @@ impl TestHarness {
         credential_mint: &Pubkey,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let config = self.derive_config();
+        let merchant = self.merchant_pubkey();
+        let (merchant_state, _) = Pubkey::find_program_address(
+            &[vela_protocol::state::MerchantState::SEED_PREFIX, merchant.as_ref()],
+            &vela_protocol::ID,
+        );
         let subscriber_credential_account =
             self.derive_credential_ata(subscriber, credential_mint);
         let accounts = vec![
             AccountMeta::new(to_address(to_anchor_pubkey(admin.pubkey())), true),
             AccountMeta::new_readonly(to_address(config), false),
+            AccountMeta::new_readonly(to_address(merchant), false),
+            AccountMeta::new_readonly(to_address(merchant_state), false),
             AccountMeta::new_readonly(to_address(*subscriber), false),
             AccountMeta::new_readonly(to_address(*plan), false),
             AccountMeta::new(to_address(*mandate), false),
