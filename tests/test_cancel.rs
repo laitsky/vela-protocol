@@ -286,3 +286,116 @@ fn test_cancel_merchant_first_and_fallback_credential_resolution() {
         )
         .expect("cancel should fallback to plan credential for legacy namespace");
 }
+
+/// Read legacy mandate status from raw account data.
+/// Legacy V1 layout: 8 (discriminator) + 96 (3 Pubkeys) + 88 (11 u64/i64 fields) = 192.
+fn read_legacy_mandate_status_byte(harness: &TestHarness, key: &anchor_lang::prelude::Pubkey) -> u8 {
+    let data = harness.fetch_account_data(key);
+    data[192]
+}
+
+#[test]
+fn test_admin_cancel_legacy_mandate() {
+    let (mut harness, fixture, plan) = setup_fixture();
+    let subscriber_pubkey =
+        anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
+    let admin = harness.merchant.insecure_clone();
+    harness.init_protocol_config(&admin);
+
+    let legacy_mandate = inject_legacy_mandate(
+        &mut harness,
+        &subscriber_pubkey,
+        &fixture.plan,
+        plan.amount,
+        plan.frequency,
+        plan.max_pulls,
+    );
+    harness
+        .send_admin_cancel(
+            &admin,
+            &subscriber_pubkey,
+            &fixture.plan,
+            &legacy_mandate,
+            &fixture.credential_mint,
+        )
+        .expect("admin_cancel should support legacy mandates");
+
+    // MandateStatus::Cancelled = 1 in the V1 legacy layout
+    let status_byte = read_legacy_mandate_status_byte(&harness, &legacy_mandate);
+    assert_eq!(
+        status_byte, 1,
+        "legacy mandate status should be Cancelled (1) after admin_cancel, got {}",
+        status_byte
+    );
+}
+
+#[test]
+fn test_admin_cancel_merchant_first_and_fallback_credential_resolution() {
+    // merchant-first resolution: admin_cancel with MerchantState.credential_mint set (V2 mandate)
+    let (mut harness_merchant, fixture_merchant, _plan_merchant) = setup_fixture();
+    let subscriber_merchant = anchor_lang::prelude::Pubkey::new_from_array(
+        fixture_merchant.subscriber.pubkey().to_bytes(),
+    );
+    let admin_merchant = harness_merchant.merchant.insecure_clone();
+    harness_merchant.init_protocol_config(&admin_merchant);
+    harness_merchant
+        .send_admin_cancel(
+            &admin_merchant,
+            &subscriber_merchant,
+            &fixture_merchant.plan,
+            &fixture_merchant.mandate,
+            &fixture_merchant.credential_mint,
+        )
+        .expect("admin_cancel should burn via merchant-first credential resolution");
+
+    let v2_mandate: VelaMandate =
+        harness_merchant.fetch_anchor_account(&fixture_merchant.mandate);
+    assert!(matches!(v2_mandate.status, MandateStatus::Cancelled));
+
+    // plan-fallback resolution: admin_cancel when MerchantState.credential_mint is zeroed.
+    // The plan still holds its PDA-derived credential_mint, so the resolver falls back to it
+    // and admin_cancel uses the plan PDA as burn signer.
+    let (mut harness_fallback, fixture_fallback, plan_fallback) = setup_fixture();
+    let subscriber_fallback = anchor_lang::prelude::Pubkey::new_from_array(
+        fixture_fallback.subscriber.pubkey().to_bytes(),
+    );
+    let admin_fallback = harness_fallback.merchant.insecure_clone();
+    harness_fallback.init_protocol_config(&admin_fallback);
+
+    // Zero out the merchant credential so resolver falls back to plan.credential_mint
+    let merchant_state_addr = harness_fallback
+        .derive_plan_addresses(plan_fallback.plan_id)
+        .merchant_state;
+    let mut merchant_state: vela_protocol::state::MerchantState =
+        harness_fallback.fetch_anchor_account(&merchant_state_addr);
+    merchant_state.credential_mint = anchor_lang::prelude::Pubkey::default();
+    harness_fallback.overwrite_anchor_account(&merchant_state_addr, &merchant_state);
+
+    // Inject a legacy mandate pointing to the plan (subscriber already has a credential
+    // token from subscribe_fixture, minted against the plan's PDA-derived credential_mint).
+    let legacy_mandate = inject_legacy_mandate(
+        &mut harness_fallback,
+        &subscriber_fallback,
+        &fixture_fallback.plan,
+        plan_fallback.amount,
+        plan_fallback.frequency,
+        plan_fallback.max_pulls,
+    );
+
+    harness_fallback
+        .send_admin_cancel(
+            &admin_fallback,
+            &subscriber_fallback,
+            &fixture_fallback.plan,
+            &legacy_mandate,
+            &plan_fallback.credential_mint,
+        )
+        .expect("admin_cancel should fallback to plan credential when merchant credential is zeroed");
+
+    let status_byte = read_legacy_mandate_status_byte(&harness_fallback, &legacy_mandate);
+    assert_eq!(
+        status_byte, 1,
+        "legacy mandate should be Cancelled (1) via admin_cancel with plan-fallback credential, got {}",
+        status_byte
+    );
+}
