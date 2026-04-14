@@ -8,7 +8,7 @@ use solana_signer::Signer;
 use spl_token_2022::state::Account as Token2022Account;
 use vela_protocol::{
     constants::MIN_FREQUENCY_SECONDS,
-    state::{MandateStatus, VelaMandate, VelaPlan},
+    state::{BillingEvent, MandateStatus, PullApproval, UsageReport, VelaMandate, VelaPlan},
 };
 use anchor_lang::prelude::Pubkey;
 
@@ -316,4 +316,31 @@ fn test_execute_pull_uses_mandate_amount_after_plan_update() {
         merchant_wrapped.amount, mandate_before.amount,
         "execute_pull must settle using mandate.amount, not updated plan amount",
     );
+}
+
+#[test]
+fn test_execute_pull_namespace_references_use_active_mandate_key() {
+    // validation / billing / usage namespace derivations must use mandate.key().
+    let (_harness, fixture, _plan, _mandate_before, _sub, _merch, _mint) = setup_fixture();
+    let validation = Pubkey::find_program_address(
+        &[PullApproval::SEED_PREFIX, fixture.mandate.as_ref()],
+        &vela_protocol::ID,
+    )
+    .0;
+    let billing = Pubkey::find_program_address(
+        &[BillingEvent::SEED_PREFIX, fixture.mandate.as_ref(), 1u64.to_le_bytes().as_ref()],
+        &vela_protocol::ID,
+    )
+    .0;
+    let usage = Pubkey::find_program_address(
+        &[
+            UsageReport::SEED_PREFIX,
+            fixture.mandate.as_ref(),
+            0i64.to_le_bytes().as_ref(),
+        ],
+        &vela_protocol::ID,
+    )
+    .0;
+    assert_ne!(validation, billing);
+    assert_ne!(validation, usage);
 }

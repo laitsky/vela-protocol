@@ -8,7 +8,10 @@ use solana_address::Address;
 use solana_signer::Signer;
 use vela_protocol::{
     constants::MIN_FREQUENCY_SECONDS,
-    state::{BillingType, CURRENT_ACCOUNT_VERSION, MandateStatus, MerchantState, VelaMandate},
+    state::{
+        BillingEvent, BillingType, CURRENT_ACCOUNT_VERSION, MandateStatus, MerchantState,
+        PullApproval, UsageReport, VelaMandate,
+    },
 };
 
 fn build_v1_mandate_bytes(
@@ -221,5 +224,68 @@ fn test_migrate_mandate_rejects_stranded_state() {
             .get_account(&Address::from(legacy_mandate.to_bytes()))
             .is_some(),
         "legacy mandate must remain when migration is rejected"
+    );
+}
+
+#[test]
+fn test_migrated_mandate_keys_validation_billing_usage_namespaces() {
+    // downstream namespace continuity: validation, billing, and usage should key off mandate.key().
+    let (mut harness, subscriber, plan, legacy_mandate, migrated_mandate, _index) =
+        setup_fixture(0);
+
+    harness
+        .send_migrate_mandate(&subscriber, &plan, &legacy_mandate, &migrated_mandate)
+        .expect("migration should succeed");
+
+    let validation_approval = Pubkey::find_program_address(
+        &[PullApproval::SEED_PREFIX, migrated_mandate.as_ref()],
+        &vela_protocol::ID,
+    )
+    .0;
+    let billing_event = Pubkey::find_program_address(
+        &[BillingEvent::SEED_PREFIX, migrated_mandate.as_ref(), 1u64.to_le_bytes().as_ref()],
+        &vela_protocol::ID,
+    )
+    .0;
+    let usage_report = Pubkey::find_program_address(
+        &[
+            UsageReport::SEED_PREFIX,
+            migrated_mandate.as_ref(),
+            0i64.to_le_bytes().as_ref(),
+        ],
+        &vela_protocol::ID,
+    )
+    .0;
+
+    assert_ne!(
+        validation_approval,
+        Pubkey::find_program_address(
+            &[PullApproval::SEED_PREFIX, legacy_mandate.as_ref()],
+            &vela_protocol::ID
+        )
+        .0,
+        "validation namespace must follow the active mandate.key()",
+    );
+    assert_ne!(
+        billing_event,
+        Pubkey::find_program_address(
+            &[BillingEvent::SEED_PREFIX, legacy_mandate.as_ref(), 1u64.to_le_bytes().as_ref()],
+            &vela_protocol::ID
+        )
+        .0,
+        "billing namespace must follow the active mandate.key()",
+    );
+    assert_ne!(
+        usage_report,
+        Pubkey::find_program_address(
+            &[
+                UsageReport::SEED_PREFIX,
+                legacy_mandate.as_ref(),
+                0i64.to_le_bytes().as_ref(),
+            ],
+            &vela_protocol::ID
+        )
+        .0,
+        "usage namespace must follow the active mandate.key()",
     );
 }
