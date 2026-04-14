@@ -390,3 +390,70 @@ fn test_initializer_admin_consumers_reference_compatibility_helpers() {
     assert!(pause_protocol.contains("load_protocol_config"));
     assert!(unpause_protocol.contains("load_protocol_config"));
 }
+
+#[test]
+fn test_runtime_request_callback_wrap_unwrap_readers_reference_compatibility_helpers() {
+    let execute_pull = include_str!("../programs/vela-protocol/src/instructions/execute_pull.rs");
+    let request_validation =
+        include_str!("../programs/vela-protocol/src/instructions/request_validation.rs");
+    let request_billing_record =
+        include_str!("../programs/vela-protocol/src/instructions/request_billing_record.rs");
+    let request_usage_computation =
+        include_str!("../programs/vela-protocol/src/instructions/request_usage_computation.rs");
+    let validation_callback =
+        include_str!("../programs/vela-protocol/src/instructions/validation_callback.rs");
+    let billing_callback =
+        include_str!("../programs/vela-protocol/src/instructions/billing_callback.rs");
+    let usage_computation_callback =
+        include_str!("../programs/vela-protocol/src/instructions/usage_computation_callback.rs");
+    let wrap = include_str!("../programs/vela-protocol/src/instructions/wrap.rs");
+    let unwrap = include_str!("../programs/vela-protocol/src/instructions/unwrap.rs");
+
+    // execute_pull uses both load_keeper_config and load_protocol_config
+    assert!(
+        execute_pull.contains("load_keeper_config"),
+        "execute_pull must use load_keeper_config"
+    );
+    assert!(
+        execute_pull.contains("load_protocol_config"),
+        "execute_pull must use load_protocol_config"
+    );
+
+    // request flows use load_protocol_config
+    assert!(
+        request_validation.contains("load_protocol_config"),
+        "request_validation must use load_protocol_config"
+    );
+    assert!(
+        request_billing_record.contains("load_protocol_config"),
+        "request_billing_record must use load_protocol_config"
+    );
+    assert!(
+        request_usage_computation.contains("load_protocol_config"),
+        "request_usage_computation must use load_protocol_config"
+    );
+
+    // callback flows use load_protocol_config
+    assert!(
+        validation_callback.contains("load_protocol_config"),
+        "validation_callback must use load_protocol_config"
+    );
+    assert!(
+        billing_callback.contains("load_protocol_config"),
+        "billing_callback must use load_protocol_config"
+    );
+    assert!(
+        usage_computation_callback.contains("load_protocol_config"),
+        "usage_computation_callback must use load_protocol_config"
+    );
+
+    // wrap/unwrap use load_protocol_config
+    assert!(
+        wrap.contains("load_protocol_config"),
+        "wrap must use load_protocol_config"
+    );
+    assert!(
+        unwrap.contains("load_protocol_config"),
+        "unwrap must use load_protocol_config"
+    );
+}

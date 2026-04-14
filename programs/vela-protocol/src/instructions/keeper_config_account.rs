@@ -1,6 +1,6 @@
 use anchor_lang::{
     prelude::*,
-    solana_program::{program::invoke, system_instruction},
+    solana_program::{program::invoke, program::invoke_signed, system_instruction},
     AccountSerialize, Discriminator,
 };
 
@@ -22,6 +22,20 @@ pub enum LoadedKeeperConfig {
 }
 
 impl LoadedKeeperConfig {
+    pub fn bump(&self) -> u8 {
+        match self {
+            Self::Legacy(config) => config.bump,
+            Self::Current(config) => config.bump,
+        }
+    }
+
+    pub fn keeper_authority(&self) -> Pubkey {
+        match self {
+            Self::Legacy(config) => config.keeper_authority,
+            Self::Current(config) => config.keeper_authority,
+        }
+    }
+
     pub fn into_current(self) -> KeeperConfig {
         match self {
             Self::Legacy(legacy) => KeeperConfig {
@@ -55,7 +69,7 @@ pub fn load_keeper_config(config_info: &AccountInfo<'_>) -> Result<LoadedKeeperC
 
     let mut slice: &[u8] = &data;
     if let Ok(config) = KeeperConfig::try_deserialize(&mut slice) {
-        if !slice.is_empty() || config.version != CURRENT_ACCOUNT_VERSION {
+        if config.version != CURRENT_ACCOUNT_VERSION {
             return Err(ProgramError::InvalidAccountData.into());
         }
         return Ok(LoadedKeeperConfig::Current(config));
@@ -64,7 +78,7 @@ pub fn load_keeper_config(config_info: &AccountInfo<'_>) -> Result<LoadedKeeperC
     let mut legacy_slice: &[u8] = &data[KeeperConfig::DISCRIMINATOR.len()..];
     let legacy = KeeperConfigV1::deserialize(&mut legacy_slice)
         .map_err(|_| ProgramError::InvalidAccountData)?;
-    if !legacy_slice.is_empty() {
+    if !legacy_slice.is_empty() && !has_only_zero_padding(legacy_slice) {
         return Err(ProgramError::InvalidAccountData.into());
     }
     Ok(LoadedKeeperConfig::Legacy(legacy))
@@ -86,11 +100,53 @@ pub fn upgrade_keeper_config<'info>(
     Ok(config)
 }
 
+pub fn initialize_keeper_config<'info>(
+    payer: &AccountInfo<'info>,
+    config_info: &AccountInfo<'info>,
+    system_program: &AccountInfo<'info>,
+    admin: Pubkey,
+    mode: KeeperMode,
+    keeper_endpoint: Vec<u8>,
+    keeper_authority: Pubkey,
+    bump: u8,
+) -> Result<KeeperConfig> {
+    validate_keeper_config_address(config_info.key)?;
+
+    if !config_info.data_is_empty() {
+        return Err(ProgramError::AccountAlreadyInitialized.into());
+    }
+
+    let rent = Rent::get()?;
+    let lamports = rent.minimum_balance(KeeperConfig::SIZE);
+    let signer_seeds: &[&[u8]] = &[KeeperConfig::SEED_PREFIX, &[bump]];
+
+    invoke_signed(
+        &system_instruction::create_account(
+            payer.key,
+            config_info.key,
+            lamports,
+            KeeperConfig::SIZE as u64,
+            &crate::ID,
+        ),
+        &[payer.clone(), config_info.clone(), system_program.clone()],
+        &[signer_seeds],
+    )?;
+    let config = KeeperConfig::new(admin, mode, keeper_endpoint, keeper_authority, bump);
+    write_keeper_config(config_info, &config)?;
+
+    Ok(config)
+}
+
 pub fn write_keeper_config(config_info: &AccountInfo<'_>, config: &KeeperConfig) -> Result<()> {
     let mut data = config_info.try_borrow_mut_data()?;
+    data.fill(0);
     let mut slice: &mut [u8] = &mut data[..];
     config.try_serialize(&mut slice)?;
     Ok(())
+}
+
+fn has_only_zero_padding(bytes: &[u8]) -> bool {
+    bytes.iter().all(|byte| *byte == 0)
 }
 
 fn resize_keeper_config_account<'info>(

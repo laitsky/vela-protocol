@@ -4,8 +4,11 @@ use anchor_lang::{
     AccountSerialize, Discriminator,
 };
 
-use crate::state::{
+use crate::{
+    errors::VelaError,
+    state::{
     ClusterType, ProtocolConfig, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION,
+    },
 };
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
@@ -34,6 +37,48 @@ impl LoadedProtocolConfig {
         }
     }
 
+    pub fn bump(&self) -> u8 {
+        match self {
+            Self::Legacy(config) => config.bump,
+            Self::Current(config) => config.bump,
+        }
+    }
+
+    pub fn paused(&self) -> bool {
+        match self {
+            Self::Legacy(config) => config.paused,
+            Self::Current(config) => config.paused,
+        }
+    }
+
+    pub fn wrapped_usdc_mint(&self) -> Pubkey {
+        match self {
+            Self::Legacy(config) => config.wrapped_usdc_mint,
+            Self::Current(config) => config.wrapped_usdc_mint,
+        }
+    }
+
+    pub fn wrapping_vault(&self) -> Pubkey {
+        match self {
+            Self::Legacy(config) => config.wrapping_vault,
+            Self::Current(config) => config.wrapping_vault,
+        }
+    }
+
+    pub fn cluster_pubkey(&self) -> Pubkey {
+        match self {
+            Self::Legacy(config) => config.cluster_pubkey,
+            Self::Current(config) => config.cluster_pubkey,
+        }
+    }
+
+    pub fn cluster_offset(&self) -> u64 {
+        match self {
+            Self::Legacy(config) => config.cluster_offset,
+            Self::Current(config) => config.cluster_offset,
+        }
+    }
+
     pub fn into_current(self) -> ProtocolConfig {
         match self {
             Self::Legacy(legacy) => ProtocolConfig {
@@ -58,19 +103,19 @@ pub fn load_protocol_config(config_info: &AccountInfo<'_>) -> Result<LoadedProto
     validate_protocol_config_address(config_info.key)?;
 
     if *config_info.owner != crate::ID {
-        return Err(ProgramError::IncorrectProgramId.into());
+        return Err(error!(VelaError::InvalidProtocolConfig));
     }
 
     let data = config_info.try_borrow_data()?;
     if data.len() < ProtocolConfig::DISCRIMINATOR.len()
         || !data.starts_with(&ProtocolConfig::DISCRIMINATOR)
     {
-        return Err(ProgramError::InvalidAccountData.into());
+        return Err(error!(VelaError::InvalidProtocolConfig));
     }
 
     let mut slice: &[u8] = &data;
     if let Ok(config) = ProtocolConfig::try_deserialize(&mut slice) {
-        if !slice.is_empty() || config.version != CURRENT_ACCOUNT_VERSION {
+        if config.version != CURRENT_ACCOUNT_VERSION {
             return Err(ProgramError::InvalidAccountData.into());
         }
         return Ok(LoadedProtocolConfig::Current(config));
@@ -79,7 +124,7 @@ pub fn load_protocol_config(config_info: &AccountInfo<'_>) -> Result<LoadedProto
     let mut legacy_slice: &[u8] = &data[ProtocolConfig::DISCRIMINATOR.len()..];
     let legacy = ProtocolConfigV1::deserialize(&mut legacy_slice)
         .map_err(|_| ProgramError::InvalidAccountData)?;
-    if !legacy_slice.is_empty() {
+    if !legacy_slice.is_empty() && !has_only_zero_padding(legacy_slice) {
         return Err(ProgramError::InvalidAccountData.into());
     }
     Ok(LoadedProtocolConfig::Legacy(legacy))
@@ -103,9 +148,14 @@ pub fn upgrade_protocol_config<'info>(
 
 pub fn write_protocol_config(config_info: &AccountInfo<'_>, config: &ProtocolConfig) -> Result<()> {
     let mut data = config_info.try_borrow_mut_data()?;
+    data.fill(0);
     let mut slice: &mut [u8] = &mut data[..];
     config.try_serialize(&mut slice)?;
     Ok(())
+}
+
+fn has_only_zero_padding(bytes: &[u8]) -> bool {
+    bytes.iter().all(|byte| *byte == 0)
 }
 
 fn resize_protocol_config_account<'info>(
