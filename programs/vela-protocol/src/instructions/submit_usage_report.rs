@@ -2,7 +2,8 @@ use anchor_lang::prelude::*;
 
 use crate::{
     errors::VelaError,
-    state::{BillingType, MandateStatus, VelaMandate, UsageReport},
+    instructions::mandate_account::{load_mandate_account, validate_loaded_mandate_address},
+    state::{BillingType, MandateStatus, UsageReport},
 };
 
 #[derive(Accounts)]
@@ -11,15 +12,8 @@ pub struct SubmitUsageReport<'info> {
     #[account(mut)]
     pub merchant: Signer<'info>,
 
-    #[account(
-        seeds = [
-            VelaMandate::SEED_PREFIX,
-            mandate.subscriber.as_ref(),
-            mandate.plan.as_ref()
-        ],
-        bump = mandate.bump
-    )]
-    pub mandate: Account<'info, VelaMandate>,
+    /// CHECK: Deserialized and validated manually to support both legacy and V2 mandate layouts.
+    pub mandate: UncheckedAccount<'info>,
 
     #[account(
         init,
@@ -45,7 +39,9 @@ pub fn handler(
     nonce: u128,
     pub_key: [u8; 32],
 ) -> Result<()> {
-    let mandate = &ctx.accounts.mandate;
+    let loaded = load_mandate_account(&ctx.accounts.mandate.to_account_info())?;
+    validate_loaded_mandate_address(&ctx.accounts.mandate.key(), &loaded)?;
+    let mandate = loaded.into_current();
 
     // Validate merchant authorization
     require_keys_eq!(
@@ -78,7 +74,7 @@ pub fn handler(
     let clock = Clock::get()?;
 
     ctx.accounts.usage_report.set_inner(UsageReport {
-        mandate: mandate.key(),
+        mandate: ctx.accounts.mandate.key(),
         merchant: mandate.merchant,
         period_start,
         period_end,

@@ -4,8 +4,11 @@ use crate::instructions::arcium_accounts::{
 };
 use crate::{
     errors::VelaError,
-    instructions::protocol_config_account::load_protocol_config,
-    state::{BillingType, MandateStatus, ProtocolConfig, PullApproval, VelaMandate, UsagePlan, UsageReport},
+    instructions::{
+        mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
+        protocol_config_account::load_protocol_config,
+    },
+    state::{BillingType, MandateStatus, ProtocolConfig, PullApproval, UsagePlan, UsageReport},
     ArciumSignerAccount, ID,
 };
 use anchor_lang::prelude::*;
@@ -27,7 +30,10 @@ pub fn request_usage_computation(
     pub_key: [u8; 32],
     nonce: u128,
 ) -> Result<()> {
-    let mandate = &ctx.accounts.mandate;
+    let loaded = load_mandate_account(&ctx.accounts.mandate.to_account_info())?;
+    validate_loaded_mandate_address(&ctx.accounts.mandate.key(), &loaded)?;
+    let legacy_layout = loaded.is_legacy();
+    let mut mandate = loaded.into_current();
     let usage_plan = &ctx.accounts.usage_plan;
     let usage_report = &ctx.accounts.usage_report;
 
@@ -48,19 +54,20 @@ pub fn request_usage_computation(
     // Ensure the report belongs to this mandate
     require_keys_eq!(
         usage_report.mandate,
-        mandate.key(),
+        ctx.accounts.mandate.key(),
         VelaError::BillingTypeMismatch
     );
 
     let config = load_protocol_config(&ctx.accounts.config.to_account_info())?.into_current();
     validate_protocol_config(&config)?;
 
+    let mandate_key = ctx.accounts.mandate.key();
     let next_request_nonce = mandate
         .validation_request_nonce
         .checked_add(1)
         .ok_or(VelaError::Overflow)?;
     let computation_offset = derive_usage_computation_offset(
-        &mandate.key(),
+        &mandate_key,
         usage_report.period_start,
         next_request_nonce,
     );
@@ -117,7 +124,8 @@ pub fn request_usage_computation(
     approval.created_at = 0;
     approval.bump = ctx.bumps.pull_approval;
 
-    ctx.accounts.mandate.validation_request_nonce = next_request_nonce;
+    mandate.validation_request_nonce = next_request_nonce;
+    write_mandate(&ctx.accounts.mandate.to_account_info(), &mandate, legacy_layout)?;
 
     // Build ArgBuilder for the selected circuit.
     // usage_charge circuit expects: (usage_units: Enc<Shared,u64>, rate_per_unit: Enc<Shared,u64>, max_charge: Enc<Shared,u64>)
@@ -150,7 +158,7 @@ pub fn request_usage_computation(
                     is_writable: false,
                 },
                 CallbackAccount {
-                    pubkey: ctx.accounts.mandate.key(),
+                    pubkey: mandate_key,
                     is_writable: false,
                 },
                 CallbackAccount {
@@ -227,16 +235,9 @@ pub struct RequestUsageComputation<'info> {
     )]
     pub usage_plan: Box<Account<'info, UsagePlan>>,
 
-    #[account(
-        mut,
-        seeds = [
-            VelaMandate::SEED_PREFIX,
-            mandate.subscriber.as_ref(),
-            mandate.plan.as_ref()
-        ],
-        bump = mandate.bump
-    )]
-    pub mandate: Box<Account<'info, VelaMandate>>,
+    /// CHECK: Deserialized and validated manually to support both legacy and V2 mandate layouts.
+    #[account(mut)]
+    pub mandate: UncheckedAccount<'info>,
 
     #[account(
         mut,

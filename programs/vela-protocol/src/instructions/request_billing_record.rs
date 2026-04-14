@@ -4,8 +4,11 @@ use crate::instructions::arcium_accounts::{
 };
 use crate::{
     errors::VelaError,
-    instructions::protocol_config_account::load_protocol_config,
-    state::{BillingEvent, ProtocolConfig, VelaMandate, VelaPlan},
+    instructions::{
+        mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
+        protocol_config_account::load_protocol_config,
+    },
+    state::{BillingEvent, ProtocolConfig, VelaPlan},
     ArciumSignerAccount, ID,
 };
 use anchor_lang::prelude::*;
@@ -22,25 +25,36 @@ const RECORD_BILLING_EVENT_CALLBACK_DISCRIMINATOR: [u8; 8] =
 pub fn request_billing_record(
     ctx: Context<RequestBillingRecord>,
     requested_computation_offset: u64,
+    pulls_executed_seed: u64,
 ) -> Result<()> {
-    require!(ctx.accounts.mandate.pulls_executed > 0, VelaError::ApprovalNotGranted);
+    let loaded = load_mandate_account(&ctx.accounts.mandate.to_account_info())?;
+    validate_loaded_mandate_address(&ctx.accounts.mandate.key(), &loaded)?;
+    let legacy_layout = loaded.is_legacy();
+    let mut mandate = loaded.into_current();
+
+    require!(mandate.pulls_executed > 0, VelaError::ApprovalNotGranted);
     require!(
-        ctx.accounts.plan.key() == ctx.accounts.mandate.plan,
+        pulls_executed_seed == mandate.pulls_executed,
+        VelaError::InvalidComputationOffset
+    );
+    require!(
+        ctx.accounts.plan.key() == mandate.plan,
         VelaError::PlanNotActive
     );
     require!(
-        ctx.accounts.mandate.last_billing_recorded_pull < ctx.accounts.mandate.pulls_executed,
+        mandate.last_billing_recorded_pull < mandate.pulls_executed,
         VelaError::BillingEventAlreadyExists
     );
     let config = load_protocol_config(&ctx.accounts.config.to_account_info())?.into_current();
     validate_protocol_config(&config)?;
 
-    let next_request_nonce = ctx.accounts.mandate.billing_request_nonce
+    let mandate_key = ctx.accounts.mandate.key();
+    let next_request_nonce = mandate.billing_request_nonce
         .checked_add(1)
         .ok_or(VelaError::Overflow)?;
     let computation_offset = derive_billing_computation_offset(
-        &ctx.accounts.mandate.key(),
-        ctx.accounts.mandate.pulls_executed,
+        &mandate_key,
+        mandate.pulls_executed,
         next_request_nonce,
     );
     require!(
@@ -69,7 +83,7 @@ pub fn request_billing_record(
 
     let frequency =
         i64::try_from(ctx.accounts.plan.frequency).map_err(|_| VelaError::Overflow)?;
-    let billing_period_end = ctx.accounts.mandate.next_payment_due;
+    let billing_period_end = mandate.next_payment_due;
     let billing_period_start = billing_period_end
         .checked_sub(frequency)
         .ok_or(VelaError::Overflow)?;
@@ -87,12 +101,14 @@ pub fn request_billing_record(
     billing_event.nonce = 0;
     billing_event.created_at = 0;
     billing_event.bump = ctx.bumps.billing_event;
-    ctx.accounts.mandate.billing_request_nonce = next_request_nonce;
+
+    mandate.billing_request_nonce = next_request_nonce;
+    write_mandate(&ctx.accounts.mandate.to_account_info(), &mandate, legacy_layout)?;
 
     let args = ArgBuilder::new()
         .plaintext_u64(ctx.accounts.plan.amount)
-        .plaintext_i64(ctx.accounts.mandate.last_pull_at)
-        .plaintext_u64(ctx.accounts.mandate.pulls_executed)
+        .plaintext_i64(mandate.last_pull_at)
+        .plaintext_u64(mandate.pulls_executed)
         .plaintext_i64(billing_period_start)
         .plaintext_i64(billing_period_end)
         .plaintext_u64(0)
@@ -119,7 +135,7 @@ pub fn request_billing_record(
                     is_writable: false,
                 },
                 CallbackAccount {
-                    pubkey: ctx.accounts.mandate.key(),
+                    pubkey: mandate_key,
                     is_writable: false,
                 },
                 CallbackAccount {
@@ -136,6 +152,7 @@ pub fn request_billing_record(
 }
 
 #[derive(Accounts)]
+#[instruction(requested_computation_offset: u64, pulls_executed_seed: u64)]
 pub struct RequestBillingRecord<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
@@ -196,16 +213,9 @@ pub struct RequestBillingRecord<'info> {
     )]
     pub plan: Box<Account<'info, VelaPlan>>,
 
-    #[account(
-        mut,
-        seeds = [
-            VelaMandate::SEED_PREFIX,
-            mandate.subscriber.as_ref(),
-            plan.key().as_ref()
-        ],
-        bump = mandate.bump
-    )]
-    pub mandate: Box<Account<'info, VelaMandate>>,
+    /// CHECK: Deserialized and validated manually to support both legacy and V2 mandate layouts.
+    #[account(mut)]
+    pub mandate: UncheckedAccount<'info>,
 
     #[account(
         init_if_needed,
@@ -214,7 +224,7 @@ pub struct RequestBillingRecord<'info> {
         seeds = [
             BillingEvent::SEED_PREFIX,
             mandate.key().as_ref(),
-            mandate.pulls_executed.to_le_bytes().as_ref(),
+            pulls_executed_seed.to_le_bytes().as_ref(),
         ],
         bump,
     )]

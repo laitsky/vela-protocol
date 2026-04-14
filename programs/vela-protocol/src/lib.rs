@@ -344,8 +344,9 @@ pub mod vela_protocol {
     pub fn request_billing_record(
         ctx: Context<RequestBillingRecord>,
         computation_offset: u64,
+        pulls_executed_seed: u64,
     ) -> Result<()> {
-        instructions::request_billing_record::request_billing_record(ctx, computation_offset)
+        instructions::request_billing_record::request_billing_record(ctx, computation_offset, pulls_executed_seed)
     }
 
     pub fn validate_mandate_callback(
