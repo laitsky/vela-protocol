@@ -216,5 +216,9 @@ path = "../../tests/test_stream_edge_cases.rs"
 name = "test_stream_events"
 path = "../../tests/test_stream_events.rs"
 
+[[test]]
+name = "proration_boundaries"
+path = "../../tests/proration_boundaries.rs"
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
