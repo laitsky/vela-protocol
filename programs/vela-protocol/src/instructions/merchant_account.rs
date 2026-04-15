@@ -29,8 +29,9 @@ impl LoadedMerchantState {
                 bump: legacy.bump,
                 credential_mint: Pubkey::default(),
                 mandate_counter: 0,
+                stream_mandate_counter: 0,
                 version: CURRENT_ACCOUNT_VERSION,
-                _reserved: [0; ACCOUNT_RESERVED_BYTES],
+                _reserved: [0; ACCOUNT_RESERVED_BYTES - 8],
             },
             Self::Current(current) => current,
         }
@@ -103,7 +104,7 @@ pub fn ensure_merchant_state<'info>(
     if state.version == LEGACY_ACCOUNT_VERSION {
         state.version = CURRENT_ACCOUNT_VERSION;
     }
-    state._reserved = [0; ACCOUNT_RESERVED_BYTES];
+    state._reserved = [0; ACCOUNT_RESERVED_BYTES - 8];
     write_merchant_state(merchant_state_info, &state)?;
 
     Ok(state)
@@ -168,7 +169,11 @@ fn resize_merchant_state_account<'info>(
                 merchant_state_info.key,
                 required_lamports - current_lamports,
             ),
-            &[payer.clone(), merchant_state_info.clone(), system_program.clone()],
+            &[
+                payer.clone(),
+                merchant_state_info.clone(),
+                system_program.clone(),
+            ],
         )?;
     }
 
@@ -180,10 +185,8 @@ fn resize_merchant_state_account<'info>(
 }
 
 pub fn validate_merchant_state_address(merchant_state: &Pubkey, merchant: &Pubkey) -> Result<()> {
-    let (expected, _) = Pubkey::find_program_address(
-        &[MerchantState::SEED_PREFIX, merchant.as_ref()],
-        &crate::ID,
-    );
+    let (expected, _) =
+        Pubkey::find_program_address(&[MerchantState::SEED_PREFIX, merchant.as_ref()], &crate::ID);
 
     if *merchant_state != expected {
         return Err(ProgramError::InvalidSeeds.into());

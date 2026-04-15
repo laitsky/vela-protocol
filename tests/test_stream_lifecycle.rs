@@ -3,6 +3,8 @@ mod helpers;
 
 use helpers::TestHarness;
 use solana_keypair::Keypair;
+use solana_signer::Signer;
+use anchor_lang::prelude::Pubkey;
 use vela_protocol::state::{MerchantState, StreamMandate, StreamStatus};
 
 #[test]
@@ -20,10 +22,13 @@ fn test_create_stream_mandate() {
         .send_init_merchant_credential()
         .expect("merchant state bootstrap should succeed");
 
-    let merchant_state = harness
-        .derive_plan_addresses(0)
-        .merchant_state;
+    let merchant = harness.merchant_pubkey();
+    let (merchant_state, _) = Pubkey::find_program_address(
+        &[MerchantState::SEED_PREFIX, merchant.as_ref()],
+        &vela_protocol::ID,
+    );
     let merchant_state_before: MerchantState = harness.fetch_anchor_account(&merchant_state);
+    let subscriber_pubkey = Pubkey::new_from_array(subscriber.pubkey().to_bytes());
 
     harness
         .send_create_stream_mandate(&subscriber, &wrapped_mint_pubkey, 10, 10, Some(5_000), 60)
@@ -31,8 +36,8 @@ fn test_create_stream_mandate() {
 
     let merchant_state_after: MerchantState = harness.fetch_anchor_account(&merchant_state);
     let mandate = harness.derive_stream_mandate_address_by_index(
-        &subscriber.pubkey().into(),
-        &harness.merchant_pubkey(),
+        &subscriber_pubkey,
+        &merchant,
         merchant_state_before.stream_mandate_counter,
     );
     let stream: StreamMandate = harness.fetch_anchor_account(&mandate);

@@ -11,14 +11,14 @@ use crate::instructions::validation_callback::ValidateMandateOutput;
 use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
     AdjustAgentMandate, AdminCancel, AgentPull, Cancel, CloseMandate, CreateAgentMandate,
-    CreatePlan, CreateUsagePlan, DrainAgentMandate, ExecutePull, InitConfig, InitKeeperConfig,
-    InitMerchantCredential, InitRecordBillingCompDef, InitTokenConfig, InitTokenConfigIx,
-    InitValidateMandateCompDef, InitWrappedMint, MigrateMandate, MigratePlan, PauseAgentMandate,
-    PauseProtocol, RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation,
-    RequestValidation, ResumeAgentMandate, RevokeAgentMandate, ServiceLimitInput,
-    SubmitUsageReport, Subscribe, UnpauseProtocol, Unwrap, UpdateConfig, UpdateKeeperConfig,
-    UpdateMandate, UpdatePlan, UpdateTokenConfig, UpdateTokenConfigIx, UpdateUsagePlan,
-    UsageChargeOutput, UsageComputationCallback, ValidateMandateCallback, Wrap,
+    CreatePlan, CreateStreamMandate, CreateUsagePlan, DrainAgentMandate, ExecutePull, InitConfig,
+    InitKeeperConfig, InitMerchantCredential, InitRecordBillingCompDef, InitTokenConfig,
+    InitTokenConfigIx, InitValidateMandateCompDef, InitWrappedMint, MigrateMandate, MigratePlan,
+    PauseAgentMandate, PauseProtocol, RecordBillingEventCallback, RequestBillingRecord,
+    RequestUsageComputation, RequestValidation, ResumeAgentMandate, RevokeAgentMandate,
+    ServiceLimitInput, SubmitUsageReport, Subscribe, UnpauseProtocol, Unwrap, UpdateConfig,
+    UpdateKeeperConfig, UpdateMandate, UpdatePlan, UpdateTokenConfig, UpdateTokenConfigIx,
+    UpdateUsagePlan, UsageChargeOutput, UsageComputationCallback, ValidateMandateCallback, Wrap,
 };
 use crate::state::{KeeperMode, PricingTier};
 use arcium_anchor::prelude::SignedComputationOutputs;
@@ -77,6 +77,10 @@ mod __client_accounts_close_mandate {
 
 mod __client_accounts_create_plan {
     pub use crate::instructions::__client_accounts_create_plan::*;
+}
+
+mod __client_accounts_create_stream_mandate {
+    pub use crate::instructions::__client_accounts_create_stream_mandate::*;
 }
 
 mod __client_accounts_create_agent_mandate {
@@ -205,6 +209,22 @@ pub mod vela_protocol {
         max_pulls: u64,
     ) -> Result<()> {
         instructions::create_plan::handler(ctx, amount, frequency, trial_period, max_pulls)
+    }
+
+    pub fn create_stream_mandate(
+        ctx: Context<CreateStreamMandate>,
+        rate_per_second: u64,
+        authorized_max_rate: u64,
+        max_streamed: Option<u64>,
+        min_settle_interval: u32,
+    ) -> Result<()> {
+        instructions::create_stream_mandate::handler(
+            ctx,
+            rate_per_second,
+            authorized_max_rate,
+            max_streamed,
+            min_settle_interval,
+        )
     }
 
     pub fn create_agent_mandate(

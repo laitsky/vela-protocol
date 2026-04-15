@@ -8,6 +8,7 @@ pub mod cancel;
 pub mod close_mandate;
 pub mod create_agent_mandate;
 pub mod create_plan;
+pub mod create_stream_mandate;
 pub mod create_usage_plan;
 pub mod drain_agent_mandate;
 pub mod execute_pull;
@@ -141,6 +142,10 @@ pub mod __client_accounts_create_plan {
     pub use super::create_plan::__client_accounts_create_plan::*;
 }
 
+pub mod __client_accounts_create_stream_mandate {
+    pub use super::create_stream_mandate::__client_accounts_create_stream_mandate::*;
+}
+
 pub mod __client_accounts_execute_pull {
     pub use super::execute_pull::__client_accounts_execute_pull::*;
 }
@@ -213,6 +218,7 @@ pub use cancel::Cancel;
 pub use close_mandate::CloseMandate;
 pub use create_agent_mandate::{CreateAgentMandate, ServiceLimitInput};
 pub use create_plan::CreatePlan;
+pub use create_stream_mandate::CreateStreamMandate;
 pub use create_usage_plan::CreateUsagePlan;
 pub use drain_agent_mandate::DrainAgentMandate;
 pub use execute_pull::ExecutePull;

@@ -18,7 +18,10 @@ struct LegacyMerchantState {
 
 fn merchant_state_address(merchant: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
-        &[vela_protocol::state::MerchantState::SEED_PREFIX, merchant.as_ref()],
+        &[
+            vela_protocol::state::MerchantState::SEED_PREFIX,
+            merchant.as_ref(),
+        ],
         &vela_protocol::ID,
     )
 }
@@ -71,7 +74,13 @@ fn test_create_plan_upgrades_legacy_merchant_state() {
     let (merchant_credential_mint, _) = harness.derive_merchant_credential_mint();
 
     harness
-        .send_create_plan(25_000_000, vela_protocol::constants::MIN_FREQUENCY_SECONDS, 0, 4, 0)
+        .send_create_plan(
+            25_000_000,
+            vela_protocol::constants::MIN_FREQUENCY_SECONDS,
+            0,
+            4,
+            0,
+        )
         .expect("create_plan should succeed after merchant credential bootstrap");
 
     let upgraded: MerchantState = harness.fetch_anchor_account(&merchant_state);
@@ -79,8 +88,9 @@ fn test_create_plan_upgrades_legacy_merchant_state() {
     assert_eq!(upgraded.plan_count, 1);
     assert_eq!(upgraded.credential_mint, merchant_credential_mint);
     assert_eq!(upgraded.mandate_counter, 0);
+    assert_eq!(upgraded.stream_mandate_counter, 0);
     assert_eq!(upgraded.version, 1);
-    assert_eq!(upgraded._reserved, [0u8; 64]);
+    assert_eq!(upgraded._reserved, [0u8; 56]);
 }
 
 #[test]
@@ -115,6 +125,7 @@ fn test_create_usage_plan_initializes_versioned_merchant_state() {
     assert_eq!(state.plan_count, 0);
     assert_eq!(state.credential_mint, merchant_credential_mint);
     assert_eq!(state.mandate_counter, 0);
+    assert_eq!(state.stream_mandate_counter, 0);
     assert_eq!(state.version, 1);
-    assert_eq!(state._reserved, [0u8; 64]);
+    assert_eq!(state._reserved, [0u8; 56]);
 }
