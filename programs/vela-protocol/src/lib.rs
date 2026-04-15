@@ -19,6 +19,7 @@ use crate::instructions::{
     ServiceLimitInput, SubmitUsageReport, Subscribe, UnpauseProtocol, Unwrap, UpdateConfig,
     UpdateKeeperConfig, UpdateMandate, UpdatePlan, UpdateTokenConfig, UpdateTokenConfigIx,
     UpdateUsagePlan, UsageChargeOutput, UsageComputationCallback, ValidateMandateCallback, Wrap,
+    ExecuteStream,
 };
 use crate::state::{KeeperMode, PricingTier};
 use arcium_anchor::prelude::SignedComputationOutputs;
@@ -105,6 +106,10 @@ mod __client_accounts_drain_agent_mandate {
 
 mod __client_accounts_execute_pull {
     pub use crate::instructions::__client_accounts_execute_pull::*;
+}
+
+mod __client_accounts_execute_stream {
+    pub use crate::instructions::__client_accounts_execute_stream::*;
 }
 
 mod __client_accounts_init_config {
@@ -328,6 +333,12 @@ pub mod vela_protocol {
         ctx: Context<'a, 'b, 'c, 'info, ExecutePull<'info>>,
     ) -> Result<()> {
         instructions::execute_pull::handler(ctx)
+    }
+
+    pub fn execute_stream<'a, 'b, 'c, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, ExecuteStream<'info>>,
+    ) -> Result<()> {
+        instructions::execute_stream::handler(ctx)
     }
 
     pub fn init_config(ctx: Context<InitConfig>, ix: InitConfigIx) -> Result<()> {

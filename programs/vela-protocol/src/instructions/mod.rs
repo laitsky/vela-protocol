@@ -12,6 +12,7 @@ pub mod create_stream_mandate;
 pub mod create_usage_plan;
 pub mod drain_agent_mandate;
 pub mod execute_pull;
+pub mod execute_stream;
 pub mod init_comp_defs;
 pub mod init_config;
 pub mod init_keeper_config;
@@ -150,6 +151,10 @@ pub mod __client_accounts_execute_pull {
     pub use super::execute_pull::__client_accounts_execute_pull::*;
 }
 
+pub mod __client_accounts_execute_stream {
+    pub use super::execute_stream::__client_accounts_execute_stream::*;
+}
+
 pub mod __client_accounts_init_validate_mandate_comp_def {
     pub use super::init_comp_defs::__client_accounts_init_validate_mandate_comp_def::*;
 }
@@ -222,6 +227,7 @@ pub use create_stream_mandate::CreateStreamMandate;
 pub use create_usage_plan::CreateUsagePlan;
 pub use drain_agent_mandate::DrainAgentMandate;
 pub use execute_pull::ExecutePull;
+pub use execute_stream::ExecuteStream;
 pub use init_comp_defs::{InitRecordBillingCompDef, InitValidateMandateCompDef};
 pub use init_config::{InitConfig, InitConfigIx, UpdateConfig, UpdateConfigIx};
 pub use init_keeper_config::InitKeeperConfig;

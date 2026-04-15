@@ -271,34 +271,42 @@ fn handler_transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> 
 
     if ctx.accounts.owner.owner == &vela_protocol::ID && !ctx.accounts.owner.data_is_empty() {
         let owner_data = ctx.accounts.owner.try_borrow_data()?;
-        if owner_data.starts_with(&StreamMandate::DISCRIMINATOR) {
+        if owner_data.len() < 8 {
+            return Err(ProgramError::InvalidAccountData.into());
+        }
+        // Phase 45 pre-gate GO decision: keep slot 3 derived as PullApproval for TLV compatibility,
+        // and dispatch the streaming branch from the transfer authority (owner) discriminator first.
+        if &owner_data[..8] == StreamMandate::DISCRIMINATOR {
             let mut stream_slice: &[u8] = &owner_data;
             let stream = StreamMandate::try_deserialize(&mut stream_slice)
                 .map_err(|_| VelaError::WrongAccountType)?;
             require!(
                 stream.status == StreamStatus::Active,
-                VelaError::MandateNotActive
+                VelaError::StreamNotActive
             );
-            let clock = Clock::get()?;
-            let elapsed_i64 = clock
+            let elapsed_i64 = Clock::get()?
                 .unix_timestamp
                 .checked_sub(stream.last_settled_ts)
-                .ok_or(VelaError::Overflow)?;
-            require!(elapsed_i64 >= 0, VelaError::Overflow);
+                .ok_or(VelaError::ClockRegression)?;
+            require!(elapsed_i64 >= 0, VelaError::ClockRegression);
+            require!(
+                elapsed_i64 >= i64::from(stream.min_settle_interval),
+                VelaError::MinSettleIntervalViolation
+            );
             let elapsed =
                 u128::from(u64::try_from(elapsed_i64).map_err(|_| VelaError::Overflow)?);
-            let max_amount = elapsed
+            let gross = elapsed
                 .checked_mul(u128::from(stream.rate_per_second))
                 .ok_or(VelaError::Overflow)?;
             require!(
-                u128::from(amount) <= max_amount,
-                VelaError::AmountExceedsPlanAmount
+                u128::from(amount) <= gross,
+                VelaError::AmountExceedsStreamRate
             );
             if let Some(cap) = stream.max_streamed {
                 let next_total = u128::from(stream.total_streamed)
                     .checked_add(u128::from(amount))
                     .ok_or(VelaError::Overflow)?;
-                require!(next_total <= u128::from(cap), VelaError::AmountExceedsPlanAmount);
+                require!(next_total <= u128::from(cap), VelaError::StreamCapExceeded);
             }
             return Ok(());
         }
@@ -320,7 +328,8 @@ fn handler_transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> 
     }
 
     let approval_data = approval_info.try_borrow_data()?;
-    if approval_data.starts_with(&PullApproval::DISCRIMINATOR) {
+    require!(approval_data.len() >= 8, VelaError::WrongAccountType);
+    if &approval_data[..8] == PullApproval::DISCRIMINATOR {
         let mut approval_slice: &[u8] = &approval_data;
         let approval = PullApproval::try_deserialize(&mut approval_slice)
             .map_err(|_| VelaError::TransferNotAuthorized)?;

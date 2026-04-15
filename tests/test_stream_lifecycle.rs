@@ -7,7 +7,9 @@ use litesvm::types::{FailedTransactionMetadata, TransactionMetadata};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
-use spl_token_2022::state::Account as Token2022Account;
+use spl_token_2022::extension::{
+    transfer_hook::TransferHookAccount, BaseStateWithExtensions, StateWithExtensions,
+};
 use vela_protocol::state::{MerchantState, StreamMandate, StreamStatus, VelaMandate};
 
 struct StreamFixture {
@@ -37,6 +39,7 @@ fn setup_stream_fixture(
     let wrapped_mint = Keypair::new();
     let (wrapped_mint_pubkey, wrapping_vault) =
         harness.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
+    harness.init_extra_account_meta_list(&admin, &wrapped_mint_pubkey, &wrapping_vault);
     harness
         .send_init_merchant_credential()
         .expect("merchant state bootstrap should succeed");
@@ -65,11 +68,17 @@ fn setup_stream_fixture(
         merchant_state_before.stream_mandate_counter,
     );
     let created_stream: StreamMandate = harness.fetch_anchor_account(&stream_mandate);
-    harness.create_pull_approval_with_amount(&stream_mandate, created_stream.last_settled_ts, false, 0);
+    harness.create_pull_approval_with_amount(
+        &stream_mandate,
+        created_stream.last_settled_ts + 600,
+        true,
+        u64::MAX,
+    );
 
     let subscriber_usdc = harness.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);
     harness.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, wrapped_amount);
-    let subscriber_wrapped = harness.create_token_2022_ata(&admin, &stream_mandate, &wrapped_mint_pubkey);
+    let subscriber_wrapped =
+        harness.create_token_2022_ata(&admin, &stream_mandate, &wrapped_mint_pubkey);
     harness
         .send_wrap(
             &subscriber,
@@ -133,6 +142,15 @@ fn call_transfer_hook_directly(
     harness.send_instructions(&[ix], &[caller], Some(&caller.pubkey()))
 }
 
+fn error_has(failure: &FailedTransactionMetadata, needle: &str) -> bool {
+    format!("{:?}", failure.err).contains(needle)
+        || failure
+            .meta
+            .logs
+            .iter()
+            .any(|log| log.contains(needle))
+}
+
 #[test]
 fn test_create_stream_mandate() {
     let fixture = setup_stream_fixture(10, 10, Some(5_000), 60, 2_000);
@@ -165,22 +183,65 @@ fn test_create_stream_mandate() {
     let err = invalid_interval
         .send_create_stream_mandate(&subscriber, &wrapped_mint_pubkey, 10, 10, Some(500), 59)
         .expect_err("min_settle_interval < 60 should fail");
-    assert!(format!("{:?}", err.err).contains("Custom(6708)"));
+    assert!(error_has(&err, "6708") || error_has(&err, "MinSettleIntervalTooLow"));
 
     let err = invalid_interval
         .send_create_stream_mandate(&subscriber, &wrapped_mint_pubkey, 0, 10, Some(500), 60)
         .expect_err("zero rate should fail");
-    assert!(format!("{:?}", err.err).contains("Custom(6707)"));
+    assert!(error_has(&err, "6707") || error_has(&err, "RateMustBeNonZero"));
 
     let err = invalid_interval
         .send_create_stream_mandate(&subscriber, &wrapped_mint_pubkey, 11, 10, Some(500), 60)
         .expect_err("rate above authorized_max_rate should fail");
-    assert!(format!("{:?}", err.err).contains("Custom(6709)"));
+    assert!(error_has(&err, "6709") || error_has(&err, "AuthorizedMaxRateTooLow"));
 }
 
 #[test]
 fn test_execute_stream_clamped() {
     let mut fixture = setup_stream_fixture(10, 10, None, 60, 5_000);
+    let source_before = fixture
+        .harness
+        .fetch_spl_token_account(&fixture.subscriber_wrapped);
+    let merchant_before = fixture
+        .harness
+        .fetch_spl_token_account(&fixture.merchant_wrapped);
+    let stream_before: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let (expected_stream, expected_bump) = Pubkey::find_program_address(
+        &[
+            StreamMandate::SEED_PREFIX,
+            Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes())
+                .as_ref(),
+            fixture.harness.merchant_pubkey().as_ref(),
+            stream_before.mandate_index.to_le_bytes().as_ref(),
+        ],
+        &vela_protocol::ID,
+    );
+    assert_eq!(source_before.owner, helpers::to_address(fixture.stream_mandate));
+    assert_eq!(source_before.mint, helpers::to_address(fixture.wrapped_mint));
+    assert_eq!(merchant_before.mint, helpers::to_address(fixture.wrapped_mint));
+    assert!(
+        fixture.harness.fetch_account_data(&fixture.subscriber_wrapped).len() > 165,
+        "source wrapped account should include transfer-hook extensions"
+    );
+    assert!(
+        fixture.harness.fetch_account_data(&fixture.merchant_wrapped).len() > 165,
+        "destination wrapped account should include transfer-hook extensions"
+    );
+    let source_data = fixture.harness.fetch_account_data(&fixture.subscriber_wrapped);
+    let destination_data = fixture.harness.fetch_account_data(&fixture.merchant_wrapped);
+    let source_ext = StateWithExtensions::<spl_token_2022::state::Account>::unpack(&source_data)
+        .expect("source wrapped account should unpack with extensions");
+    let destination_ext =
+        StateWithExtensions::<spl_token_2022::state::Account>::unpack(&destination_data)
+            .expect("destination wrapped account should unpack with extensions");
+    source_ext
+        .get_extension::<TransferHookAccount>()
+        .expect("source wrapped account should carry transfer-hook extension");
+    destination_ext
+        .get_extension::<TransferHookAccount>()
+        .expect("destination wrapped account should carry transfer-hook extension");
+    assert_eq!(expected_stream, fixture.stream_mandate);
+    assert_eq!(stream_before.bump, expected_bump);
     fixture.harness.set_clock_timestamp(fixture.created_at + 100);
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
@@ -262,12 +323,20 @@ fn test_hook_misroute_wrong_account_type() {
         .expect("wrap into periodic mandate should succeed");
     let merchant_wrapped =
         harness.create_token_2022_ata(&admin, &harness.merchant_pubkey(), &wrapped_mint_pubkey);
-    let pull_approval = harness.create_pull_approval_with_amount(
-        &fixture.mandate,
-        harness.current_timestamp() + 600,
-        true,
-        mandate.amount,
-    );
+    let pull_approval = harness.derive_pull_approval_address(&fixture.mandate);
+    harness
+        .svm
+        .set_account(
+            helpers::to_address(pull_approval),
+            solana_account::Account {
+                lamports: 1_000_000,
+                data: vec![9; 8],
+                owner: helpers::to_address(vela_protocol::ID),
+                executable: false,
+                rent_epoch: 0,
+            },
+        )
+        .expect("wrongly discriminated slot account should be creatable");
     let caller = harness.create_wallet();
 
     let err = call_transfer_hook_directly(
@@ -285,5 +354,5 @@ fn test_hook_misroute_wrong_account_type() {
     )
     .expect_err("periodic mandate owner should fail closed on the stream dispatch path");
 
-    assert!(format!("{:?}", err.err).contains("Custom(6601)"));
+    assert!(error_has(&err, "6601") || error_has(&err, "WrongAccountType"));
 }
