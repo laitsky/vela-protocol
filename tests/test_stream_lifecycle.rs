@@ -494,3 +494,219 @@ fn test_pause_resume_no_back_accrual() {
     assert_eq!(mandate.total_streamed, 1_600);
     assert_eq!(merchant_wrapped.amount, 1_600);
 }
+
+#[test]
+fn test_cancel_stream_prorata() {
+    let mut fixture = setup_stream_fixture(10, 10, None, 60, 10_000);
+    fixture.harness.set_clock_timestamp(fixture.created_at + 60);
+
+    fixture
+        .harness
+        .send_cancel_stream(
+            &fixture.subscriber,
+            &fixture.stream_mandate,
+            &fixture.subscriber_wrapped,
+            &fixture.merchant_wrapped,
+            &fixture.wrapped_mint,
+        )
+        .expect("cancel should settle accrued amount before finalizing");
+
+    let mandate: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let merchant_wrapped = fixture
+        .harness
+        .fetch_spl_token_account(&fixture.merchant_wrapped);
+
+    assert!(matches!(mandate.status, StreamStatus::Cancelled));
+    assert_eq!(mandate.total_streamed, 600);
+    assert_eq!(merchant_wrapped.amount, 600);
+}
+
+#[test]
+fn test_cancel_signer_authorization() {
+    let mut subscriber_fixture = setup_stream_fixture(10, 10, None, 60, 10_000);
+    subscriber_fixture
+        .harness
+        .set_clock_timestamp(subscriber_fixture.created_at + 60);
+    subscriber_fixture
+        .harness
+        .send_cancel_stream(
+            &subscriber_fixture.subscriber,
+            &subscriber_fixture.stream_mandate,
+            &subscriber_fixture.subscriber_wrapped,
+            &subscriber_fixture.merchant_wrapped,
+            &subscriber_fixture.wrapped_mint,
+        )
+        .expect("subscriber should be allowed to cancel");
+
+    let mut merchant_fixture = setup_stream_fixture(10, 10, None, 60, 10_000);
+    merchant_fixture
+        .harness
+        .set_clock_timestamp(merchant_fixture.created_at + 60);
+    let merchant = merchant_fixture.harness.merchant.insecure_clone();
+    merchant_fixture
+        .harness
+        .send_cancel_stream(
+            &merchant,
+            &merchant_fixture.stream_mandate,
+            &merchant_fixture.subscriber_wrapped,
+            &merchant_fixture.merchant_wrapped,
+            &merchant_fixture.wrapped_mint,
+        )
+        .expect("merchant should be allowed to cancel");
+
+    let mut intruder_fixture = setup_stream_fixture(10, 10, None, 60, 10_000);
+    intruder_fixture
+        .harness
+        .set_clock_timestamp(intruder_fixture.created_at + 60);
+    let intruder = intruder_fixture.harness.create_wallet();
+    let err = intruder_fixture
+        .harness
+        .send_cancel_stream(
+            &intruder,
+            &intruder_fixture.stream_mandate,
+            &intruder_fixture.subscriber_wrapped,
+            &intruder_fixture.merchant_wrapped,
+            &intruder_fixture.wrapped_mint,
+        )
+        .expect_err("random signer should be rejected");
+
+    assert!(error_has(&err, "6710") || error_has(&err, "UnauthorizedStreamSigner"));
+}
+
+#[test]
+fn test_update_rate_settles_first() {
+    let mut fixture = setup_stream_fixture(10, 50, None, 60, 10_000);
+    let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
+    let merchant = fixture.harness.merchant.insecure_clone();
+
+    fixture.harness.set_clock_timestamp(fixture.created_at + 100);
+    fixture
+        .harness
+        .send_update_stream_rate(
+            &merchant,
+            &fixture.stream_mandate,
+            &fixture.subscriber_wrapped,
+            &fixture.merchant_wrapped,
+            &fixture.wrapped_mint,
+            Some(20),
+            None,
+        )
+        .expect("merchant should be able to raise within the existing ceiling");
+
+    let after_update: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    assert_eq!(after_update.total_streamed, 1_000);
+    assert_eq!(after_update.rate_per_second, 20);
+
+    fixture.harness.set_clock_timestamp(fixture.created_at + 160);
+    fixture
+        .harness
+        .send_execute_stream(
+            &fixture.subscriber,
+            &subscriber,
+            &fixture.stream_mandate,
+            &fixture.subscriber_wrapped,
+            &fixture.merchant_wrapped,
+            &fixture.wrapped_mint,
+        )
+        .expect("post-update settlement should accrue at the new rate");
+
+    let after_execute: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let merchant_wrapped = fixture
+        .harness
+        .fetch_spl_token_account(&fixture.merchant_wrapped);
+    assert_eq!(after_execute.total_streamed, 2_200);
+    assert_eq!(merchant_wrapped.amount, 2_200);
+}
+
+#[test]
+fn test_update_rate_d05_matrix() {
+    let mut within_ceiling = setup_stream_fixture(10, 20, None, 60, 10_000);
+    within_ceiling
+        .harness
+        .set_clock_timestamp(within_ceiling.created_at + 60);
+    let merchant = within_ceiling.harness.merchant.insecure_clone();
+    within_ceiling
+        .harness
+        .send_update_stream_rate(
+            &merchant,
+            &within_ceiling.stream_mandate,
+            &within_ceiling.subscriber_wrapped,
+            &within_ceiling.merchant_wrapped,
+            &within_ceiling.wrapped_mint,
+            Some(15),
+            None,
+        )
+        .expect("merchant should be able to raise within ceiling");
+
+    let mut above_ceiling = setup_stream_fixture(10, 20, None, 60, 10_000);
+    above_ceiling
+        .harness
+        .set_clock_timestamp(above_ceiling.created_at + 60);
+    let merchant = above_ceiling.harness.merchant.insecure_clone();
+    let err = above_ceiling
+        .harness
+        .send_update_stream_rate(
+            &merchant,
+            &above_ceiling.stream_mandate,
+            &above_ceiling.subscriber_wrapped,
+            &above_ceiling.merchant_wrapped,
+            &above_ceiling.wrapped_mint,
+            Some(25),
+            None,
+        )
+        .expect_err("merchant should not be able to exceed the current ceiling");
+    assert!(error_has(&err, "6710") || error_has(&err, "UnauthorizedStreamSigner"));
+
+    let mut subscriber_raise = setup_stream_fixture(10, 20, None, 60, 10_000);
+    subscriber_raise
+        .harness
+        .set_clock_timestamp(subscriber_raise.created_at + 60);
+    subscriber_raise
+        .harness
+        .send_update_stream_rate(
+            &subscriber_raise.subscriber,
+            &subscriber_raise.stream_mandate,
+            &subscriber_raise.subscriber_wrapped,
+            &subscriber_raise.merchant_wrapped,
+            &subscriber_raise.wrapped_mint,
+            Some(25),
+            Some(25),
+        )
+        .expect("subscriber should be able to raise both rate and ceiling");
+
+    let mut merchant_ceiling = setup_stream_fixture(10, 20, None, 60, 10_000);
+    merchant_ceiling
+        .harness
+        .set_clock_timestamp(merchant_ceiling.created_at + 60);
+    let merchant = merchant_ceiling.harness.merchant.insecure_clone();
+    let err = merchant_ceiling
+        .harness
+        .send_update_stream_rate(
+            &merchant,
+            &merchant_ceiling.stream_mandate,
+            &merchant_ceiling.subscriber_wrapped,
+            &merchant_ceiling.merchant_wrapped,
+            &merchant_ceiling.wrapped_mint,
+            None,
+            Some(25),
+        )
+        .expect_err("merchant should not be able to change the ceiling");
+    assert!(error_has(&err, "6710") || error_has(&err, "UnauthorizedStreamSigner"));
+
+    let mut subscriber_ceiling = setup_stream_fixture(10, 20, None, 60, 10_000);
+    subscriber_ceiling
+        .harness
+        .set_clock_timestamp(subscriber_ceiling.created_at + 60);
+    subscriber_ceiling
+        .harness
+        .send_update_stream_rate(
+            &subscriber_ceiling.subscriber,
+            &subscriber_ceiling.stream_mandate,
+            &subscriber_ceiling.subscriber_wrapped,
+            &subscriber_ceiling.merchant_wrapped,
+            &subscriber_ceiling.wrapped_mint,
+            None,
+            Some(30),
+        )
+        .expect("subscriber should be able to raise the ceiling only");
+}
