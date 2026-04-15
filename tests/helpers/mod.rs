@@ -1127,6 +1127,67 @@ impl TestHarness {
         self.send_instruction(&instruction, &[payer], Some(&payer.pubkey()))
     }
 
+    pub fn send_pause_stream(
+        &mut self,
+        authority: &Keypair,
+        stream_mandate: &Pubkey,
+        subscriber_wrapped_account: &Pubkey,
+        merchant_wrapped_account: &Pubkey,
+        wrapped_usdc_mint: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let config = self.derive_config();
+        let config_account: ProtocolConfig = self.fetch_anchor_account(&config);
+        let (extra_account_meta_list, _) = self.derive_extra_account_meta_list(wrapped_usdc_mint);
+        let accounts = vela_protocol::accounts::PauseStream {
+            authority: to_anchor_pubkey(authority.pubkey()),
+            mandate: *stream_mandate,
+            subscriber_wrapped_account: *subscriber_wrapped_account,
+            merchant_wrapped_account: *merchant_wrapped_account,
+            wrapped_usdc_mint: *wrapped_usdc_mint,
+            pull_approval: self.derive_pull_approval_address(stream_mandate),
+            token_config: self.derive_token_config_address(wrapped_usdc_mint),
+            protocol_config: config,
+            wrapping_vault: config_account.wrapping_vault,
+            hook_program: Pubkey::new_from_array(vela_transfer_hook::ID.to_bytes()),
+            extra_account_meta_list,
+            protocol_program: vela_protocol::ID,
+            token_2022_program: token_2022_anchor_id(),
+            system_program: anchor_lang::system_program::ID,
+        };
+
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::PauseStream {}.data(),
+        };
+        self.send_instruction(&instruction, &[authority], Some(&authority.pubkey()))
+    }
+
+    pub fn send_resume_stream(
+        &mut self,
+        authority: &Keypair,
+        stream_mandate: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let accounts = vela_protocol::accounts::ResumeStream {
+            authority: to_anchor_pubkey(authority.pubkey()),
+            mandate: *stream_mandate,
+        };
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::ResumeStream {}.data(),
+        };
+        self.send_instruction(&instruction, &[authority], Some(&authority.pubkey()))
+    }
+
     /// Create a PullApproval account with all fields including approved_amount.
     pub fn create_pull_approval(
         &mut self,

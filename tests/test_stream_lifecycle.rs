@@ -356,3 +356,141 @@ fn test_hook_misroute_wrong_account_type() {
 
     assert!(error_has(&err, "6601") || error_has(&err, "WrongAccountType"));
 }
+
+#[test]
+fn test_pause_requires_active() {
+    let mut fixture = setup_stream_fixture(10, 10, None, 60, 5_000);
+    fixture.harness.set_clock_timestamp(fixture.created_at + 100);
+
+    fixture
+        .harness
+        .send_pause_stream(
+            &fixture.subscriber,
+            &fixture.stream_mandate,
+            &fixture.subscriber_wrapped,
+            &fixture.merchant_wrapped,
+            &fixture.wrapped_mint,
+        )
+        .expect("initial pause should succeed");
+
+    let err = fixture
+        .harness
+        .send_pause_stream(
+            &fixture.subscriber,
+            &fixture.stream_mandate,
+            &fixture.subscriber_wrapped,
+            &fixture.merchant_wrapped,
+            &fixture.wrapped_mint,
+        )
+        .expect_err("second pause should fail once mandate is paused");
+
+    assert!(error_has(&err, "6701") || error_has(&err, "StreamAlreadyPaused"));
+}
+
+#[test]
+fn test_pause_signer_authorization() {
+    let mut subscriber_fixture = setup_stream_fixture(10, 10, None, 60, 5_000);
+    subscriber_fixture
+        .harness
+        .set_clock_timestamp(subscriber_fixture.created_at + 100);
+    subscriber_fixture
+        .harness
+        .send_pause_stream(
+            &subscriber_fixture.subscriber,
+            &subscriber_fixture.stream_mandate,
+            &subscriber_fixture.subscriber_wrapped,
+            &subscriber_fixture.merchant_wrapped,
+            &subscriber_fixture.wrapped_mint,
+        )
+        .expect("subscriber should be allowed to pause");
+
+    let mut merchant_fixture = setup_stream_fixture(10, 10, None, 60, 5_000);
+    merchant_fixture
+        .harness
+        .set_clock_timestamp(merchant_fixture.created_at + 100);
+    let merchant = merchant_fixture.harness.merchant.insecure_clone();
+    merchant_fixture
+        .harness
+        .send_pause_stream(
+            &merchant,
+            &merchant_fixture.stream_mandate,
+            &merchant_fixture.subscriber_wrapped,
+            &merchant_fixture.merchant_wrapped,
+            &merchant_fixture.wrapped_mint,
+        )
+        .expect("merchant should be allowed to pause");
+
+    let mut intruder_fixture = setup_stream_fixture(10, 10, None, 60, 5_000);
+    intruder_fixture
+        .harness
+        .set_clock_timestamp(intruder_fixture.created_at + 100);
+    let intruder = intruder_fixture.harness.create_wallet();
+    let err = intruder_fixture
+        .harness
+        .send_pause_stream(
+            &intruder,
+            &intruder_fixture.stream_mandate,
+            &intruder_fixture.subscriber_wrapped,
+            &intruder_fixture.merchant_wrapped,
+            &intruder_fixture.wrapped_mint,
+        )
+        .expect_err("random signer should be rejected");
+
+    assert!(error_has(&err, "6710") || error_has(&err, "UnauthorizedStreamSigner"));
+}
+
+#[test]
+fn test_resume_requires_paused() {
+    let mut fixture = setup_stream_fixture(10, 10, None, 60, 5_000);
+    let err = fixture
+        .harness
+        .send_resume_stream(&fixture.subscriber, &fixture.stream_mandate)
+        .expect_err("resume should fail while mandate is still active");
+
+    assert!(error_has(&err, "6700") || error_has(&err, "StreamNotActive"));
+}
+
+#[test]
+fn test_pause_resume_no_back_accrual() {
+    let mut fixture = setup_stream_fixture(10, 10, None, 60, 50_000);
+    let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
+
+    fixture.harness.set_clock_timestamp(fixture.created_at + 100);
+    fixture
+        .harness
+        .send_pause_stream(
+            &fixture.subscriber,
+            &fixture.stream_mandate,
+            &fixture.subscriber_wrapped,
+            &fixture.merchant_wrapped,
+            &fixture.wrapped_mint,
+        )
+        .expect("pause should settle the first 100 seconds");
+
+    fixture.harness.set_clock_timestamp(fixture.created_at + 3_700);
+    fixture
+        .harness
+        .send_resume_stream(&fixture.subscriber, &fixture.stream_mandate)
+        .expect("resume should reopen the mandate without back-accrual");
+
+    fixture.harness.set_clock_timestamp(fixture.created_at + 3_760);
+    fixture
+        .harness
+        .send_execute_stream(
+            &fixture.subscriber,
+            &subscriber,
+            &fixture.stream_mandate,
+            &fixture.subscriber_wrapped,
+            &fixture.merchant_wrapped,
+            &fixture.wrapped_mint,
+        )
+        .expect("execute_stream should only accrue post-resume time");
+
+    let mandate: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let merchant_wrapped = fixture
+        .harness
+        .fetch_spl_token_account(&fixture.merchant_wrapped);
+
+    assert_eq!(mandate.total_streamed, 1_600);
+    assert_eq!(merchant_wrapped.amount, 1_600);
+}
