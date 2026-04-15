@@ -154,6 +154,10 @@ fn assert_custom_error_code(failure: &FailedTransactionMetadata, code: u32) {
     );
 }
 
+fn assert_anchor_error_code(failure: &FailedTransactionMetadata, code: u32) {
+    assert_custom_error_code(failure, code + anchor_lang::error::ERROR_CODE_OFFSET);
+}
+
 #[test]
 fn test_insufficient_balance_errors() {
     let mut fixture = setup_stream_fixture(10, 10, None, 60, 100);
@@ -193,7 +197,7 @@ fn test_min_settle_interval_violation() {
         )
         .expect_err("execute_stream should reject settlements before min_settle_interval");
 
-    assert_custom_error_code(&err, VelaError::MinSettleIntervalViolation as u32);
+    assert_anchor_error_code(&err, VelaError::MinSettleIntervalViolation as u32);
 }
 
 #[test]
@@ -254,5 +258,5 @@ fn test_hook_rejects_after_clamp_bypass() {
     )
     .expect_err("hook should independently reject stream amounts above elapsed * rate");
 
-    assert_custom_error_code(&err, VelaError::AmountExceedsStreamRate as u32);
+    assert_anchor_error_code(&err, VelaError::AmountExceedsStreamRate as u32);
 }
