@@ -10,16 +10,16 @@ use crate::instructions::billing_callback::RecordBillingEventOutput;
 use crate::instructions::validation_callback::ValidateMandateOutput;
 use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
-    AdjustAgentMandate, AdminCancel, AgentPull, Cancel, CloseMandate, CreateAgentMandate,
-    CreatePlan, CreateStreamMandate, CreateUsagePlan, DrainAgentMandate, ExecutePull, InitConfig,
-    InitKeeperConfig, InitMerchantCredential, InitRecordBillingCompDef, InitTokenConfig,
-    InitTokenConfigIx, InitValidateMandateCompDef, InitWrappedMint, MigrateMandate, MigratePlan,
-    PauseAgentMandate, PauseProtocol, RecordBillingEventCallback, RequestBillingRecord,
-    RequestUsageComputation, RequestValidation, ResumeAgentMandate, RevokeAgentMandate,
-    ExecuteStream, PauseStream, ResumeStream, ServiceLimitInput, SubmitUsageReport, Subscribe,
-    UnpauseProtocol, Unwrap, UpdateConfig, UpdateKeeperConfig, UpdateMandate, UpdatePlan,
-    UpdateTokenConfig, UpdateTokenConfigIx, UpdateUsagePlan, UsageChargeOutput,
-    UsageComputationCallback, ValidateMandateCallback, Wrap,
+    AdjustAgentMandate, AdminCancel, AgentPull, Cancel, CancelStream, CloseMandate,
+    CreateAgentMandate, CreatePlan, CreateStreamMandate, CreateUsagePlan, DrainAgentMandate,
+    ExecutePull, ExecuteStream, InitConfig, InitKeeperConfig, InitMerchantCredential,
+    InitRecordBillingCompDef, InitTokenConfig, InitTokenConfigIx, InitValidateMandateCompDef,
+    InitWrappedMint, MigrateMandate, MigratePlan, PauseAgentMandate, PauseProtocol, PauseStream,
+    RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation, RequestValidation,
+    ResumeAgentMandate, ResumeStream, RevokeAgentMandate, ServiceLimitInput, SubmitUsageReport,
+    Subscribe, UnpauseProtocol, Unwrap, UpdateConfig, UpdateKeeperConfig, UpdateMandate,
+    UpdatePlan, UpdateStreamRate, UpdateTokenConfig, UpdateTokenConfigIx, UpdateUsagePlan,
+    UsageChargeOutput, UsageComputationCallback, ValidateMandateCallback, Wrap,
 };
 use crate::state::{KeeperMode, PricingTier};
 use arcium_anchor::prelude::SignedComputationOutputs;
@@ -70,6 +70,10 @@ mod __client_accounts_record_billing_event_callback {
 
 mod __client_accounts_cancel {
     pub use crate::instructions::__client_accounts_cancel::*;
+}
+
+mod __client_accounts_cancel_stream {
+    pub use crate::instructions::__client_accounts_cancel_stream::*;
 }
 
 mod __client_accounts_close_mandate {
@@ -196,6 +200,10 @@ mod __client_accounts_update_mandate {
     pub use crate::instructions::__client_accounts_update_mandate::*;
 }
 
+mod __client_accounts_update_stream_rate {
+    pub use crate::instructions::__client_accounts_update_stream_rate::*;
+}
+
 mod __client_accounts_update_usage_plan {
     pub use crate::instructions::__client_accounts_update_usage_plan::*;
 }
@@ -212,6 +220,10 @@ pub mod vela_protocol {
 
     pub fn cancel(ctx: Context<Cancel>) -> Result<()> {
         instructions::cancel::handler(ctx)
+    }
+
+    pub fn cancel_stream(ctx: Context<CancelStream>) -> Result<()> {
+        instructions::cancel_stream::handler(ctx)
     }
 
     pub fn create_plan(
@@ -540,6 +552,14 @@ pub mod vela_protocol {
 
     pub fn close_mandate(ctx: Context<CloseMandate>) -> Result<()> {
         instructions::close_mandate::handler(ctx)
+    }
+
+    pub fn update_stream_rate(
+        ctx: Context<UpdateStreamRate>,
+        new_rate: Option<u64>,
+        new_authorized_max_rate: Option<u64>,
+    ) -> Result<()> {
+        instructions::update_stream_rate::handler(ctx, new_rate, new_authorized_max_rate)
     }
 
 }

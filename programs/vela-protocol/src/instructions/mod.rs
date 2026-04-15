@@ -5,6 +5,7 @@ pub mod agent_pull;
 pub mod arcium_accounts;
 pub mod billing_callback;
 pub mod cancel;
+pub mod cancel_stream;
 pub mod close_mandate;
 pub mod create_agent_mandate;
 pub mod create_plan;
@@ -43,6 +44,7 @@ pub mod unwrap;
 pub mod update_keeper_config;
 pub mod update_mandate;
 pub mod update_plan;
+pub mod update_stream_rate;
 pub mod update_token_config;
 pub mod update_usage_plan;
 pub mod usage_computation_callback;
@@ -115,6 +117,10 @@ pub mod __client_accounts_record_billing_event_callback {
 
 pub mod __client_accounts_cancel {
     pub use super::cancel::__client_accounts_cancel::*;
+}
+
+pub mod __client_accounts_cancel_stream {
+    pub use super::cancel_stream::__client_accounts_cancel_stream::*;
 }
 
 pub mod __client_accounts_close_mandate {
@@ -221,6 +227,10 @@ pub mod __client_accounts_update_mandate {
     pub use super::update_mandate::__client_accounts_update_mandate::*;
 }
 
+pub mod __client_accounts_update_stream_rate {
+    pub use super::update_stream_rate::__client_accounts_update_stream_rate::*;
+}
+
 pub mod __client_accounts_update_usage_plan {
     pub use super::update_usage_plan::__client_accounts_update_usage_plan::*;
 }
@@ -230,6 +240,7 @@ pub use admin_cancel::AdminCancel;
 pub use agent_pull::AgentPull;
 pub use billing_callback::RecordBillingEventCallback;
 pub use cancel::Cancel;
+pub use cancel_stream::CancelStream;
 pub use close_mandate::CloseMandate;
 pub use create_agent_mandate::{CreateAgentMandate, ServiceLimitInput};
 pub use create_plan::CreatePlan;
@@ -264,6 +275,7 @@ pub use unwrap::Unwrap;
 pub use update_keeper_config::UpdateKeeperConfig;
 pub use update_mandate::UpdateMandate;
 pub use update_plan::UpdatePlan;
+pub use update_stream_rate::UpdateStreamRate;
 pub use update_token_config::{UpdateTokenConfig, UpdateTokenConfigIx};
 pub use update_usage_plan::UpdateUsagePlan;
 pub use usage_computation_callback::{UsageChargeOutput, UsageComputationCallback};
