@@ -1,8 +1,27 @@
 use anchor_lang::{error::Error, prelude::Pubkey};
 use proptest::prelude::*;
 use vela_protocol::errors::VelaError;
-use vela_protocol::instructions::stream_account::settle_accrued_in_place;
 use vela_protocol::state::stream_mandate::{StreamMandate, StreamStatus};
+
+pub use vela_protocol::ID;
+
+mod errors {
+    pub use vela_protocol::errors::*;
+}
+
+mod state {
+    pub use vela_protocol::state::CURRENT_ACCOUNT_VERSION;
+
+    pub mod stream_mandate {
+        pub use vela_protocol::state::stream_mandate::*;
+    }
+}
+
+#[path = "../programs/vela-protocol/src/instructions/stream_account.rs"]
+#[allow(dead_code)]
+mod stream_account;
+
+use stream_account::settle_accrued_in_place;
 
 fn fresh_mandate(rate: u64, last: i64, cap: Option<u64>) -> StreamMandate {
     StreamMandate {
@@ -135,42 +154,43 @@ proptest! {
         prop_assert_eq!(create.last_settled_ts, 0);
         prop_assert_eq!(create.total_streamed, 0);
 
-        let mut mandate = fresh_mandate(rate, 0, None);
+        let mut pause = fresh_mandate(rate, 0, None);
+        let pause_before_total = pause.total_streamed;
+        let pause_amount = settle_accrued_in_place(&mut pause, pause_ts).unwrap();
+        prop_assert!(pause.total_streamed >= pause_before_total);
+        prop_assert_eq!(pause.last_settled_ts, pause_ts);
+        prop_assert_eq!(pause.total_streamed, pause_before_total + pause_amount);
+        pause.paused_at = Some(pause_ts);
+        pause.status = StreamStatus::Paused;
 
-        let pause_before_total = mandate.total_streamed;
-        let pause_amount = settle_accrued_in_place(&mut mandate, pause_ts).unwrap();
-        prop_assert!(mandate.total_streamed >= pause_before_total);
-        prop_assert_eq!(mandate.last_settled_ts, pause_ts);
-        prop_assert_eq!(pause_amount, mandate.total_streamed);
-        mandate.paused_at = Some(pause_ts);
-        mandate.status = StreamStatus::Paused;
+        let mut resume = fresh_mandate(rate, 0, None);
+        let resume_before_total = settle_accrued_in_place(&mut resume, pause_ts).unwrap();
+        let resume_total_before = resume.total_streamed;
+        prop_assert_eq!(resume_total_before, resume_before_total);
+        resume.paused_at = Some(pause_ts);
+        resume.status = StreamStatus::Paused;
+        resume.last_settled_ts = resume_ts;
+        resume.paused_at = None;
+        resume.status = StreamStatus::Active;
+        prop_assert_eq!(resume.total_streamed, resume_total_before);
+        prop_assert_eq!(resume.last_settled_ts, resume_ts);
 
-        let resume_before_total = mandate.total_streamed;
-        mandate.last_settled_ts = resume_ts;
-        mandate.paused_at = None;
-        mandate.status = StreamStatus::Active;
-        prop_assert_eq!(mandate.total_streamed, resume_before_total);
-        prop_assert_eq!(mandate.last_settled_ts, resume_ts);
+        let mut cancel = fresh_mandate(rate, 0, None);
+        let cancel_before_total = cancel.total_streamed;
+        let cancel_amount = settle_accrued_in_place(&mut cancel, cancel_ts).unwrap();
+        prop_assert!(cancel.total_streamed >= cancel_before_total);
+        prop_assert_eq!(cancel.last_settled_ts, cancel_ts);
+        prop_assert_eq!(cancel.total_streamed, cancel_before_total + cancel_amount);
+        cancel.status = StreamStatus::Cancelled;
+        cancel.paused_at = None;
 
-        let cancel_before_total = mandate.total_streamed;
-        let cancel_amount = settle_accrued_in_place(&mut mandate, cancel_ts).unwrap();
-        prop_assert!(mandate.total_streamed >= cancel_before_total);
-        prop_assert_eq!(mandate.last_settled_ts, cancel_ts);
-        prop_assert_eq!(mandate.total_streamed, cancel_before_total + cancel_amount);
-        mandate.status = StreamStatus::Cancelled;
-        mandate.paused_at = None;
-
-        mandate.status = StreamStatus::Active;
-        let update_before_total = mandate.total_streamed;
-        let update_amount = settle_accrued_in_place(&mut mandate, update_ts).unwrap();
-        prop_assert!(mandate.total_streamed >= update_before_total);
-        prop_assert_eq!(mandate.last_settled_ts, update_ts);
-        prop_assert_eq!(mandate.total_streamed, update_before_total + update_amount);
-        mandate.rate_per_second = new_rate;
-
-        let mut settle_only = fresh_mandate(rate, 0, None);
-        let settle_amount = settle_accrued_in_place(&mut settle_only, pause_ts).unwrap();
-        prop_assert_eq!(settle_only.last_settled_ts, pause_ts);
-        prop_assert_eq!(settle_only.total_streamed, settle_amount);
+        let mut update = fresh_mandate(rate, 0, None);
+        let update_before_total = update.total_streamed;
+        let update_amount = settle_accrued_in_place(&mut update, update_ts).unwrap();
+        prop_assert!(update.total_streamed >= update_before_total);
+        prop_assert_eq!(update.last_settled_ts, update_ts);
+        prop_assert_eq!(update.total_streamed, update_before_total + update_amount);
+        update.rate_per_second = new_rate;
+        prop_assert_eq!(update.last_settled_ts, update_ts);
     }
 }
