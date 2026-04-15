@@ -233,6 +233,7 @@ pub use resume_agent_mandate::ResumeAgentMandate;
 pub use revoke_agent_mandate::RevokeAgentMandate;
 pub use submit_usage_report::SubmitUsageReport;
 pub use subscribe::Subscribe;
+#[allow(unused_imports)]
 pub(crate) use stream_account::settle_accrued_in_place;
 pub use unpause_protocol::UnpauseProtocol;
 pub use unwrap::Unwrap;
