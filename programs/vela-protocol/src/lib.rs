@@ -16,10 +16,10 @@ use crate::instructions::{
     InitTokenConfigIx, InitValidateMandateCompDef, InitWrappedMint, MigrateMandate, MigratePlan,
     PauseAgentMandate, PauseProtocol, RecordBillingEventCallback, RequestBillingRecord,
     RequestUsageComputation, RequestValidation, ResumeAgentMandate, RevokeAgentMandate,
-    ServiceLimitInput, SubmitUsageReport, Subscribe, UnpauseProtocol, Unwrap, UpdateConfig,
-    UpdateKeeperConfig, UpdateMandate, UpdatePlan, UpdateTokenConfig, UpdateTokenConfigIx,
-    UpdateUsagePlan, UsageChargeOutput, UsageComputationCallback, ValidateMandateCallback, Wrap,
-    ExecuteStream,
+    ExecuteStream, PauseStream, ResumeStream, ServiceLimitInput, SubmitUsageReport, Subscribe,
+    UnpauseProtocol, Unwrap, UpdateConfig, UpdateKeeperConfig, UpdateMandate, UpdatePlan,
+    UpdateTokenConfig, UpdateTokenConfigIx, UpdateUsagePlan, UsageChargeOutput,
+    UsageComputationCallback, ValidateMandateCallback, Wrap,
 };
 use crate::state::{KeeperMode, PricingTier};
 use arcium_anchor::prelude::SignedComputationOutputs;
@@ -110,6 +110,14 @@ mod __client_accounts_execute_pull {
 
 mod __client_accounts_execute_stream {
     pub use crate::instructions::__client_accounts_execute_stream::*;
+}
+
+mod __client_accounts_pause_stream {
+    pub use crate::instructions::__client_accounts_pause_stream::*;
+}
+
+mod __client_accounts_resume_stream {
+    pub use crate::instructions::__client_accounts_resume_stream::*;
 }
 
 mod __client_accounts_init_config {
@@ -341,6 +349,14 @@ pub mod vela_protocol {
         instructions::execute_stream::handler(ctx)
     }
 
+    pub fn pause_stream(ctx: Context<PauseStream>) -> Result<()> {
+        instructions::pause_stream::handler(ctx)
+    }
+
+    pub fn resume_stream(ctx: Context<ResumeStream>) -> Result<()> {
+        instructions::resume_stream::handler(ctx)
+    }
+
     pub fn init_config(ctx: Context<InitConfig>, ix: InitConfigIx) -> Result<()> {
         instructions::init_config::init_config(ctx, ix)
     }
@@ -525,4 +541,5 @@ pub mod vela_protocol {
     pub fn close_mandate(ctx: Context<CloseMandate>) -> Result<()> {
         instructions::close_mandate::handler(ctx)
     }
+
 }

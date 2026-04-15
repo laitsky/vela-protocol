@@ -86,28 +86,12 @@ pub fn handler<'a, 'b, 'c, 'info>(
     ctx: Context<'a, 'b, 'c, 'info, ExecuteStream<'info>>,
 ) -> Result<()> {
     let keeper_config = load_keeper_config(&ctx.accounts.keeper_config.to_account_info())?;
-    let protocol_config = load_protocol_config(&ctx.accounts.protocol_config.to_account_info())?;
-    require!(!protocol_config.paused(), VelaError::ProtocolPaused);
-    let hook_program_id = protocol_config.transfer_hook_program_id();
-    require!(
-        hook_program_id != Pubkey::default(),
-        VelaError::InvalidProtocolConfig
-    );
-    require_keys_eq!(
-        ctx.accounts.hook_program.key(),
-        hook_program_id,
-        VelaError::InvalidProtocolConfig
-    );
-    require_keys_eq!(
-        ctx.accounts.wrapped_usdc_mint.key(),
-        protocol_config.wrapped_usdc_mint(),
-        VelaError::UsdcMintMismatch
-    );
-    require_keys_eq!(
-        ctx.accounts.wrapping_vault.key(),
-        protocol_config.wrapping_vault(),
-        VelaError::VaultMismatch
-    );
+    validate_stream_transfer_accounts(
+        &ctx.accounts.protocol_config.to_account_info(),
+        &ctx.accounts.hook_program.to_account_info(),
+        &ctx.accounts.wrapped_usdc_mint.to_account_info(),
+        &ctx.accounts.wrapping_vault.to_account_info(),
+    )?;
 
     let mut stream = load_stream_mandate(&ctx.accounts.stream_mandate.to_account_info())?;
     validate_stream_mandate_address(&ctx.accounts.stream_mandate.key(), &stream)?;
@@ -160,7 +144,23 @@ pub fn handler<'a, 'b, 'c, 'info>(
         mandate_index_bytes.as_ref(),
         &mandate_bump,
     ];
-    invoke_stream_transfer(&ctx, settle_amount, &[signer_seeds])?;
+    invoke_stream_transfer(
+        &ctx.accounts.subscriber_wrapped_account.to_account_info(),
+        &ctx.accounts.wrapped_usdc_mint.to_account_info(),
+        &ctx.accounts.merchant_wrapped_account.to_account_info(),
+        &ctx.accounts.stream_mandate.to_account_info(),
+        &ctx.accounts.protocol_program.to_account_info(),
+        &ctx.accounts.wrapping_vault.to_account_info(),
+        &ctx.accounts.protocol_config.to_account_info(),
+        &ctx.accounts.pull_approval.to_account_info(),
+        &ctx.accounts.token_config.to_account_info(),
+        &ctx.accounts.system_program.to_account_info(),
+        &ctx.accounts.extra_account_meta_list.to_account_info(),
+        &ctx.accounts.hook_program.to_account_info(),
+        &ctx.accounts.token_2022_program.to_account_info(),
+        settle_amount,
+        &[signer_seeds],
+    )?;
     write_stream_mandate(&ctx.accounts.stream_mandate.to_account_info(), &stream)?;
 
     emit!(StreamSettled {
@@ -209,17 +209,56 @@ fn convert_instruction(
     }
 }
 
-fn invoke_stream_transfer<'a, 'b, 'c, 'info>(
-    ctx: &Context<'a, 'b, 'c, 'info, ExecuteStream<'info>>,
+pub(crate) fn validate_stream_transfer_accounts(
+    protocol_config_info: &AccountInfo<'_>,
+    hook_program_info: &AccountInfo<'_>,
+    wrapped_usdc_mint_info: &AccountInfo<'_>,
+    wrapping_vault_info: &AccountInfo<'_>,
+) -> Result<()> {
+    let protocol_config = load_protocol_config(protocol_config_info)?;
+    require!(!protocol_config.paused(), VelaError::ProtocolPaused);
+    let hook_program_id = protocol_config.transfer_hook_program_id();
+    require!(
+        hook_program_id != Pubkey::default(),
+        VelaError::InvalidProtocolConfig
+    );
+    require_keys_eq!(
+        hook_program_info.key(),
+        hook_program_id,
+        VelaError::InvalidProtocolConfig
+    );
+    require_keys_eq!(
+        wrapped_usdc_mint_info.key(),
+        protocol_config.wrapped_usdc_mint(),
+        VelaError::UsdcMintMismatch
+    );
+    require_keys_eq!(
+        wrapping_vault_info.key(),
+        protocol_config.wrapping_vault(),
+        VelaError::VaultMismatch
+    );
+    Ok(())
+}
+
+pub(crate) fn invoke_stream_transfer<'info>(
+    source_info: &AccountInfo<'info>,
+    mint_info: &AccountInfo<'info>,
+    destination_info: &AccountInfo<'info>,
+    authority_info: &AccountInfo<'info>,
+    protocol_program_info: &AccountInfo<'info>,
+    wrapping_vault_info: &AccountInfo<'info>,
+    protocol_config_info: &AccountInfo<'info>,
+    pull_approval_info: &AccountInfo<'info>,
+    token_config_info: &AccountInfo<'info>,
+    system_program_info: &AccountInfo<'info>,
+    extra_account_meta_list_info: &AccountInfo<'info>,
+    hook_program_info: &AccountInfo<'info>,
+    token_2022_program_info: &AccountInfo<'info>,
     amount: u64,
     signer_seed_groups: &[&[&[u8]]],
 ) -> Result<()> {
-    let source_info = ctx.accounts.subscriber_wrapped_account.to_account_info();
-    let mint_info = ctx.accounts.wrapped_usdc_mint.to_account_info();
-    let destination_info = ctx.accounts.merchant_wrapped_account.to_account_info();
-    let authority_info = ctx.accounts.stream_mandate.to_account_info();
     let mut transfer_ix = spl_token_2022::instruction::transfer_checked(
-        &spl_pubkey(ctx.accounts.token_2022_program.key),
+        &spl_pubkey(token_2022_program_info.key),
         &spl_pubkey(source_info.key),
         &spl_pubkey(mint_info.key),
         &spl_pubkey(destination_info.key),
@@ -230,36 +269,33 @@ fn invoke_stream_transfer<'a, 'b, 'c, 'info>(
     )
     .map_err(map_spl_error)?;
     transfer_ix.accounts.extend_from_slice(&[
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.protocol_program.key()), false),
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.wrapping_vault.key()), false),
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.protocol_config.key()), false),
-        SplAccountMeta::new(spl_pubkey(&ctx.accounts.pull_approval.key()), false),
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.token_config.key()), false),
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.system_program.key()), false),
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.system_program.key()), false),
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.system_program.key()), false),
-        SplAccountMeta::new_readonly(
-            spl_pubkey(&ctx.accounts.extra_account_meta_list.key()),
-            false,
-        ),
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.hook_program.key()), false),
+        SplAccountMeta::new_readonly(spl_pubkey(protocol_program_info.key), false),
+        SplAccountMeta::new_readonly(spl_pubkey(wrapping_vault_info.key), false),
+        SplAccountMeta::new_readonly(spl_pubkey(protocol_config_info.key), false),
+        SplAccountMeta::new(spl_pubkey(pull_approval_info.key), false),
+        SplAccountMeta::new_readonly(spl_pubkey(token_config_info.key), false),
+        SplAccountMeta::new_readonly(spl_pubkey(system_program_info.key), false),
+        SplAccountMeta::new_readonly(spl_pubkey(system_program_info.key), false),
+        SplAccountMeta::new_readonly(spl_pubkey(system_program_info.key), false),
+        SplAccountMeta::new_readonly(spl_pubkey(extra_account_meta_list_info.key), false),
+        SplAccountMeta::new_readonly(spl_pubkey(hook_program_info.key), false),
     ]);
     let transfer_ix = convert_instruction(transfer_ix);
     let transfer_account_infos = [
         source_info.clone(),
         mint_info.clone(),
         destination_info.clone(),
-        authority_info,
-        ctx.accounts.protocol_program.to_account_info(),
-        ctx.accounts.wrapping_vault.to_account_info(),
-        ctx.accounts.protocol_config.to_account_info(),
-        ctx.accounts.pull_approval.to_account_info(),
-        ctx.accounts.token_config.to_account_info(),
-        ctx.accounts.system_program.to_account_info(),
-        ctx.accounts.system_program.to_account_info(),
-        ctx.accounts.system_program.to_account_info(),
-        ctx.accounts.extra_account_meta_list.to_account_info(),
-        ctx.accounts.hook_program.to_account_info(),
+        authority_info.clone(),
+        protocol_program_info.clone(),
+        wrapping_vault_info.clone(),
+        protocol_config_info.clone(),
+        pull_approval_info.clone(),
+        token_config_info.clone(),
+        system_program_info.clone(),
+        system_program_info.clone(),
+        system_program_info.clone(),
+        extra_account_meta_list_info.clone(),
+        hook_program_info.clone(),
     ];
     invoke_signed(&transfer_ix, &transfer_account_infos, signer_seed_groups).map_err(Into::into)
 }

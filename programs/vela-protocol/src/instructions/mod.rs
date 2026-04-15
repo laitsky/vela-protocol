@@ -25,12 +25,14 @@ pub mod merchant_account;
 pub mod migrate_mandate;
 pub mod migrate_plan;
 pub mod pause_agent_mandate;
+pub mod pause_stream;
 pub mod pause_protocol;
 pub mod plan_account;
 pub mod protocol_config_account;
 pub mod request_billing_record;
 pub mod request_usage_computation;
 pub mod request_validation;
+pub mod resume_stream;
 pub mod resume_agent_mandate;
 pub mod revoke_agent_mandate;
 pub mod submit_usage_report;
@@ -155,6 +157,14 @@ pub mod __client_accounts_execute_stream {
     pub use super::execute_stream::__client_accounts_execute_stream::*;
 }
 
+pub mod __client_accounts_pause_stream {
+    pub use super::pause_stream::__client_accounts_pause_stream::*;
+}
+
+pub mod __client_accounts_resume_stream {
+    pub use super::resume_stream::__client_accounts_resume_stream::*;
+}
+
 pub mod __client_accounts_init_validate_mandate_comp_def {
     pub use super::init_comp_defs::__client_accounts_init_validate_mandate_comp_def::*;
 }
@@ -237,11 +247,13 @@ pub use init_wrapped_mint::InitWrappedMint;
 pub use migrate_mandate::MigrateMandate;
 pub use migrate_plan::MigratePlan;
 pub use pause_agent_mandate::PauseAgentMandate;
+pub use pause_stream::PauseStream;
 pub use pause_protocol::PauseProtocol;
 pub use request_billing_record::RequestBillingRecord;
 pub use request_usage_computation::RequestUsageComputation;
 pub use request_validation::RequestValidation;
 pub use resume_agent_mandate::ResumeAgentMandate;
+pub use resume_stream::ResumeStream;
 pub use revoke_agent_mandate::RevokeAgentMandate;
 pub use submit_usage_report::SubmitUsageReport;
 pub use subscribe::Subscribe;
