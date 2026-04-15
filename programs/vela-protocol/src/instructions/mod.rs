@@ -11,8 +11,6 @@ pub mod create_plan;
 pub mod create_usage_plan;
 pub mod drain_agent_mandate;
 pub mod execute_pull;
-#[cfg(feature = "stream-proto")]
-pub mod execute_stream_proto;
 pub mod init_comp_defs;
 pub mod init_config;
 pub mod init_keeper_config;
@@ -217,10 +215,6 @@ pub use create_plan::CreatePlan;
 pub use create_usage_plan::CreateUsagePlan;
 pub use drain_agent_mandate::DrainAgentMandate;
 pub use execute_pull::ExecutePull;
-#[cfg(feature = "stream-proto")]
-pub use execute_stream_proto::{
-    CreateStreamMandateProto, CreateStreamMandateProtoArgs, ExecuteStreamProto,
-};
 pub use init_comp_defs::{InitRecordBillingCompDef, InitValidateMandateCompDef};
 pub use init_config::{InitConfig, InitConfigIx, UpdateConfig, UpdateConfigIx};
 pub use init_keeper_config::InitKeeperConfig;

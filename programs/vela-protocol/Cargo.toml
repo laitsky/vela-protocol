@@ -19,7 +19,6 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build", "arcium-anchor/idl
 anchor-debug = []
 custom-heap = []
 custom-panic = []
-stream-proto = []
 
 
 [dependencies]
@@ -83,10 +82,6 @@ path = "../../tests/test_edge_cases.rs"
 [[test]]
 name = "test_cu_profiling"
 path = "../../tests/test_cu_profiling.rs"
-
-[[test]]
-name = "test_stream_cu_profiling"
-path = "../../tests/test_stream_cu_profiling.rs"
 
 [[test]]
 name = "test_credential"

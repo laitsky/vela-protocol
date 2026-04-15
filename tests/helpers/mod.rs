@@ -3,7 +3,6 @@
 #[path = "arcium_helpers.rs"]
 pub mod arcium_helpers;
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anchor_lang::{
@@ -77,25 +76,11 @@ pub struct UsagePlanAddresses {
     pub credential_mint: Pubkey,
 }
 
-#[derive(Clone, Copy)]
-struct ProtoStreamFixture {
-    subscriber: Pubkey,
-    subscriber_wrapped_account: Pubkey,
-    merchant_wrapped_account: Pubkey,
-    wrapped_mint: Pubkey,
-    pull_approval: Pubkey,
-    wrapping_vault: Pubkey,
-    protocol_config: Pubkey,
-    extra_account_meta_list: Pubkey,
-}
-
 pub struct TestHarness {
     pub svm: LiteSVM,
     pub merchant: Keypair,
     pub program_id: Address,
     pub hook_program_id: Address,
-    proto_stream_fixtures: HashMap<Pubkey, ProtoStreamFixture>,
-    last_stream_mandate_proto: Option<Pubkey>,
 }
 
 impl TestHarness {
@@ -130,8 +115,6 @@ impl TestHarness {
             merchant,
             program_id,
             hook_program_id,
-            proto_stream_fixtures: HashMap::new(),
-            last_stream_mandate_proto: None,
         }
     }
 
@@ -273,30 +256,6 @@ impl TestHarness {
             &vela_protocol::ID,
         )
         .0
-    }
-
-    pub fn derive_stream_mandate_proto_address(
-        &self,
-        subscriber: &Pubkey,
-        merchant: &Pubkey,
-        mandate_index: u64,
-    ) -> Pubkey {
-        Pubkey::find_program_address(
-            &[
-                b"stream",
-                subscriber.as_ref(),
-                merchant.as_ref(),
-                mandate_index.to_le_bytes().as_ref(),
-            ],
-            &vela_protocol::ID,
-        )
-        .0
-    }
-
-    // PROTO: throwaway — replaced by Plan 02+ builders.
-    pub fn last_stream_mandate_proto(&self) -> Pubkey {
-        self.last_stream_mandate_proto
-            .expect("stream proto mandate should exist")
     }
 
     pub fn derive_credential_ata(&self, owner: &Pubkey, mint: &Pubkey) -> Pubkey {
@@ -910,161 +869,6 @@ impl TestHarness {
             data: vela_protocol::instruction::Subscribe {}.data(),
         };
         self.send_instruction(&instruction, &[subscriber], Some(&subscriber.pubkey()))
-    }
-
-    // PROTO: throwaway — replaced by Plan 02+ builders.
-    pub fn send_create_stream_mandate_proto(
-        &mut self,
-        rate: u64,
-        max_rate: u64,
-        cap: Option<u64>,
-        min_interval: u32,
-    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-        let merchant = self.merchant_pubkey();
-        let admin = self.merchant.insecure_clone();
-        let merchant_state = Pubkey::find_program_address(
-            &[MerchantState::SEED_PREFIX, merchant.as_ref()],
-            &vela_protocol::ID,
-        )
-        .0;
-        if self.svm.get_account(&to_address(merchant_state)).is_none() {
-            self.send_init_merchant_credential()
-                .expect("init_merchant_credential should succeed");
-        }
-
-        let merchant_state_account: MerchantState = self.fetch_anchor_account(&merchant_state);
-        let subscriber = self.create_wallet();
-        let subscriber_pubkey = to_anchor_pubkey(subscriber.pubkey());
-        let mandate = self.derive_stream_mandate_proto_address(
-            &subscriber_pubkey,
-            &merchant,
-            merchant_state_account.mandate_counter,
-        );
-
-        let protocol_config = self.derive_config();
-        if self.svm.get_account(&to_address(protocol_config)).is_none() {
-            self.init_protocol_config(&admin);
-        }
-
-        let spl_usdc_mint = self.create_spl_mint(&admin, 6);
-        let wrapped_mint = Keypair::new();
-        let (wrapped_mint_pubkey, wrapping_vault) =
-            self.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
-        let extra_account_meta_list =
-            self.init_extra_account_meta_list(&admin, &wrapped_mint_pubkey, &wrapping_vault);
-
-        let funding_amount = cap
-            .unwrap_or_else(|| rate.saturating_mul(u64::from(min_interval).saturating_add(120)))
-            .max(rate.saturating_mul(180))
-            .max(1_000_000);
-        let subscriber_usdc =
-            self.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);
-        self.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, funding_amount);
-
-        let subscriber_wrapped_account =
-            self.create_token_2022_ata(&admin, &mandate, &wrapped_mint_pubkey);
-        self.send_wrap(
-            &subscriber,
-            &spl_usdc_mint,
-            &wrapped_mint_pubkey,
-            &subscriber_usdc,
-            &subscriber_wrapped_account,
-            &mandate,
-            &wrapping_vault,
-            funding_amount,
-        )
-        .expect("stream proto wrap should succeed");
-        let merchant_wrapped_account =
-            self.create_token_2022_ata(&admin, &merchant, &wrapped_mint_pubkey);
-
-        let accounts = vec![
-            AccountMeta::new(to_address(subscriber_pubkey), true),
-            AccountMeta::new_readonly(to_address(merchant), false),
-            AccountMeta::new(to_address(merchant_state), false),
-            AccountMeta::new(to_address(mandate), false),
-            AccountMeta::new_readonly(to_address(wrapped_mint_pubkey), false),
-            AccountMeta::new_readonly(to_address(protocol_config), false),
-            AccountMeta::new_readonly(Address::from(anchor_lang::system_program::ID.to_bytes()), false),
-        ];
-        let mut data = anchor_instruction_discriminator("create_stream_mandate_proto").to_vec();
-        data.extend_from_slice(&rate.to_le_bytes());
-        data.extend_from_slice(&max_rate.to_le_bytes());
-        match cap {
-            Some(cap_value) => {
-                data.push(1);
-                data.extend_from_slice(&cap_value.to_le_bytes());
-            }
-            None => data.push(0),
-        }
-        data.extend_from_slice(&min_interval.to_le_bytes());
-        let instruction = Instruction {
-            program_id: self.program_id,
-            accounts,
-            data,
-        };
-        let meta = self.send_instruction(&instruction, &[&subscriber], Some(&subscriber.pubkey()))?;
-        let pull_approval =
-            self.create_pull_approval_with_amount(&mandate, i64::MAX / 2, true, u64::MAX);
-
-        self.proto_stream_fixtures.insert(
-            mandate,
-            ProtoStreamFixture {
-                subscriber: subscriber_pubkey,
-                subscriber_wrapped_account,
-                merchant_wrapped_account,
-                wrapped_mint: wrapped_mint_pubkey,
-                pull_approval,
-                wrapping_vault,
-                protocol_config,
-                extra_account_meta_list,
-            },
-        );
-        self.last_stream_mandate_proto = Some(mandate);
-
-        Ok(meta)
-    }
-
-    // PROTO: throwaway — replaced by Plan 02+ builders.
-    pub fn send_execute_stream_proto(
-        &mut self,
-        mandate: Pubkey,
-    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-        let keeper = self.merchant.insecure_clone();
-        let fixture = *self
-            .proto_stream_fixtures
-            .get(&mandate)
-            .expect("stream proto fixture should exist");
-        let keeper_config = self.ensure_keeper_config(&keeper);
-        let accounts = vec![
-            AccountMeta::new(to_address(self.merchant_pubkey()), true),
-            AccountMeta::new_readonly(to_address(fixture.subscriber), false),
-            AccountMeta::new_readonly(to_address(self.merchant_pubkey()), false),
-            AccountMeta::new_readonly(to_address(keeper_config), false),
-            AccountMeta::new(to_address(mandate), false),
-            AccountMeta::new(to_address(fixture.subscriber_wrapped_account), false),
-            AccountMeta::new(to_address(fixture.merchant_wrapped_account), false),
-            AccountMeta::new_readonly(to_address(fixture.wrapped_mint), false),
-            AccountMeta::new(to_address(fixture.pull_approval), false),
-            AccountMeta::new_readonly(to_address(self.derive_token_config_address(&fixture.wrapped_mint)), false),
-            AccountMeta::new_readonly(to_address(fixture.protocol_config), false),
-            AccountMeta::new_readonly(to_address(fixture.wrapping_vault), false),
-            AccountMeta::new_readonly(Address::from(vela_transfer_hook::ID.to_bytes()), false),
-            AccountMeta::new_readonly(to_address(fixture.extra_account_meta_list), false),
-            AccountMeta::new_readonly(to_address(vela_protocol::ID), false),
-            AccountMeta::new_readonly(token_2022_address(), false),
-            AccountMeta::new_readonly(Address::from(anchor_lang::system_program::ID.to_bytes()), false),
-        ];
-        let instruction = Instruction {
-            program_id: self.program_id,
-            accounts,
-            data: anchor_instruction_discriminator("execute_stream_proto").to_vec(),
-        };
-
-        self.send_instruction(
-            &instruction,
-            &[&keeper],
-            Some(&self.merchant.pubkey()),
-        )
     }
 
     /// Send execute_pull using Token-2022 wrapped USDC accounts.

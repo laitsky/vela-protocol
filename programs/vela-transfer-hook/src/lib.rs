@@ -9,7 +9,7 @@ use spl_transfer_hook_interface::instruction::{ExecuteInstruction, TransferHookI
 use vela_protocol::{
     constants::EXTRA_ACCOUNT_METAS_SEED,
     errors::VelaError,
-    state::{BillingRail, ProtocolConfig, PullApproval, StreamMandateProto, StreamStatusProto, TokenConfig},
+    state::{BillingRail, ProtocolConfig, PullApproval, StreamMandate, StreamStatus, TokenConfig},
 };
 
 declare_id!("93q91TJ6M9yGoehAeeCttgEc1SThFGXaw4rZS2ysr3uX");
@@ -271,12 +271,12 @@ fn handler_transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> 
 
     if ctx.accounts.owner.owner == &vela_protocol::ID && !ctx.accounts.owner.data_is_empty() {
         let owner_data = ctx.accounts.owner.try_borrow_data()?;
-        if owner_data.starts_with(&StreamMandateProto::DISCRIMINATOR) {
+        if owner_data.starts_with(&StreamMandate::DISCRIMINATOR) {
             let mut stream_slice: &[u8] = &owner_data;
-            let stream = StreamMandateProto::try_deserialize(&mut stream_slice)
+            let stream = StreamMandate::try_deserialize(&mut stream_slice)
                 .map_err(|_| VelaError::WrongAccountType)?;
             require!(
-                stream.status == StreamStatusProto::Active,
+                stream.status == StreamStatus::Active,
                 VelaError::MandateNotActive
             );
             let clock = Clock::get()?;

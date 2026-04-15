@@ -20,8 +20,6 @@ use crate::instructions::{
     UpdateMandate, UpdatePlan, UpdateTokenConfig, UpdateTokenConfigIx, UpdateUsagePlan,
     UsageChargeOutput, UsageComputationCallback, ValidateMandateCallback, Wrap,
 };
-#[cfg(feature = "stream-proto")]
-use crate::instructions::{CreateStreamMandateProto, CreateStreamMandateProtoArgs, ExecuteStreamProto};
 use crate::state::{KeeperMode, PricingTier};
 use arcium_anchor::prelude::SignedComputationOutputs;
 
@@ -104,12 +102,6 @@ mod __client_accounts_drain_agent_mandate {
 mod __client_accounts_execute_pull {
     pub use crate::instructions::__client_accounts_execute_pull::*;
 }
-
-#[cfg(feature = "stream-proto")]
-mod __client_accounts_create_stream_mandate_proto {}
-
-#[cfg(feature = "stream-proto")]
-mod __client_accounts_execute_stream_proto {}
 
 mod __client_accounts_init_config {
     pub use crate::instructions::__client_accounts_init_config::*;
@@ -316,21 +308,6 @@ pub mod vela_protocol {
         ctx: Context<'a, 'b, 'c, 'info, ExecutePull<'info>>,
     ) -> Result<()> {
         instructions::execute_pull::handler(ctx)
-    }
-
-    #[cfg(feature = "stream-proto")]
-    pub fn create_stream_mandate_proto(
-        ctx: Context<CreateStreamMandateProto>,
-        args: CreateStreamMandateProtoArgs,
-    ) -> Result<()> {
-        instructions::execute_stream_proto::create_stream_mandate_handler(ctx, args)
-    }
-
-    #[cfg(feature = "stream-proto")]
-    pub fn execute_stream_proto<'a, 'b, 'c, 'info>(
-        ctx: Context<'a, 'b, 'c, 'info, ExecuteStreamProto<'info>>,
-    ) -> Result<()> {
-        instructions::execute_stream_proto::execute_stream_handler(ctx)
     }
 
     pub fn init_config(ctx: Context<InitConfig>, ix: InitConfigIx) -> Result<()> {
