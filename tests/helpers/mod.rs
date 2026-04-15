@@ -1272,6 +1272,112 @@ impl TestHarness {
         self.send_instruction(&instruction, &[authority], Some(&authority.pubkey()))
     }
 
+    pub fn send_update_mandate_plan(
+        &mut self,
+        authority: &Keypair,
+        mandate: &Pubkey,
+        new_plan: &Pubkey,
+        subscriber_wrapped_account: &Pubkey,
+        merchant_wrapped_account: &Pubkey,
+        wrapped_usdc_mint: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        self.send_update_mandate_plan_with_mint(
+            authority,
+            mandate,
+            new_plan,
+            subscriber_wrapped_account,
+            merchant_wrapped_account,
+            wrapped_usdc_mint,
+        )
+    }
+
+    pub fn send_update_mandate_plan_with_mint(
+        &mut self,
+        authority: &Keypair,
+        mandate: &Pubkey,
+        new_plan: &Pubkey,
+        subscriber_wrapped_account: &Pubkey,
+        merchant_wrapped_account: &Pubkey,
+        wrapped_usdc_mint: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let config = self.derive_config();
+        let config_account: ProtocolConfig = self.fetch_anchor_account(&config);
+        let (extra_account_meta_list, _) = self.derive_extra_account_meta_list(wrapped_usdc_mint);
+        let accounts = vela_protocol::accounts::UpdateMandatePlan {
+            authority: to_anchor_pubkey(authority.pubkey()),
+            new_plan: *new_plan,
+            mandate: *mandate,
+            subscriber_wrapped_account: *subscriber_wrapped_account,
+            merchant_wrapped_account: *merchant_wrapped_account,
+            wrapped_usdc_mint: *wrapped_usdc_mint,
+            pull_approval: self.derive_pull_approval_address(mandate),
+            token_config: self.derive_token_config_address(wrapped_usdc_mint),
+            protocol_config: config,
+            wrapping_vault: config_account.wrapping_vault,
+            hook_program: Pubkey::new_from_array(vela_transfer_hook::ID.to_bytes()),
+            extra_account_meta_list,
+            protocol_program: vela_protocol::ID,
+            token_2022_program: token_2022_anchor_id(),
+            system_program: anchor_lang::system_program::ID,
+        };
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::UpdateMandatePlan {}.data(),
+        };
+        self.send_instruction(&instruction, &[authority], Some(&authority.pubkey()))
+    }
+
+    pub fn send_schedule_plan_change(
+        &mut self,
+        authority: &Keypair,
+        mandate: &Pubkey,
+        new_plan: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let accounts = vela_protocol::accounts::SchedulePlanChange {
+            authority: to_anchor_pubkey(authority.pubkey()),
+            new_plan: *new_plan,
+            mandate: *mandate,
+            protocol_config: self.derive_config(),
+        };
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::SchedulePlanChange {}.data(),
+        };
+        self.send_instruction(&instruction, &[authority], Some(&authority.pubkey()))
+    }
+
+    pub fn send_cancel_plan_change(
+        &mut self,
+        authority: &Keypair,
+        mandate: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let accounts = vela_protocol::accounts::CancelPlanChange {
+            authority: to_anchor_pubkey(authority.pubkey()),
+            mandate: *mandate,
+            protocol_config: self.derive_config(),
+        };
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::CancelPlanChange {}.data(),
+        };
+        self.send_instruction(&instruction, &[authority], Some(&authority.pubkey()))
+    }
+
     /// Create a PullApproval account with all fields including approved_amount.
     pub fn create_pull_approval(
         &mut self,

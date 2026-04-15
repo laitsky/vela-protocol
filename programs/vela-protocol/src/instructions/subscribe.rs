@@ -17,8 +17,8 @@ use crate::{
     instructions::merchant_account::resolve_merchant_credential_mint,
     instructions::plan_account::load_plan_account,
     state::{
-        MandateStatus, MerchantState, PlanStatus, VelaMandate, VelaPlan, UsagePlan,
-        ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION,
+        MandateStatus, MerchantState, PlanStatus, UsagePlan, VelaMandate, VelaPlan,
+        CURRENT_ACCOUNT_VERSION,
     },
 };
 
@@ -65,7 +65,10 @@ pub struct Subscribe<'info> {
 
 pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
     let plan = load_plan_account(&ctx.accounts.plan.to_account_info())?;
-    require!(*plan.status() == PlanStatus::Active, VelaError::PlanNotActive);
+    require!(
+        *plan.status() == PlanStatus::Active,
+        VelaError::PlanNotActive
+    );
     require_keys_eq!(ctx.accounts.merchant.key(), plan.merchant());
     let merchant_key = plan.merchant();
     let mandate_index = ctx.accounts.merchant_state.mandate_counter;
@@ -251,7 +254,12 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
         billing_type: plan.billing_type(),
         mandate_index,
         version: CURRENT_ACCOUNT_VERSION,
-        _reserved: [0; ACCOUNT_RESERVED_BYTES],
+        credit_balance: 0,
+        pending_new_plan: Pubkey::default(),
+        pending_effective_at: 0,
+        pending_change_type: 0,
+        pending_nonce_short: [0; 8],
+        _reserved_v3: [0; 7],
     };
     write_mandate(&ctx.accounts.mandate.to_account_info(), &mandate, false)?;
 

@@ -1,7 +1,7 @@
 use anchor_lang::{prelude::*, AccountDeserialize, AccountSerialize, Discriminator};
 
-use crate::{
-    state::{BillingType, MandateStatus, VelaMandate, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION},
+use crate::state::{
+    BillingType, MandateStatus, VelaMandate, CURRENT_ACCOUNT_VERSION,
 };
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
@@ -54,7 +54,12 @@ impl LoadedMandateAccount {
                 billing_type: legacy.billing_type,
                 mandate_index: 0,
                 version: CURRENT_ACCOUNT_VERSION,
-                _reserved: [0; ACCOUNT_RESERVED_BYTES],
+                credit_balance: 0,
+                pending_new_plan: Pubkey::default(),
+                pending_effective_at: 0,
+                pending_change_type: 0,
+                pending_nonce_short: [0; 8],
+                _reserved_v3: [0; 7],
             },
         }
     }
@@ -257,9 +262,7 @@ pub fn derive_legacy_mandate_address(subscriber: &Pubkey, plan: &Pubkey) -> Pubk
     .0
 }
 
-pub fn load_mandate_account(
-    mandate_info: &AccountInfo<'_>,
-) -> Result<LoadedMandateAccount> {
+pub fn load_mandate_account(mandate_info: &AccountInfo<'_>) -> Result<LoadedMandateAccount> {
     if *mandate_info.owner != crate::ID {
         return Err(ProgramError::IncorrectProgramId.into());
     }
@@ -283,8 +286,8 @@ pub fn load_mandate_account(
 
     // Fall back to legacy layout.
     let mut legacy_slice: &[u8] = &data[VelaMandate::DISCRIMINATOR.len()..];
-    let legacy =
-        VelaMandateV1::deserialize(&mut legacy_slice).map_err(|_| ProgramError::InvalidAccountData)?;
+    let legacy = VelaMandateV1::deserialize(&mut legacy_slice)
+        .map_err(|_| ProgramError::InvalidAccountData)?;
     if !legacy_slice.is_empty() && !has_only_zero_padding(legacy_slice) {
         return Err(ProgramError::InvalidAccountData.into());
     }
@@ -358,9 +361,7 @@ pub fn write_mandate_account(
     mandate: &LoadedMandateAccount,
 ) -> Result<()> {
     match mandate {
-        LoadedMandateAccount::Current(current) => {
-            write_mandate(mandate_info, current, false)
-        }
+        LoadedMandateAccount::Current(current) => write_mandate(mandate_info, current, false),
         LoadedMandateAccount::Legacy(legacy) => {
             let current = VelaMandate {
                 subscriber: legacy.subscriber,
@@ -382,7 +383,12 @@ pub fn write_mandate_account(
                 billing_type: legacy.billing_type.clone(),
                 mandate_index: 0,
                 version: CURRENT_ACCOUNT_VERSION,
-                _reserved: [0; ACCOUNT_RESERVED_BYTES],
+                credit_balance: 0,
+                pending_new_plan: Pubkey::default(),
+                pending_effective_at: 0,
+                pending_change_type: 0,
+                pending_nonce_short: [0; 8],
+                _reserved_v3: [0; 7],
             };
             write_mandate(mandate_info, &current, true)
         }

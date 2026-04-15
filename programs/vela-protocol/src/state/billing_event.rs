@@ -95,3 +95,55 @@ pub struct StreamCancelled {
     pub total_streamed_final: u64,
     pub timestamp: i64,
 }
+
+#[event]
+pub struct MandateUpgradeInitiated {
+    pub schema_version: u8,
+    pub mandate: Pubkey,
+    pub mint: Pubkey,
+    pub token_symbol: String,
+    pub old_plan: Pubkey,
+    pub new_plan: Pubkey,
+    pub proration_amount: i64,
+    pub change_type: u8,
+    pub signer: Pubkey,
+    pub applied_at: i64,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct MandateUpgradeFinalized {
+    pub schema_version: u8,
+    pub mandate: Pubkey,
+    pub mint: Pubkey,
+    pub token_symbol: String,
+    pub old_plan: Pubkey,
+    pub new_plan: Pubkey,
+    pub proration_amount: i64,
+    pub change_type: u8,
+    pub applied_at: i64,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct MandateUpgradeCancelled {
+    pub schema_version: u8,
+    pub mandate: Pubkey,
+    pub mint: Pubkey,
+    pub cancelled_plan: Pubkey,
+    pub signer: Pubkey,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct MandateCreditAdded {
+    pub schema_version: u8,
+    pub mandate: Pubkey,
+    pub mint: Pubkey,
+    pub old_plan: Pubkey,
+    pub new_plan: Pubkey,
+    pub credit_amount: u64,
+    pub new_credit_balance: u64,
+    pub applied_at: i64,
+    pub timestamp: i64,
+}

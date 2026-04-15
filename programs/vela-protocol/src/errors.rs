@@ -259,6 +259,21 @@ pub enum VelaError {
     #[msg("Provided stream mandate PDA does not match the canonical stream seeds")]
     InvalidStreamAddress = 6711,
 
+    #[msg("Changing a mandate between token rails is not supported in this upgrade path")]
+    TokenChangeNotSupported = 6712,
+
+    #[msg("TokenConfig decimals must match the on-chain Mint decimals")]
+    TokenConfigDecimalsMismatch = 6713,
+
+    #[msg("There is no pending plan change to cancel or finalize")]
+    NoPendingChange = 6714,
+
+    #[msg("The pending plan account was not supplied in the instruction account set")]
+    PendingPlanAccountMissing = 6715,
+
+    #[msg("Only the subscriber may authorize this upgrade")]
+    UnauthorizedUpgrade = 6716,
+
     // ── Proration math errors (6800+) ───────────────────────────
     #[msg("Proration period total must be greater than zero")]
     MathDivByZero = 6800,

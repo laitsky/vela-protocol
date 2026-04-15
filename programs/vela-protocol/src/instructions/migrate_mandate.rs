@@ -11,7 +11,7 @@ use crate::{
         protocol_config_account::load_protocol_config,
     },
     state::{
-        MerchantState, ProtocolConfig, VelaMandate, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION,
+        MerchantState, ProtocolConfig, VelaMandate, CURRENT_ACCOUNT_VERSION,
     },
 };
 
@@ -127,8 +127,17 @@ pub fn handler(ctx: Context<MigrateMandate>) -> Result<()> {
     mandate.bump = migrated_bump;
     mandate.mandate_index = mandate_index;
     mandate.version = CURRENT_ACCOUNT_VERSION;
-    mandate._reserved = [0; ACCOUNT_RESERVED_BYTES];
-    write_mandate(&ctx.accounts.migrated_mandate.to_account_info(), &mandate, false)?;
+    mandate.credit_balance = 0;
+    mandate.pending_new_plan = Pubkey::default();
+    mandate.pending_effective_at = 0;
+    mandate.pending_change_type = 0;
+    mandate.pending_nonce_short = [0; 8];
+    mandate._reserved_v3 = [0; 7];
+    write_mandate(
+        &ctx.accounts.migrated_mandate.to_account_info(),
+        &mandate,
+        false,
+    )?;
 
     ctx.accounts.merchant_state.mandate_counter = ctx
         .accounts

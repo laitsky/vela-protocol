@@ -37,7 +37,7 @@ spl-tlv-account-resolution = "0.11.1"
 solana-instruction = "=3.3.0"
 solana-program-error = "=3.0.1"
 solana-pubkey = "=3.0.0"
-spl-math = "0.3.0"
+spl-math = { version = "0.3.0", features = ["no-entrypoint"] }
 
 [dev-dependencies]
 litesvm = "0.10.0"
@@ -219,6 +219,22 @@ path = "../../tests/test_stream_events.rs"
 [[test]]
 name = "proration_boundaries"
 path = "../../tests/proration_boundaries.rs"
+
+[[test]]
+name = "upgrade_immediate"
+path = "../../tests/upgrade_immediate.rs"
+
+[[test]]
+name = "upgrade_downgrade_credit"
+path = "../../tests/upgrade_downgrade_credit.rs"
+
+[[test]]
+name = "upgrade_idempotency"
+path = "../../tests/upgrade_idempotency.rs"
+
+[[test]]
+name = "upgrade_auth_ceiling"
+path = "../../tests/upgrade_auth_ceiling.rs"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

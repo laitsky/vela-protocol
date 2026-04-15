@@ -5,6 +5,7 @@ pub mod agent_pull;
 pub mod arcium_accounts;
 pub mod billing_callback;
 pub mod cancel;
+pub mod cancel_plan_change;
 pub mod cancel_stream;
 pub mod close_mandate;
 pub mod create_agent_mandate;
@@ -37,6 +38,7 @@ pub mod request_validation;
 pub mod resume_stream;
 pub mod resume_agent_mandate;
 pub mod revoke_agent_mandate;
+pub mod schedule_plan_change;
 pub mod submit_usage_report;
 pub mod subscribe;
 pub mod stream_account;
@@ -44,6 +46,7 @@ pub mod unpause_protocol;
 pub mod unwrap;
 pub mod update_keeper_config;
 pub mod update_mandate;
+pub mod update_mandate_plan;
 pub mod update_plan;
 pub mod update_stream_rate;
 pub mod update_token_config;
@@ -118,6 +121,10 @@ pub mod __client_accounts_record_billing_event_callback {
 
 pub mod __client_accounts_cancel {
     pub use super::cancel::__client_accounts_cancel::*;
+}
+
+pub mod __client_accounts_cancel_plan_change {
+    pub use super::cancel_plan_change::__client_accounts_cancel_plan_change::*;
 }
 
 pub mod __client_accounts_cancel_stream {
@@ -196,6 +203,10 @@ pub mod __client_accounts_request_validation {
     pub use super::request_validation::__client_accounts_request_validation::*;
 }
 
+pub mod __client_accounts_schedule_plan_change {
+    pub use super::schedule_plan_change::__client_accounts_schedule_plan_change::*;
+}
+
 pub mod __client_accounts_request_billing_record {
     pub use super::request_billing_record::__client_accounts_request_billing_record::*;
 }
@@ -228,6 +239,10 @@ pub mod __client_accounts_update_mandate {
     pub use super::update_mandate::__client_accounts_update_mandate::*;
 }
 
+pub mod __client_accounts_update_mandate_plan {
+    pub use super::update_mandate_plan::__client_accounts_update_mandate_plan::*;
+}
+
 pub mod __client_accounts_update_stream_rate {
     pub use super::update_stream_rate::__client_accounts_update_stream_rate::*;
 }
@@ -241,6 +256,7 @@ pub use admin_cancel::AdminCancel;
 pub use agent_pull::AgentPull;
 pub use billing_callback::RecordBillingEventCallback;
 pub use cancel::Cancel;
+pub use cancel_plan_change::CancelPlanChange;
 pub use cancel_stream::CancelStream;
 pub use close_mandate::CloseMandate;
 pub use create_agent_mandate::{CreateAgentMandate, ServiceLimitInput};
@@ -269,6 +285,7 @@ pub use request_validation::RequestValidation;
 pub use resume_agent_mandate::ResumeAgentMandate;
 pub use resume_stream::ResumeStream;
 pub use revoke_agent_mandate::RevokeAgentMandate;
+pub use schedule_plan_change::SchedulePlanChange;
 pub use submit_usage_report::SubmitUsageReport;
 pub use subscribe::Subscribe;
 #[allow(unused_imports)]
@@ -277,6 +294,7 @@ pub use unpause_protocol::UnpauseProtocol;
 pub use unwrap::Unwrap;
 pub use update_keeper_config::UpdateKeeperConfig;
 pub use update_mandate::UpdateMandate;
+pub use update_mandate_plan::UpdateMandatePlan;
 pub use update_plan::UpdatePlan;
 pub use update_stream_rate::UpdateStreamRate;
 pub use update_token_config::{UpdateTokenConfig, UpdateTokenConfigIx};

@@ -10,15 +10,16 @@ use crate::instructions::billing_callback::RecordBillingEventOutput;
 use crate::instructions::validation_callback::ValidateMandateOutput;
 use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
-    AdjustAgentMandate, AdminCancel, AgentPull, Cancel, CancelStream, CloseMandate,
+    AdjustAgentMandate, AdminCancel, AgentPull, Cancel, CancelPlanChange, CancelStream, CloseMandate,
     CreateAgentMandate, CreatePlan, CreateStreamMandate, CreateUsagePlan, DrainAgentMandate,
     ExecutePull, ExecuteStream, InitConfig, InitKeeperConfig, InitMerchantCredential,
     InitRecordBillingCompDef, InitTokenConfig, InitTokenConfigIx, InitValidateMandateCompDef,
     InitWrappedMint, MigrateMandate, MigratePlan, PauseAgentMandate, PauseProtocol, PauseStream,
     RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation, RequestValidation,
     ResumeAgentMandate, ResumeStream, RevokeAgentMandate, ServiceLimitInput, SubmitUsageReport,
-    Subscribe, UnpauseProtocol, Unwrap, UpdateConfig, UpdateKeeperConfig, UpdateMandate,
-    UpdatePlan, UpdateStreamRate, UpdateTokenConfig, UpdateTokenConfigIx, UpdateUsagePlan,
+    SchedulePlanChange, Subscribe, UnpauseProtocol, Unwrap, UpdateConfig, UpdateKeeperConfig,
+    UpdateMandate, UpdateMandatePlan, UpdatePlan, UpdateStreamRate, UpdateTokenConfig,
+    UpdateTokenConfigIx, UpdateUsagePlan,
     UsageChargeOutput, UsageComputationCallback, ValidateMandateCallback, Wrap,
 };
 use crate::state::{KeeperMode, PricingTier};
@@ -70,6 +71,10 @@ mod __client_accounts_record_billing_event_callback {
 
 mod __client_accounts_cancel {
     pub use crate::instructions::__client_accounts_cancel::*;
+}
+
+mod __client_accounts_cancel_plan_change {
+    pub use crate::instructions::__client_accounts_cancel_plan_change::*;
 }
 
 mod __client_accounts_cancel_stream {
@@ -140,6 +145,10 @@ mod __client_accounts_request_validation {
     pub use crate::instructions::__client_accounts_request_validation::*;
 }
 
+mod __client_accounts_schedule_plan_change {
+    pub use crate::instructions::__client_accounts_schedule_plan_change::*;
+}
+
 mod __client_accounts_request_billing_record {
     pub use crate::instructions::__client_accounts_request_billing_record::*;
 }
@@ -200,6 +209,10 @@ mod __client_accounts_update_mandate {
     pub use crate::instructions::__client_accounts_update_mandate::*;
 }
 
+mod __client_accounts_update_mandate_plan {
+    pub use crate::instructions::__client_accounts_update_mandate_plan::*;
+}
+
 mod __client_accounts_update_stream_rate {
     pub use crate::instructions::__client_accounts_update_stream_rate::*;
 }
@@ -220,6 +233,10 @@ pub mod vela_protocol {
 
     pub fn cancel(ctx: Context<Cancel>) -> Result<()> {
         instructions::cancel::handler(ctx)
+    }
+
+    pub fn cancel_plan_change(ctx: Context<CancelPlanChange>) -> Result<()> {
+        instructions::cancel_plan_change::handler(ctx)
     }
 
     pub fn cancel_stream(ctx: Context<CancelStream>) -> Result<()> {
@@ -405,6 +422,10 @@ pub mod vela_protocol {
         )
     }
 
+    pub fn schedule_plan_change(ctx: Context<SchedulePlanChange>) -> Result<()> {
+        instructions::schedule_plan_change::handler(ctx)
+    }
+
     pub fn request_billing_record(
         ctx: Context<RequestBillingRecord>,
         computation_offset: u64,
@@ -548,6 +569,10 @@ pub mod vela_protocol {
         plan: Option<Pubkey>,
     ) -> Result<()> {
         instructions::update_mandate::handler(ctx, amount, frequency, max_pulls, billing_type, plan)
+    }
+
+    pub fn update_mandate_plan(ctx: Context<UpdateMandatePlan>) -> Result<()> {
+        instructions::update_mandate_plan::handler(ctx)
     }
 
     pub fn close_mandate(ctx: Context<CloseMandate>) -> Result<()> {
