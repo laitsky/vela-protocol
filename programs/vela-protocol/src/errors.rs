@@ -59,7 +59,9 @@ pub enum VelaError {
     #[msg("Encrypted input payload length does not match the circuit interface")]
     InvalidCiphertextInput = 18,
 
-    #[msg("The previous pull is missing its billing record; finalize billing before executing again")]
+    #[msg(
+        "The previous pull is missing its billing record; finalize billing before executing again"
+    )]
     PendingBillingRecord = 19,
 
     #[msg("BillingEvent already exists for this pull execution")]
@@ -199,4 +201,24 @@ pub enum VelaError {
 
     #[msg("Agent mandate version is unsupported by this instruction")]
     AgentMandateVersionUnsupported = 400,
+
+    // ── Token registry errors (6500+) ──────────────────────────
+    #[msg("Token mint is not registered in the token registry")]
+    TokenNotRegistered = 6500,
+
+    #[msg("Token mint is already registered in the token registry")]
+    TokenAlreadyRegistered = 6501,
+
+    #[msg("Token is disabled in the registry")]
+    TokenDisabled = 6502,
+
+    #[msg("Invalid billing rail for this operation")]
+    InvalidBillingRail = 6503,
+
+    // ── Hook upgrade errors (6600+) ────────────────────────────
+    #[msg("ExtraAccountMetaList already initialized for this mint")]
+    MetaListAlreadyInitialized = 6600,
+
+    #[msg("Account discriminator does not match the expected Vela account type")]
+    WrongAccountType = 6601,
 }

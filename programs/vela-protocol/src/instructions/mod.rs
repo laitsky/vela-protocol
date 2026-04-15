@@ -1,5 +1,5 @@
-pub mod admin_cancel;
 pub mod adjust_agent_mandate;
+pub mod admin_cancel;
 pub mod agent_mandate_account;
 pub mod agent_pull;
 pub mod arcium_accounts;
@@ -11,10 +11,13 @@ pub mod create_plan;
 pub mod create_usage_plan;
 pub mod drain_agent_mandate;
 pub mod execute_pull;
+#[cfg(feature = "stream-proto")]
+pub mod execute_stream_proto;
 pub mod init_comp_defs;
 pub mod init_config;
 pub mod init_keeper_config;
 pub mod init_merchant_credential;
+pub mod init_token_config;
 pub mod init_wrapped_mint;
 pub mod keeper_config_account;
 pub mod mandate_account;
@@ -23,8 +26,8 @@ pub mod migrate_mandate;
 pub mod migrate_plan;
 pub mod pause_agent_mandate;
 pub mod pause_protocol;
-pub mod protocol_config_account;
 pub mod plan_account;
+pub mod protocol_config_account;
 pub mod request_billing_record;
 pub mod request_usage_computation;
 pub mod request_validation;
@@ -37,6 +40,7 @@ pub mod unwrap;
 pub mod update_keeper_config;
 pub mod update_mandate;
 pub mod update_plan;
+pub mod update_token_config;
 pub mod update_usage_plan;
 pub mod usage_computation_callback;
 pub mod validation_callback;
@@ -70,8 +74,16 @@ pub mod __client_accounts_init_merchant_credential {
     pub use super::init_merchant_credential::__client_accounts_init_merchant_credential::*;
 }
 
+pub mod __client_accounts_init_token_config {
+    pub use super::init_token_config::__client_accounts_init_token_config::*;
+}
+
 pub mod __client_accounts_update_keeper_config {
     pub use super::update_keeper_config::__client_accounts_update_keeper_config::*;
+}
+
+pub mod __client_accounts_update_token_config {
+    pub use super::update_token_config::__client_accounts_update_token_config::*;
 }
 
 pub mod __client_accounts_init_wrapped_mint {
@@ -194,8 +206,8 @@ pub mod __client_accounts_update_usage_plan {
     pub use super::update_usage_plan::__client_accounts_update_usage_plan::*;
 }
 
-pub use admin_cancel::AdminCancel;
 pub use adjust_agent_mandate::AdjustAgentMandate;
+pub use admin_cancel::AdminCancel;
 pub use agent_pull::AgentPull;
 pub use billing_callback::RecordBillingEventCallback;
 pub use cancel::Cancel;
@@ -204,29 +216,35 @@ pub use create_agent_mandate::{CreateAgentMandate, ServiceLimitInput};
 pub use create_plan::CreatePlan;
 pub use create_usage_plan::CreateUsagePlan;
 pub use drain_agent_mandate::DrainAgentMandate;
-pub use submit_usage_report::SubmitUsageReport;
 pub use execute_pull::ExecutePull;
+#[cfg(feature = "stream-proto")]
+pub use execute_stream_proto::{
+    CreateStreamMandateProto, CreateStreamMandateProtoArgs, ExecuteStreamProto,
+};
 pub use init_comp_defs::{InitRecordBillingCompDef, InitValidateMandateCompDef};
 pub use init_config::{InitConfig, InitConfigIx, UpdateConfig, UpdateConfigIx};
 pub use init_keeper_config::InitKeeperConfig;
 pub use init_merchant_credential::InitMerchantCredential;
+pub use init_token_config::{InitTokenConfig, InitTokenConfigIx};
 pub use init_wrapped_mint::InitWrappedMint;
 pub use migrate_mandate::MigrateMandate;
 pub use migrate_plan::MigratePlan;
 pub use pause_agent_mandate::PauseAgentMandate;
 pub use pause_protocol::PauseProtocol;
 pub use request_billing_record::RequestBillingRecord;
+pub use request_usage_computation::RequestUsageComputation;
 pub use request_validation::RequestValidation;
 pub use resume_agent_mandate::ResumeAgentMandate;
 pub use revoke_agent_mandate::RevokeAgentMandate;
+pub use submit_usage_report::SubmitUsageReport;
 pub use subscribe::Subscribe;
 pub use unpause_protocol::UnpauseProtocol;
 pub use unwrap::Unwrap;
 pub use update_keeper_config::UpdateKeeperConfig;
 pub use update_mandate::UpdateMandate;
 pub use update_plan::UpdatePlan;
+pub use update_token_config::{UpdateTokenConfig, UpdateTokenConfigIx};
 pub use update_usage_plan::UpdateUsagePlan;
-pub use request_usage_computation::RequestUsageComputation;
 pub use usage_computation_callback::{UsageChargeOutput, UsageComputationCallback};
 pub use validation_callback::ValidateMandateCallback;
 pub use wrap::Wrap;

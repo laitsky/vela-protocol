@@ -11,6 +11,8 @@ pub mod merchant;
 pub mod plan;
 pub mod protocol_config;
 pub mod pull_approval;
+pub mod stream_mandate_proto;
+pub mod token_config;
 pub mod usage_plan;
 pub mod usage_report;
 
@@ -23,5 +25,7 @@ pub use merchant::*;
 pub use plan::*;
 pub use protocol_config::*;
 pub use pull_approval::*;
+pub use stream_mandate_proto::*;
+pub use token_config::*;
 pub use usage_plan::*;
 pub use usage_report::*;
