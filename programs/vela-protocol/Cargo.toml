@@ -112,6 +112,10 @@ name = "test_token_config"
 path = "../../tests/test_token_config.rs"
 
 [[test]]
+name = "test_stream_pda"
+path = "../../tests/test_stream_pda.rs"
+
+[[test]]
 name = "test_multi_mint_hook"
 path = "../../tests/test_multi_mint_hook.rs"
 
