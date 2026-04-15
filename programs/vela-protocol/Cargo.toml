@@ -191,5 +191,9 @@ path = "../../tests/test_close_mandate.rs"
 name = "test_stream_settle_unit"
 path = "../../tests/test_stream_settle_unit.rs"
 
+[[test]]
+name = "test_stream_lifecycle"
+path = "../../tests/test_stream_lifecycle.rs"
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

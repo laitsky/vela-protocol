@@ -28,12 +28,12 @@ use spl_token::state::{Account as SplTokenAccount, Mint as SplMint};
 use vela_protocol::{
     constants::{EXTRA_ACCOUNT_METAS_SEED, MINT_AUTHORITY_SEED},
     instructions::arcium_accounts::derive_cluster_pubkey,
-    state::{
-        AgentMandate, BillingEvent, BillingRail, ClusterType, KeeperConfig, KeeperMode,
-        MerchantState, PricingTier, ProtocolConfig, PullApproval, TokenConfig, UsagePlan,
-        VelaMandate,
-    },
-};
+     state::{
+         AgentMandate, BillingEvent, BillingRail, ClusterType, KeeperConfig, KeeperMode,
+         MerchantState, PricingTier, ProtocolConfig, PullApproval, StreamMandate, TokenConfig,
+         UsagePlan, VelaMandate,
+     },
+ };
 
 pub const AIRDROP_LAMPORTS: u64 = 10_000_000_000;
 // TODO(phase-40/41): import these legacy/test-harness-only seed prefixes from program state once
@@ -198,10 +198,10 @@ impl TestHarness {
         }
     }
 
-    pub fn derive_mandate_address_by_index(
-        &self,
-        subscriber: &Pubkey,
-        merchant: &Pubkey,
+     pub fn derive_mandate_address_by_index(
+         &self,
+         subscriber: &Pubkey,
+         merchant: &Pubkey,
         mandate_index: u64,
     ) -> Pubkey {
         derive_mandate_v2_pda(
@@ -219,7 +219,26 @@ impl TestHarness {
         merchant: &Pubkey,
         mandate_index: u64,
     ) -> Pubkey {
-        self.derive_mandate_address_by_index(subscriber, merchant, mandate_index)
+         self.derive_mandate_address_by_index(subscriber, merchant, mandate_index)
+     }
+
+    pub fn derive_stream_mandate_address_by_index(
+        &self,
+        subscriber: &Pubkey,
+        merchant: &Pubkey,
+        mandate_index: u64,
+    ) -> Pubkey {
+        let mandate_index_bytes = mandate_index.to_le_bytes();
+        Pubkey::find_program_address(
+            &[
+                StreamMandate::SEED_PREFIX,
+                subscriber.as_ref(),
+                merchant.as_ref(),
+                mandate_index_bytes.as_ref(),
+            ],
+            &vela_protocol::ID,
+        )
+        .0
     }
 
     pub fn derive_mandate_address(&self, subscriber: &Pubkey, plan: &Pubkey) -> Pubkey {
@@ -1012,6 +1031,55 @@ impl TestHarness {
             config,
             extra_account_meta_list,
         )
+    }
+
+    pub fn send_create_stream_mandate(
+        &mut self,
+        subscriber: &Keypair,
+        mint: &Pubkey,
+        rate_per_second: u64,
+        authorized_max_rate: u64,
+        max_streamed: Option<u64>,
+        min_settle_interval: u32,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let merchant = self.merchant_pubkey();
+        let (merchant_state, _) = Pubkey::find_program_address(
+            &[MerchantState::SEED_PREFIX, merchant.as_ref()],
+            &vela_protocol::ID,
+        );
+        let state: MerchantState = self.fetch_anchor_account(&merchant_state);
+        let mandate = self.derive_stream_mandate_address_by_index(
+            &to_anchor_pubkey(subscriber.pubkey()),
+            &merchant,
+            state.stream_mandate_counter,
+        );
+        let token_config = self.derive_token_config_address(mint);
+        let accounts = vela_protocol::accounts::CreateStreamMandate {
+            subscriber: to_anchor_pubkey(subscriber.pubkey()),
+            merchant_state,
+            mandate,
+            mint: *mint,
+            token_config,
+            payer: to_anchor_pubkey(subscriber.pubkey()),
+            system_program: anchor_lang::system_program::ID,
+        };
+
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::CreateStreamMandate {
+                rate_per_second,
+                authorized_max_rate,
+                max_streamed,
+                min_settle_interval,
+            }
+            .data(),
+        };
+        self.send_instruction(&instruction, &[subscriber], Some(&subscriber.pubkey()))
     }
 
     /// Create a PullApproval account with all fields including approved_amount.
