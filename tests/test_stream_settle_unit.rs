@@ -1,8 +1,26 @@
-use anchor_lang::error::Error;
-use solana_program::pubkey::Pubkey;
+use anchor_lang::{error::Error, prelude::Pubkey};
 use vela_protocol::errors::VelaError;
-use vela_protocol::instructions::stream_account::settle_accrued_in_place;
 use vela_protocol::state::stream_mandate::{StreamMandate, StreamStatus};
+
+pub use vela_protocol::ID;
+
+mod errors {
+    pub use vela_protocol::errors::*;
+}
+
+mod state {
+    pub use vela_protocol::state::CURRENT_ACCOUNT_VERSION;
+
+    pub mod stream_mandate {
+        pub use vela_protocol::state::stream_mandate::*;
+    }
+}
+
+#[path = "../programs/vela-protocol/src/instructions/stream_account.rs"]
+#[allow(dead_code)]
+mod stream_account;
+
+use stream_account::settle_accrued_in_place;
 
 fn fresh_mandate(rate: u64, last: i64, cap: Option<u64>) -> StreamMandate {
     StreamMandate {
@@ -26,6 +44,13 @@ fn fresh_mandate(rate: u64, last: i64, cap: Option<u64>) -> StreamMandate {
 
 fn error_code(error: Error) -> u32 {
     match error {
+        Error::AnchorError(anchor_error) => anchor_error.error_code_number,
+        other => panic!("expected AnchorError, got {other:?}"),
+    }
+}
+
+fn vela_error_code(error: VelaError) -> u32 {
+    match Error::from(error) {
         Error::AnchorError(anchor_error) => anchor_error.error_code_number,
         other => panic!("expected AnchorError, got {other:?}"),
     }
@@ -73,7 +98,7 @@ fn clock_regression_is_rejected() {
 
     let error = settle_accrued_in_place(&mut mandate, 99).unwrap_err();
 
-    assert_eq!(error_code(error), VelaError::ClockRegression.into());
+    assert_eq!(error_code(error), vela_error_code(VelaError::ClockRegression));
     assert_eq!(mandate.total_streamed, 0);
     assert_eq!(mandate.last_settled_ts, 100);
 }
@@ -84,18 +109,20 @@ fn i64_max_elapsed_at_unit_rate_stays_lossless() {
 
     let settled = settle_accrued_in_place(&mut mandate, i64::MAX).expect("wide settle");
 
-    assert_eq!(settled, i64::MAX as u64);
-    assert_eq!(mandate.total_streamed, i64::MAX as u64);
+    let expected = u64::try_from(i64::MAX).expect("i64::MAX fits in u64");
+
+    assert_eq!(settled, expected);
+    assert_eq!(mandate.total_streamed, expected);
     assert_eq!(mandate.last_settled_ts, i64::MAX);
 }
 
 #[test]
 fn gross_over_u64_max_without_cap_errors() {
-    let mut mandate = fresh_mandate(2, 0, None);
+    let mut mandate = fresh_mandate(3, 0, None);
 
     let error = settle_accrued_in_place(&mut mandate, i64::MAX).unwrap_err();
 
-    assert_eq!(error_code(error), VelaError::Overflow.into());
+    assert_eq!(error_code(error), vela_error_code(VelaError::Overflow));
     assert_eq!(mandate.total_streamed, 0);
     assert_eq!(mandate.last_settled_ts, 0);
 }
