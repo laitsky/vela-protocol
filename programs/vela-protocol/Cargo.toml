@@ -203,5 +203,9 @@ path = "../../tests/test_stream_fail_closed.rs"
 name = "test_stream_invariants"
 path = "../../tests/test_stream_invariants.rs"
 
+[[test]]
+name = "test_stream_math_properties"
+path = "../../tests/test_stream_math_properties.rs"
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
