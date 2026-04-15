@@ -3,11 +3,11 @@
 #[path = "arcium_helpers.rs"]
 pub mod arcium_helpers;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anchor_lang::{
-    prelude::Pubkey, AccountDeserialize, AccountSerialize, InstructionData,
-    ToAccountMetas,
+    prelude::Pubkey, AccountDeserialize, AccountSerialize, InstructionData, ToAccountMetas,
 };
 use litesvm::{
     types::{FailedTransactionMetadata, TransactionMetadata},
@@ -22,6 +22,7 @@ use solana_keypair::Keypair;
 use solana_message::{Message, VersionedMessage};
 use solana_program_pack::Pack;
 use solana_signer::Signer;
+use solana_sdk::hash;
 use solana_transaction::versioned::VersionedTransaction;
 use spl_associated_token_account::get_associated_token_address_with_program_id;
 use spl_token::state::{Account as SplTokenAccount, Mint as SplMint};
@@ -29,8 +30,9 @@ use vela_protocol::{
     constants::{EXTRA_ACCOUNT_METAS_SEED, MINT_AUTHORITY_SEED},
     instructions::arcium_accounts::derive_cluster_pubkey,
     state::{
-        AgentMandate, BillingEvent, ClusterType, KeeperConfig, KeeperMode, MerchantState,
-        PricingTier, ProtocolConfig, PullApproval, TokenConfig, UsagePlan, VelaMandate,
+        AgentMandate, BillingEvent, BillingRail, ClusterType, KeeperConfig, KeeperMode,
+        MerchantState, PricingTier, ProtocolConfig, PullApproval, TokenConfig, UsagePlan,
+        VelaMandate,
     },
 };
 
@@ -75,11 +77,25 @@ pub struct UsagePlanAddresses {
     pub credential_mint: Pubkey,
 }
 
+#[derive(Clone, Copy)]
+struct ProtoStreamFixture {
+    subscriber: Pubkey,
+    subscriber_wrapped_account: Pubkey,
+    merchant_wrapped_account: Pubkey,
+    wrapped_mint: Pubkey,
+    pull_approval: Pubkey,
+    wrapping_vault: Pubkey,
+    protocol_config: Pubkey,
+    extra_account_meta_list: Pubkey,
+}
+
 pub struct TestHarness {
     pub svm: LiteSVM,
     pub merchant: Keypair,
     pub program_id: Address,
     pub hook_program_id: Address,
+    proto_stream_fixtures: HashMap<Pubkey, ProtoStreamFixture>,
+    last_stream_mandate_proto: Option<Pubkey>,
 }
 
 impl TestHarness {
@@ -114,6 +130,8 @@ impl TestHarness {
             merchant,
             program_id,
             hook_program_id,
+            proto_stream_fixtures: HashMap::new(),
+            last_stream_mandate_proto: None,
         }
     }
 
@@ -236,7 +254,10 @@ impl TestHarness {
                     continue;
                 }
                 let mandate: VelaMandate = self.fetch_anchor_account(&candidate);
-                if mandate.subscriber == *subscriber && mandate.merchant == merchant && mandate.plan == *plan {
+                if mandate.subscriber == *subscriber
+                    && mandate.merchant == merchant
+                    && mandate.plan == *plan
+                {
                     return candidate;
                 }
             }
@@ -252,6 +273,30 @@ impl TestHarness {
             &vela_protocol::ID,
         )
         .0
+    }
+
+    pub fn derive_stream_mandate_proto_address(
+        &self,
+        subscriber: &Pubkey,
+        merchant: &Pubkey,
+        mandate_index: u64,
+    ) -> Pubkey {
+        Pubkey::find_program_address(
+            &[
+                b"stream",
+                subscriber.as_ref(),
+                merchant.as_ref(),
+                mandate_index.to_le_bytes().as_ref(),
+            ],
+            &vela_protocol::ID,
+        )
+        .0
+    }
+
+    // PROTO: throwaway — replaced by Plan 02+ builders.
+    pub fn last_stream_mandate_proto(&self) -> Pubkey {
+        self.last_stream_mandate_proto
+            .expect("stream proto mandate should exist")
     }
 
     pub fn derive_credential_ata(&self, owner: &Pubkey, mint: &Pubkey) -> Pubkey {
@@ -272,7 +317,11 @@ impl TestHarness {
 
     pub fn derive_agent_mandate_address(&self, authority: &Pubkey, agent: &Pubkey) -> Pubkey {
         Pubkey::find_program_address(
-            &[AgentMandate::SEED_PREFIX, authority.as_ref(), agent.as_ref()],
+            &[
+                AgentMandate::SEED_PREFIX,
+                authority.as_ref(),
+                agent.as_ref(),
+            ],
             &vela_protocol::ID,
         )
         .0
@@ -317,6 +366,10 @@ impl TestHarness {
             &[EXTRA_ACCOUNT_METAS_SEED, mint.as_ref()],
             &vela_transfer_hook::ID,
         )
+    }
+
+    pub fn derive_token_config_address(&self, mint: &Pubkey) -> Pubkey {
+        derive_token_config_pda(mint, &vela_protocol::ID).0
     }
 
     /// Derives the ProtocolConfig PDA.
@@ -538,6 +591,12 @@ impl TestHarness {
             Some(&admin.pubkey()),
         )
         .expect("init_wrapped_mint should succeed");
+        let config = self.derive_config();
+        let mut protocol_config: ProtocolConfig = self.fetch_anchor_account(&config);
+        protocol_config.transfer_hook_program_id =
+            Pubkey::new_from_array(vela_transfer_hook::ID.to_bytes());
+        self.overwrite_anchor_account(&config, &protocol_config);
+        self.init_token_config(admin, &wrapped_usdc_mint, BillingRail::TransferHook, 6);
 
         let needs_vault_repair = self
             .svm
@@ -549,6 +608,95 @@ impl TestHarness {
         }
 
         (wrapped_usdc_mint, wrapping_vault)
+    }
+
+    pub fn init_token_config(
+        &mut self,
+        admin: &Keypair,
+        mint: &Pubkey,
+        billing_rail: BillingRail,
+        decimals: u8,
+    ) -> Pubkey {
+        let protocol_config = self.derive_config();
+        let token_config = self.derive_token_config_address(mint);
+        if self.svm.get_account(&to_address(token_config)).is_some() {
+            return token_config;
+        }
+
+        self.send_init_token_config(admin, &protocol_config, mint, billing_rail, decimals)
+            .expect("init_token_config should succeed");
+
+        token_config
+    }
+
+    pub fn send_init_token_config(
+        &mut self,
+        admin: &Keypair,
+        protocol_config: &Pubkey,
+        mint: &Pubkey,
+        billing_rail: BillingRail,
+        decimals: u8,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        use vela_protocol::instructions::init_token_config::InitTokenConfigIx;
+
+        let token_config = self.derive_token_config_address(mint);
+        let accounts = vela_protocol::accounts::InitTokenConfig {
+            admin: to_anchor_pubkey(admin.pubkey()),
+            protocol_config: *protocol_config,
+            mint: *mint,
+            token_config,
+            system_program: anchor_lang::system_program::ID,
+        };
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::InitTokenConfig {
+                ix: InitTokenConfigIx {
+                    billing_rail,
+                    decimals,
+                },
+            }
+            .data(),
+        };
+        self.send_instruction(&instruction, &[admin], Some(&admin.pubkey()))
+    }
+
+    pub fn update_token_config(
+        &mut self,
+        admin: &Keypair,
+        protocol_config: &Pubkey,
+        token_config: &Pubkey,
+        enabled: Option<bool>,
+        oracle_reference: Option<Pubkey>,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        use vela_protocol::instructions::update_token_config::UpdateTokenConfigIx;
+
+        let accounts = vela_protocol::accounts::UpdateTokenConfig {
+            admin: to_anchor_pubkey(admin.pubkey()),
+            protocol_config: *protocol_config,
+            token_config: *token_config,
+        };
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::UpdateTokenConfig {
+                ix: UpdateTokenConfigIx {
+                    enabled,
+                    oracle_reference,
+                },
+            }
+            .data(),
+        };
+
+        self.send_instruction(&instruction, &[admin], Some(&admin.pubkey()))
     }
 
     pub fn init_extra_account_meta_list(
@@ -564,7 +712,7 @@ impl TestHarness {
             admin: to_anchor_pubkey(admin.pubkey()),
             config,
             extra_account_meta_list,
-            wrapped_usdc_mint: *wrapped_usdc_mint,
+            mint: *wrapped_usdc_mint,
             wrapping_vault: *wrapping_vault,
             system_program: anchor_lang::system_program::ID,
         };
@@ -581,6 +729,35 @@ impl TestHarness {
             .expect("init_extra_account_meta_list should succeed");
 
         extra_account_meta_list
+    }
+
+    pub fn update_extra_account_meta_list(
+        &mut self,
+        admin: &Keypair,
+        protocol_config: &Pubkey,
+        mint: &Pubkey,
+        wrapping_vault: &Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let (extra_account_meta_list, _) = self.derive_extra_account_meta_list(mint);
+        let accounts = vela_transfer_hook::accounts::UpdateExtraAccountMetaList {
+            admin: to_anchor_pubkey(admin.pubkey()),
+            config: *protocol_config,
+            extra_account_meta_list,
+            mint: *mint,
+            wrapping_vault: *wrapping_vault,
+            system_program: anchor_lang::system_program::ID,
+        };
+        let instruction = Instruction {
+            program_id: self.hook_program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_transfer_hook::instruction::UpdateExtraAccountMetaList {}.data(),
+        };
+
+        self.send_instructions(&[instruction], &[admin], Some(&admin.pubkey()))
     }
 
     pub fn create_spl_token_account(
@@ -603,12 +780,13 @@ impl TestHarness {
         owner: &Pubkey,
         mint: &Pubkey,
     ) -> Pubkey {
-        let instruction = spl_associated_token_account::instruction::create_associated_token_account(
-            &payer.pubkey(),
-            &to_solana_pubkey(*owner),
-            &to_solana_pubkey(*mint),
-            &spl_token_2022::id(),
-        );
+        let instruction =
+            spl_associated_token_account::instruction::create_associated_token_account(
+                &payer.pubkey(),
+                &to_solana_pubkey(*owner),
+                &to_solana_pubkey(*mint),
+                &spl_token_2022::id(),
+            );
         self.send_instructions(&[instruction], &[payer], Some(&payer.pubkey()))
             .expect("token-2022 ATA should initialize");
         self.derive_token_2022_ata(owner, mint)
@@ -680,11 +858,7 @@ impl TestHarness {
         // or plan-scoped credential (legacy).
         let plan: vela_protocol::state::VelaPlan = self.fetch_anchor_account(&addresses.plan);
         let credential_mint = plan.credential_mint;
-        self.send_subscribe_to_plan(
-            subscriber,
-            &addresses.plan,
-            &credential_mint,
-        )
+        self.send_subscribe_to_plan(subscriber, &addresses.plan, &credential_mint)
     }
 
     pub fn send_subscribe_to_plan(
@@ -707,10 +881,7 @@ impl TestHarness {
             &self.merchant_pubkey(),
             state.mandate_counter,
         );
-        let credential_ata = self.derive_credential_ata(
-            &subscriber_pubkey,
-            credential_mint,
-        );
+        let credential_ata = self.derive_credential_ata(&subscriber_pubkey, credential_mint);
 
         let accounts = vela_protocol::accounts::Subscribe {
             subscriber: to_anchor_pubkey(subscriber.pubkey()),
@@ -741,6 +912,161 @@ impl TestHarness {
         self.send_instruction(&instruction, &[subscriber], Some(&subscriber.pubkey()))
     }
 
+    // PROTO: throwaway — replaced by Plan 02+ builders.
+    pub fn send_create_stream_mandate_proto(
+        &mut self,
+        rate: u64,
+        max_rate: u64,
+        cap: Option<u64>,
+        min_interval: u32,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let merchant = self.merchant_pubkey();
+        let admin = self.merchant.insecure_clone();
+        let merchant_state = Pubkey::find_program_address(
+            &[MerchantState::SEED_PREFIX, merchant.as_ref()],
+            &vela_protocol::ID,
+        )
+        .0;
+        if self.svm.get_account(&to_address(merchant_state)).is_none() {
+            self.send_init_merchant_credential()
+                .expect("init_merchant_credential should succeed");
+        }
+
+        let merchant_state_account: MerchantState = self.fetch_anchor_account(&merchant_state);
+        let subscriber = self.create_wallet();
+        let subscriber_pubkey = to_anchor_pubkey(subscriber.pubkey());
+        let mandate = self.derive_stream_mandate_proto_address(
+            &subscriber_pubkey,
+            &merchant,
+            merchant_state_account.mandate_counter,
+        );
+
+        let protocol_config = self.derive_config();
+        if self.svm.get_account(&to_address(protocol_config)).is_none() {
+            self.init_protocol_config(&admin);
+        }
+
+        let spl_usdc_mint = self.create_spl_mint(&admin, 6);
+        let wrapped_mint = Keypair::new();
+        let (wrapped_mint_pubkey, wrapping_vault) =
+            self.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
+        let extra_account_meta_list =
+            self.init_extra_account_meta_list(&admin, &wrapped_mint_pubkey, &wrapping_vault);
+
+        let funding_amount = cap
+            .unwrap_or_else(|| rate.saturating_mul(u64::from(min_interval).saturating_add(120)))
+            .max(rate.saturating_mul(180))
+            .max(1_000_000);
+        let subscriber_usdc =
+            self.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);
+        self.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, funding_amount);
+
+        let subscriber_wrapped_account =
+            self.create_token_2022_ata(&admin, &mandate, &wrapped_mint_pubkey);
+        self.send_wrap(
+            &subscriber,
+            &spl_usdc_mint,
+            &wrapped_mint_pubkey,
+            &subscriber_usdc,
+            &subscriber_wrapped_account,
+            &mandate,
+            &wrapping_vault,
+            funding_amount,
+        )
+        .expect("stream proto wrap should succeed");
+        let merchant_wrapped_account =
+            self.create_token_2022_ata(&admin, &merchant, &wrapped_mint_pubkey);
+
+        let accounts = vec![
+            AccountMeta::new(to_address(subscriber_pubkey), true),
+            AccountMeta::new_readonly(to_address(merchant), false),
+            AccountMeta::new(to_address(merchant_state), false),
+            AccountMeta::new(to_address(mandate), false),
+            AccountMeta::new_readonly(to_address(wrapped_mint_pubkey), false),
+            AccountMeta::new_readonly(to_address(protocol_config), false),
+            AccountMeta::new_readonly(Address::from(anchor_lang::system_program::ID.to_bytes()), false),
+        ];
+        let mut data = anchor_instruction_discriminator("create_stream_mandate_proto").to_vec();
+        data.extend_from_slice(&rate.to_le_bytes());
+        data.extend_from_slice(&max_rate.to_le_bytes());
+        match cap {
+            Some(cap_value) => {
+                data.push(1);
+                data.extend_from_slice(&cap_value.to_le_bytes());
+            }
+            None => data.push(0),
+        }
+        data.extend_from_slice(&min_interval.to_le_bytes());
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts,
+            data,
+        };
+        let meta = self.send_instruction(&instruction, &[&subscriber], Some(&subscriber.pubkey()))?;
+        let pull_approval =
+            self.create_pull_approval_with_amount(&mandate, i64::MAX / 2, true, u64::MAX);
+
+        self.proto_stream_fixtures.insert(
+            mandate,
+            ProtoStreamFixture {
+                subscriber: subscriber_pubkey,
+                subscriber_wrapped_account,
+                merchant_wrapped_account,
+                wrapped_mint: wrapped_mint_pubkey,
+                pull_approval,
+                wrapping_vault,
+                protocol_config,
+                extra_account_meta_list,
+            },
+        );
+        self.last_stream_mandate_proto = Some(mandate);
+
+        Ok(meta)
+    }
+
+    // PROTO: throwaway — replaced by Plan 02+ builders.
+    pub fn send_execute_stream_proto(
+        &mut self,
+        mandate: Pubkey,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let keeper = self.merchant.insecure_clone();
+        let fixture = *self
+            .proto_stream_fixtures
+            .get(&mandate)
+            .expect("stream proto fixture should exist");
+        let keeper_config = self.ensure_keeper_config(&keeper);
+        let accounts = vec![
+            AccountMeta::new(to_address(self.merchant_pubkey()), true),
+            AccountMeta::new_readonly(to_address(fixture.subscriber), false),
+            AccountMeta::new_readonly(to_address(self.merchant_pubkey()), false),
+            AccountMeta::new_readonly(to_address(keeper_config), false),
+            AccountMeta::new(to_address(mandate), false),
+            AccountMeta::new(to_address(fixture.subscriber_wrapped_account), false),
+            AccountMeta::new(to_address(fixture.merchant_wrapped_account), false),
+            AccountMeta::new_readonly(to_address(fixture.wrapped_mint), false),
+            AccountMeta::new(to_address(fixture.pull_approval), false),
+            AccountMeta::new_readonly(to_address(self.derive_token_config_address(&fixture.wrapped_mint)), false),
+            AccountMeta::new_readonly(to_address(fixture.protocol_config), false),
+            AccountMeta::new_readonly(to_address(fixture.wrapping_vault), false),
+            AccountMeta::new_readonly(Address::from(vela_transfer_hook::ID.to_bytes()), false),
+            AccountMeta::new_readonly(to_address(fixture.extra_account_meta_list), false),
+            AccountMeta::new_readonly(to_address(vela_protocol::ID), false),
+            AccountMeta::new_readonly(token_2022_address(), false),
+            AccountMeta::new_readonly(Address::from(anchor_lang::system_program::ID.to_bytes()), false),
+        ];
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts,
+            data: anchor_instruction_discriminator("execute_stream_proto").to_vec(),
+        };
+
+        self.send_instruction(
+            &instruction,
+            &[&keeper],
+            Some(&self.merchant.pubkey()),
+        )
+    }
+
     /// Send execute_pull using Token-2022 wrapped USDC accounts.
     pub fn send_execute_pull_wrapped(
         &mut self,
@@ -769,12 +1095,14 @@ impl TestHarness {
             merchant_wrapped_account: *merchant_wrapped_account,
             wrapped_usdc_mint: *wrapped_usdc_mint,
             pull_approval,
+            token_config: self.derive_token_config_address(wrapped_usdc_mint),
             protocol_config: *config,
             wrapping_vault: *wrapping_vault,
             hook_program: Pubkey::new_from_array(vela_transfer_hook::ID.to_bytes()),
             extra_account_meta_list: *extra_account_meta_list,
             protocol_program: vela_protocol::ID,
             token_2022_program: token_2022_anchor_id(),
+            system_program: anchor_lang::system_program::ID,
         };
 
         let instruction = Instruction {
@@ -980,7 +1308,10 @@ impl TestHarness {
         let plan: vela_protocol::state::VelaPlan = self.fetch_anchor_account(&addresses.plan);
         let merchant = self.merchant_pubkey();
         let (merchant_state, _) = Pubkey::find_program_address(
-            &[vela_protocol::state::MerchantState::SEED_PREFIX, merchant.as_ref()],
+            &[
+                vela_protocol::state::MerchantState::SEED_PREFIX,
+                merchant.as_ref(),
+            ],
             &vela_protocol::ID,
         );
         let credential_mint = plan.credential_mint;
@@ -1093,6 +1424,7 @@ impl TestHarness {
             self.init_wrapped_mint(admin, &wrapped_mint, &spl_usdc_mint);
         let extra_account_meta_list =
             self.init_extra_account_meta_list(admin, &wrapped_usdc_mint, &wrapping_vault);
+        let token_config = self.derive_token_config_address(&wrapped_usdc_mint);
 
         let authority_spl_usdc_ata =
             self.create_spl_token_account(&authority, &spl_usdc_mint, &authority_pubkey);
@@ -1114,6 +1446,7 @@ impl TestHarness {
             wrapped_usdc_mint,
             wrapping_vault,
             extra_account_meta_list,
+            token_config,
             authority_spl_usdc_ata,
             agent_mandate,
             agent_mandate_wrapped_ata,
@@ -1128,8 +1461,11 @@ impl TestHarness {
         let fixture = self.setup_agent_mandate_fixture(admin, initial_usdc_amount);
         let service = self.create_wallet();
         let service_pubkey = to_anchor_pubkey(service.pubkey());
-        let service_wrapped_account =
-            self.create_token_2022_ata(&fixture.authority, &service_pubkey, &fixture.wrapped_usdc_mint);
+        let service_wrapped_account = self.create_token_2022_ata(
+            &fixture.authority,
+            &service_pubkey,
+            &fixture.wrapped_usdc_mint,
+        );
 
         let config = self.derive_config();
         let (mint_authority, _) = self.derive_mint_authority();
@@ -1470,11 +1806,13 @@ impl TestHarness {
         let config = self.derive_config();
         let merchant = self.merchant_pubkey();
         let (merchant_state, _) = Pubkey::find_program_address(
-            &[vela_protocol::state::MerchantState::SEED_PREFIX, merchant.as_ref()],
+            &[
+                vela_protocol::state::MerchantState::SEED_PREFIX,
+                merchant.as_ref(),
+            ],
             &vela_protocol::ID,
         );
-        let subscriber_credential_account =
-            self.derive_credential_ata(subscriber, credential_mint);
+        let subscriber_credential_account = self.derive_credential_ata(subscriber, credential_mint);
         let accounts = vec![
             AccountMeta::new(to_address(to_anchor_pubkey(admin.pubkey())), true),
             AccountMeta::new_readonly(to_address(config), false),
@@ -1533,8 +1871,9 @@ impl TestHarness {
         };
         let blockhash = self.svm.latest_blockhash();
         let message = Message::new_with_blockhash(&[instruction], Some(&merchant_pk), &blockhash);
-        let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&self.merchant])
-            .expect("transaction should sign");
+        let tx =
+            VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&self.merchant])
+                .expect("transaction should sign");
         self.svm.send_transaction(tx)
     }
 
@@ -1569,8 +1908,9 @@ impl TestHarness {
         };
         let blockhash = self.svm.latest_blockhash();
         let message = Message::new_with_blockhash(&[instruction], Some(&merchant_pk), &blockhash);
-        let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&self.merchant])
-            .expect("transaction should sign");
+        let tx =
+            VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&self.merchant])
+                .expect("transaction should sign");
         self.svm.send_transaction(tx)
     }
 
@@ -1658,7 +1998,10 @@ impl TestHarness {
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let merchant = self.merchant_pubkey();
         let (merchant_state, _) = Pubkey::find_program_address(
-            &[vela_protocol::state::MerchantState::SEED_PREFIX, merchant.as_ref()],
+            &[
+                vela_protocol::state::MerchantState::SEED_PREFIX,
+                merchant.as_ref(),
+            ],
             &vela_protocol::ID,
         );
         let (credential_mint, _) = self.derive_merchant_credential_mint();
@@ -1686,8 +2029,9 @@ impl TestHarness {
         let merchant_pk = self.merchant.pubkey();
         let blockhash = self.svm.latest_blockhash();
         let message = Message::new_with_blockhash(&[instruction], Some(&merchant_pk), &blockhash);
-        let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&self.merchant])
-            .expect("transaction should sign");
+        let tx =
+            VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&self.merchant])
+                .expect("transaction should sign");
         self.svm.send_transaction(tx)
     }
 
@@ -1698,7 +2042,10 @@ impl TestHarness {
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let merchant = to_anchor_pubkey(signer.pubkey());
         let (merchant_state, _) = Pubkey::find_program_address(
-            &[vela_protocol::state::MerchantState::SEED_PREFIX, merchant.as_ref()],
+            &[
+                vela_protocol::state::MerchantState::SEED_PREFIX,
+                merchant.as_ref(),
+            ],
             &vela_protocol::ID,
         );
         let (credential_mint, _) = Pubkey::find_program_address(
@@ -1750,8 +2097,9 @@ impl TestHarness {
         let merchant_pk = self.merchant.pubkey();
         let blockhash = self.svm.latest_blockhash();
         let message = Message::new_with_blockhash(&[instruction], Some(&merchant_pk), &blockhash);
-        let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&self.merchant])
-            .expect("transaction should sign");
+        let tx =
+            VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&self.merchant])
+                .expect("transaction should sign");
         self.svm.send_transaction(tx)
     }
 
@@ -1775,13 +2123,7 @@ impl TestHarness {
         migrated_mandate: &Pubkey,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let admin = self.merchant.insecure_clone();
-        self.send_migrate_mandate_as(
-            &admin,
-            subscriber,
-            plan,
-            legacy_mandate,
-            migrated_mandate,
-        )
+        self.send_migrate_mandate_as(&admin, subscriber, plan, legacy_mandate, migrated_mandate)
     }
 
     pub fn send_migrate_mandate_as(
@@ -1795,7 +2137,10 @@ impl TestHarness {
         let config = self.derive_config();
         let merchant = self.merchant_pubkey();
         let (merchant_state, _) = Pubkey::find_program_address(
-            &[vela_protocol::state::MerchantState::SEED_PREFIX, merchant.as_ref()],
+            &[
+                vela_protocol::state::MerchantState::SEED_PREFIX,
+                merchant.as_ref(),
+            ],
             &vela_protocol::ID,
         );
         let instruction = Instruction {
@@ -1896,6 +2241,7 @@ pub struct AgentMandateFixture {
     pub wrapped_usdc_mint: Pubkey,
     pub wrapping_vault: Pubkey,
     pub extra_account_meta_list: Pubkey,
+    pub token_config: Pubkey,
     pub authority_spl_usdc_ata: Pubkey,
     pub agent_mandate: Pubkey,
     pub agent_mandate_wrapped_ata: Pubkey,
@@ -1917,6 +2263,13 @@ pub fn to_address(pubkey: Pubkey) -> Address {
 
 pub fn to_anchor_pubkey(address: Address) -> Pubkey {
     Pubkey::new_from_array(address.to_bytes())
+}
+
+fn anchor_instruction_discriminator(name: &str) -> [u8; 8] {
+    let digest = hash::hash(format!("global:{name}").as_bytes());
+    let mut discriminator = [0u8; 8];
+    discriminator.copy_from_slice(&digest.to_bytes()[..8]);
+    discriminator
 }
 
 fn program_so_path() -> PathBuf {

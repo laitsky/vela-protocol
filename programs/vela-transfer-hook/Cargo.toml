@@ -18,6 +18,7 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build", "vela-protocol/idl
 anchor-debug = []
 custom-heap = []
 custom-panic = []
+stream-proto = ["vela-protocol/stream-proto"]
 
 [dependencies]
 anchor-lang = { version = "=0.32.1", features = ["interface-instructions"] }

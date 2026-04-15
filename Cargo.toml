@@ -5,6 +5,9 @@ members = [
 ]
 resolver = "2"
 
+[workspace.dependencies]
+proptest = "1"
+
 [profile.release]
 overflow-checks = true
 lto = "fat"

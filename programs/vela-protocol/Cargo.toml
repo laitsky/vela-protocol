@@ -19,6 +19,7 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build", "arcium-anchor/idl
 anchor-debug = []
 custom-heap = []
 custom-panic = []
+stream-proto = []
 
 
 [dependencies]
@@ -41,6 +42,7 @@ solana-pubkey = "=3.0.0"
 [dev-dependencies]
 litesvm = "0.10.0"
 litesvm-token = "*"
+proptest = { workspace = true }
 solana-sdk = "*"
 solana-address = "=2.5.0"
 solana-account = "=3.4.0"
@@ -83,6 +85,10 @@ name = "test_cu_profiling"
 path = "../../tests/test_cu_profiling.rs"
 
 [[test]]
+name = "test_stream_cu_profiling"
+path = "../../tests/test_stream_cu_profiling.rs"
+
+[[test]]
 name = "test_credential"
 path = "../../tests/test_credential.rs"
 
@@ -105,6 +111,14 @@ path = "../../tests/test_billing_event.rs"
 [[test]]
 name = "test_transfer_hook"
 path = "../../tests/test_transfer_hook.rs"
+
+[[test]]
+name = "test_token_config"
+path = "../../tests/test_token_config.rs"
+
+[[test]]
+name = "test_multi_mint_hook"
+path = "../../tests/test_multi_mint_hook.rs"
 
 [[test]]
 name = "test_wrap_unwrap"
