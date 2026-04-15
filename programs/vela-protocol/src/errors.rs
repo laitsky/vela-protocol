@@ -258,4 +258,17 @@ pub enum VelaError {
 
     #[msg("Provided stream mandate PDA does not match the canonical stream seeds")]
     InvalidStreamAddress = 6711,
+
+    // ── Proration math errors (6800+) ───────────────────────────
+    #[msg("Proration period total must be greater than zero")]
+    MathDivByZero = 6800,
+
+    #[msg("Proration math overflowed its supported range")]
+    MathOverflow = 6801,
+
+    #[msg("Proration math underflowed its supported range")]
+    MathUnderflow = 6802,
+
+    #[msg("Elapsed seconds must be less than or equal to the period total")]
+    InvalidElapsed = 6803,
 }

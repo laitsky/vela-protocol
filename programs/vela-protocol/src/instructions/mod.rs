@@ -28,6 +28,7 @@ pub mod migrate_plan;
 pub mod pause_agent_mandate;
 pub mod pause_stream;
 pub mod pause_protocol;
+pub mod proration;
 pub mod plan_account;
 pub mod protocol_config_account;
 pub mod request_billing_record;
@@ -260,6 +261,8 @@ pub use migrate_plan::MigratePlan;
 pub use pause_agent_mandate::PauseAgentMandate;
 pub use pause_stream::PauseStream;
 pub use pause_protocol::PauseProtocol;
+#[allow(unused_imports)]
+pub(crate) use proration::{compute_proration, ProrationOutcome};
 pub use request_billing_record::RequestBillingRecord;
 pub use request_usage_computation::RequestUsageComputation;
 pub use request_validation::RequestValidation;
