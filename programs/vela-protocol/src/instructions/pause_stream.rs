@@ -6,10 +6,7 @@ use crate::{
     errors::VelaError,
     instructions::{
         execute_stream::{invoke_stream_transfer, validate_stream_transfer_accounts},
-        stream_account::{
-            load_stream_mandate, settle_accrued_in_place, validate_stream_mandate_address,
-            write_stream_mandate,
-        },
+        stream_account::{load_stream_mandate, validate_stream_mandate_address, write_stream_mandate},
     },
     state::{ProtocolConfig, StreamMandate, StreamPaused, StreamStatus},
 };
@@ -98,7 +95,7 @@ pub fn handler(ctx: Context<PauseStream>) -> Result<()> {
     }
 
     let clock_now = Clock::get()?.unix_timestamp;
-    let settle_amount = settle_accrued_in_place(&mut mandate, clock_now)?;
+    let settle_amount = crate::instructions::settle_accrued_in_place(&mut mandate, clock_now)?;
     if settle_amount > 0 {
         let mandate_index_bytes = mandate.mandate_index.to_le_bytes();
         let mandate_bump = [mandate.bump];

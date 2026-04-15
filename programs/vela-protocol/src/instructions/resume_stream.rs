@@ -28,8 +28,8 @@ pub fn handler(ctx: Context<ResumeStream>) -> Result<()> {
     );
 
     // INVARIANT EXCEPTION (RESEARCH.md Pitfall 2 / STREAM-04):
-    // resume_stream is the ONLY instruction that intentionally skips settle_accrued_in_place.
-    // Calling the helper here would back-accrue across the pause window, violating
+    // resume_stream is the ONLY instruction that intentionally skips the shared settlement helper.
+    // Calling that helper here would back-accrue across the pause window, violating
     // "no back-accrual during pause" (ROADMAP success criterion #3).
     match mandate.status {
         StreamStatus::Paused => {}
