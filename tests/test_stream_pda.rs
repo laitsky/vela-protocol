@@ -1,6 +1,6 @@
-use anchor_lang::solana_program::hash::hash;
+use anchor_lang::prelude::Pubkey;
 use anchor_lang::Discriminator;
-use solana_program::pubkey::Pubkey;
+use solana_sdk::hash::hash;
 use vela_protocol::errors::VelaError;
 use vela_protocol::state::mandate::VelaMandate;
 use vela_protocol::state::stream_mandate::StreamMandate;
@@ -35,7 +35,7 @@ fn stream_mandate_discriminator() {
     let disc = StreamMandate::DISCRIMINATOR;
 
     assert_eq!(disc.len(), 8);
-    assert_eq!(disc, &expected[..8]);
+    assert_eq!(disc.as_ref(), &expected[..8]);
     assert_ne!(disc, VelaMandate::DISCRIMINATOR);
 }
 

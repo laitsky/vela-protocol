@@ -221,4 +221,41 @@ pub enum VelaError {
 
     #[msg("Account discriminator does not match the expected Vela account type")]
     WrongAccountType = 6601,
+
+    // ── Streaming errors (6700+) ────────────────────────────────
+    #[msg("Stream mandate is not active")]
+    StreamNotActive = 6700,
+
+    #[msg("Stream mandate is already paused")]
+    StreamAlreadyPaused = 6701,
+
+    #[msg("Stream mandate is already cancelled")]
+    StreamAlreadyCancelled = 6702,
+
+    #[msg("Stream settlement attempted before min_settle_interval elapsed")]
+    MinSettleIntervalViolation = 6703,
+
+    #[msg("Stream settlement amount exceeds the authorized stream rate")]
+    AmountExceedsStreamRate = 6704,
+
+    #[msg("Stream lifetime cap would be exceeded")]
+    StreamCapExceeded = 6705,
+
+    #[msg("Clock regression detected while settling stream accrual")]
+    ClockRegression = 6706,
+
+    #[msg("Stream rate_per_second must be greater than zero")] // D-11
+    RateMustBeNonZero = 6707,
+
+    #[msg("Stream min_settle_interval must be at least 60 seconds")] // D-09
+    MinSettleIntervalTooLow = 6708,
+
+    #[msg("authorized_max_rate must be greater than or equal to rate_per_second")] // D-12
+    AuthorizedMaxRateTooLow = 6709,
+
+    #[msg("Signer is not authorized for the requested stream operation")] // D-03/D-04/D-05
+    UnauthorizedStreamSigner = 6710,
+
+    #[msg("Provided stream mandate PDA does not match the canonical stream seeds")]
+    InvalidStreamAddress = 6711,
 }

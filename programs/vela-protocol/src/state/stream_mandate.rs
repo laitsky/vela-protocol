@@ -18,7 +18,7 @@ pub struct StreamMandate {
     pub status: StreamStatus,
     pub mandate_index: u64,
     pub bump: u8,
-    pub _reserved: [u8; 56], // D-12: shrunk from 64 to accommodate authorized_max_rate
+    pub _reserved: [u8; 56], // D-12: shrunk from 64 to accommodate the new rate ceiling field
 }
 
 impl StreamMandate {
