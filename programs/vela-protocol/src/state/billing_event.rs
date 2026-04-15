@@ -1,3 +1,9 @@
+//! Billing-event account storage plus the frozen stream event contract.
+//!
+//! Stream `schema_version` is intentionally the first field in every stream event
+//! and all future evolution is additive-only so downstream consumers can safely
+//! decode `schema_version: 1` without field reordering.
+
 use anchor_lang::prelude::*;
 
 #[account]
