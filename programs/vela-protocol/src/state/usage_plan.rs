@@ -18,21 +18,22 @@ pub struct PricingTier {
 /// SIZE: 8 + 32 + 8 + 32 + (24 * 5) + 1 + 8 + 8 + 32 + 1 + 1 + 1 + 64 = 317 bytes
 #[account]
 pub struct UsagePlan {
-    pub merchant: Pubkey,              // 32
-    pub plan_id: u64,                  // 8
-    pub unit_name: [u8; 32],           // 32 - e.g., "api_calls" (UTF-8, null-padded)
-    pub tiers: [PricingTier; 5],       // 120 = 5 x 24
-    pub tier_count: u8,                // 1 - how many tiers active (1-5)
-    pub max_charge_per_period: u64,    // 8 - subscriber-approved cap per D-20
-    pub settlement_frequency: u64,     // 8 - seconds between settlements
-    pub credential_mint: Pubkey,       // 32 - same credential pattern as VelaPlan
-    pub status: PlanStatus,            // 1
-    pub bump: u8,                      // 1
-    pub version: u8,                   // 1 - schema version
+    pub merchant: Pubkey,                        // 32
+    pub plan_id: u64,                            // 8
+    pub unit_name: [u8; 32],                     // 32 - e.g., "api_calls" (UTF-8, null-padded)
+    pub tiers: [PricingTier; 5],                 // 120 = 5 x 24
+    pub tier_count: u8,                          // 1 - how many tiers active (1-5)
+    pub max_charge_per_period: u64,              // 8 - subscriber-approved cap per D-20
+    pub settlement_frequency: u64,               // 8 - seconds between settlements
+    pub credential_mint: Pubkey,                 // 32 - same credential pattern as VelaPlan
+    pub status: PlanStatus,                      // 1
+    pub bump: u8,                                // 1
+    pub version: u8,                             // 1 - schema version
     pub _reserved: [u8; ACCOUNT_RESERVED_BYTES], // 64 - reserved for future fields
 }
 
 impl UsagePlan {
     pub const SEED_PREFIX: &'static [u8] = b"usage_plan";
-    pub const SIZE: usize = 8 + 32 + 8 + 32 + (24 * 5) + 1 + 8 + 8 + 32 + 1 + 1 + 1 + ACCOUNT_RESERVED_BYTES; // 317 bytes
+    pub const SIZE: usize =
+        8 + 32 + 8 + 32 + (24 * 5) + 1 + 8 + 8 + 32 + 1 + 1 + 1 + ACCOUNT_RESERVED_BYTES; // 317 bytes
 }

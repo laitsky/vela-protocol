@@ -34,7 +34,7 @@ fn test_create_plan_initializes_plan_after_merchant_bootstrap() {
     assert_eq!(merchant_state.credential_mint, merchant_credential_mint);
     assert_eq!(merchant_state.mandate_counter, 0);
     assert_eq!(merchant_state.version, 1);
-    assert_eq!(merchant_state._reserved, [0u8; 64]);
+    assert_eq!(merchant_state._reserved, [0u8; 56]);
 
     let plan: VelaPlan = harness.fetch_anchor_account(&addresses.plan);
     assert_eq!(plan.merchant, harness.merchant_pubkey());
@@ -122,9 +122,9 @@ fn test_create_plan_uses_merchant_credential_after_bootstrap() {
     );
 
     // The plan-scoped credential mint PDA should NOT be created as a Token-2022 mint
-    let plan_scoped_mint_account = harness.svm.get_account(
-        &solana_address::Address::from(addresses.credential_mint.to_bytes()),
-    );
+    let plan_scoped_mint_account = harness.svm.get_account(&solana_address::Address::from(
+        addresses.credential_mint.to_bytes(),
+    ));
     // It should either not exist or not be owned by Token-2022
     if let Some(account) = plan_scoped_mint_account {
         assert_ne!(

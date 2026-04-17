@@ -11,7 +11,9 @@ use solana_program_error::ProgramError as SplProgramError;
 use solana_pubkey::Pubkey as SplPubkey;
 use spl_token_2022::{
     extension::ExtensionType,
-    instruction::{initialize_mint2, initialize_non_transferable_mint, initialize_permanent_delegate},
+    instruction::{
+        initialize_mint2, initialize_non_transferable_mint, initialize_permanent_delegate,
+    },
     state::Mint,
 };
 
@@ -52,10 +54,8 @@ pub fn handler(ctx: Context<InitMerchantCredential>) -> Result<()> {
     let credential_mint_key = ctx.accounts.credential_mint.key();
 
     // Validate credential mint PDA: seeds = ["merchant-credential", merchant]
-    let (expected_credential_key, credential_bump) = Pubkey::find_program_address(
-        &[b"merchant-credential", merchant_key.as_ref()],
-        &crate::ID,
-    );
+    let (expected_credential_key, credential_bump) =
+        Pubkey::find_program_address(&[b"merchant-credential", merchant_key.as_ref()], &crate::ID);
     if credential_mint_key != expected_credential_key {
         return Err(ProgramError::InvalidSeeds.into());
     }

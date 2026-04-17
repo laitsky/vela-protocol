@@ -6,9 +6,7 @@ use anchor_lang::{
 
 use crate::{
     errors::VelaError,
-    state::{
-    ClusterType, ProtocolConfig, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION,
-    },
+    state::{ClusterType, ProtocolConfig, CURRENT_ACCOUNT_VERSION, PROTOCOL_CONFIG_RESERVED_BYTES},
 };
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
@@ -79,6 +77,13 @@ impl LoadedProtocolConfig {
         }
     }
 
+    pub fn transfer_hook_program_id(&self) -> Pubkey {
+        match self {
+            Self::Legacy(_) => Pubkey::default(),
+            Self::Current(config) => config.transfer_hook_program_id,
+        }
+    }
+
     pub fn into_current(self) -> ProtocolConfig {
         match self {
             Self::Legacy(legacy) => ProtocolConfig {
@@ -90,9 +95,10 @@ impl LoadedProtocolConfig {
                 wrapping_vault: legacy.wrapping_vault,
                 paused: legacy.paused,
                 paused_at: legacy.paused_at,
+                transfer_hook_program_id: Pubkey::default(),
                 bump: legacy.bump,
                 version: CURRENT_ACCOUNT_VERSION,
-                _reserved: [0; ACCOUNT_RESERVED_BYTES],
+                _reserved: [0; PROTOCOL_CONFIG_RESERVED_BYTES],
             },
             Self::Current(current) => current,
         }
@@ -140,7 +146,7 @@ pub fn upgrade_protocol_config<'info>(
     resize_protocol_config_account(payer, config_info, system_program)?;
 
     config.version = CURRENT_ACCOUNT_VERSION;
-    config._reserved = [0; ACCOUNT_RESERVED_BYTES];
+    config._reserved = [0; PROTOCOL_CONFIG_RESERVED_BYTES];
     write_protocol_config(config_info, &config)?;
 
     Ok(config)
@@ -191,4 +197,53 @@ fn validate_protocol_config_address(config: &Pubkey) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_upgrade_defaults_transfer_hook_program_id() {
+        let legacy = ProtocolConfigV1 {
+            admin: Pubkey::new_unique(),
+            cluster_pubkey: Pubkey::new_unique(),
+            cluster_type: ClusterType::Cerberus,
+            cluster_offset: 456,
+            wrapped_usdc_mint: Pubkey::new_unique(),
+            wrapping_vault: Pubkey::new_unique(),
+            paused: false,
+            paused_at: 0,
+            bump: 7,
+        };
+
+        let upgraded = LoadedProtocolConfig::Legacy(legacy.clone()).into_current();
+
+        assert_eq!(upgraded.admin, legacy.admin);
+        assert_eq!(upgraded.cluster_pubkey, legacy.cluster_pubkey);
+        assert_eq!(upgraded.transfer_hook_program_id, Pubkey::default());
+        assert_eq!(upgraded.version, CURRENT_ACCOUNT_VERSION);
+        assert_eq!(upgraded._reserved, [0; PROTOCOL_CONFIG_RESERVED_BYTES]);
+    }
+
+    #[test]
+    fn current_accessor_returns_transfer_hook_program_id() {
+        let transfer_hook_program_id = Pubkey::new_unique();
+        let loaded = LoadedProtocolConfig::Current(ProtocolConfig {
+            admin: Pubkey::new_unique(),
+            cluster_pubkey: Pubkey::new_unique(),
+            cluster_type: ClusterType::Cerberus,
+            cluster_offset: 456,
+            wrapped_usdc_mint: Pubkey::new_unique(),
+            wrapping_vault: Pubkey::new_unique(),
+            paused: false,
+            paused_at: 0,
+            transfer_hook_program_id,
+            bump: 1,
+            version: CURRENT_ACCOUNT_VERSION,
+            _reserved: [0; PROTOCOL_CONFIG_RESERVED_BYTES],
+        });
+
+        assert_eq!(loaded.transfer_hook_program_id(), transfer_hook_program_id);
+    }
 }

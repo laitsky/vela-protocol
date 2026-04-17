@@ -5,7 +5,7 @@ use crate::instructions::arcium_accounts::{
 use crate::{
     errors::VelaError,
     instructions::protocol_config_account::load_protocol_config,
-    state::{ProtocolConfig, PullApproval, VelaMandate, UsageReport},
+    state::{ProtocolConfig, PullApproval, UsageReport, VelaMandate},
     validate_callback_ixs,
 };
 use anchor_lang::prelude::*;
@@ -85,10 +85,11 @@ fn validate_usage_callback_accounts(
     mxe_account: &UncheckedAccount<'_>,
     comp_def_account: &UncheckedAccount<'_>,
 ) -> Result<()> {
-    validate_static_callback_accounts(mxe_account, comp_def_account, USAGE_CHARGE_CIRCUIT)
-        .or_else(|_| {
+    validate_static_callback_accounts(mxe_account, comp_def_account, USAGE_CHARGE_CIRCUIT).or_else(
+        |_| {
             validate_static_callback_accounts(mxe_account, comp_def_account, TIERED_PRICING_CIRCUIT)
-        })
+        },
+    )
 }
 
 #[derive(Accounts)]

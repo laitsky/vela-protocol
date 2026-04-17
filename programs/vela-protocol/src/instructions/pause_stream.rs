@@ -2,11 +2,13 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_2022::Token2022;
 
 use crate::{
-    constants::EXTRA_ACCOUNT_METAS_SEED,
+    constants::{EXTRA_ACCOUNT_METAS_SEED, WRAPPED_USDC_SYMBOL},
     errors::VelaError,
     instructions::{
         execute_stream::{invoke_stream_transfer, validate_stream_transfer_accounts},
-        stream_account::{load_stream_mandate, validate_stream_mandate_address, write_stream_mandate},
+        stream_account::{
+            load_stream_mandate, validate_stream_mandate_address, write_stream_mandate,
+        },
     },
     state::{ProtocolConfig, StreamMandate, StreamPaused, StreamStatus},
 };
@@ -132,6 +134,8 @@ pub fn handler(ctx: Context<PauseStream>) -> Result<()> {
     emit!(StreamPaused {
         schema_version: 1,
         mandate: ctx.accounts.mandate.key(),
+        mint: mandate.mint,
+        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
         paused_at: clock_now,
         signer: authority,
         final_settle_amount: settle_amount,

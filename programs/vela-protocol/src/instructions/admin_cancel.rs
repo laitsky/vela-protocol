@@ -10,18 +10,16 @@ use crate::{
     instructions::{
         mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
         merchant_account::resolve_merchant_credential_mint,
-        plan_account::{load_plan_account, require_plan_billing_type},
         plan_account::LoadedPlanAccount,
+        plan_account::{load_plan_account, require_plan_billing_type},
         protocol_config_account::load_protocol_config,
     },
-    state::{MandateStatus, MerchantState, ProtocolConfig, VelaPlan, UsagePlan},
+    state::{MandateStatus, MerchantState, ProtocolConfig, UsagePlan, VelaPlan},
 };
 
 #[derive(Accounts)]
 pub struct AdminCancel<'info> {
-    #[account(
-        mut,
-    )]
+    #[account(mut)]
     pub admin: Signer<'info>,
 
     #[account(
@@ -84,10 +82,7 @@ pub fn handler(ctx: Context<AdminCancel>) -> Result<()> {
         &plan.credential_mint(),
     )?;
     require_keys_eq!(ctx.accounts.credential_mint.key(), resolved_credential_mint);
-    require_keys_eq!(
-        mandate.subscriber,
-        ctx.accounts.subscriber.key()
-    );
+    require_keys_eq!(mandate.subscriber, ctx.accounts.subscriber.key());
     require!(
         mandate.status == MandateStatus::Active,
         VelaError::MandateNotActive

@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::{
+    constants::WRAPPED_USDC_SYMBOL,
     errors::VelaError,
     instructions::{
         mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
@@ -28,7 +29,10 @@ pub fn handler(ctx: Context<CancelPlanChange>) -> Result<()> {
     let protocol_config = load_protocol_config(&ctx.accounts.protocol_config.to_account_info())?;
 
     let loaded_mandate = load_mandate_account(&ctx.accounts.mandate.to_account_info())?;
-    require!(!loaded_mandate.is_legacy(), VelaError::MandateVersionUnsupported);
+    require!(
+        !loaded_mandate.is_legacy(),
+        VelaError::MandateVersionUnsupported
+    );
     validate_loaded_mandate_address(&ctx.accounts.mandate.key(), &loaded_mandate)?;
     let mut mandate = loaded_mandate.into_current();
     require!(
@@ -43,7 +47,9 @@ pub fn handler(ctx: Context<CancelPlanChange>) -> Result<()> {
         VelaError::UnauthorizedUpgrade
     );
 
-    let cancelled_plan = mandate.pending_new_plan;
+    let old_plan = mandate.plan;
+    let new_plan = mandate.pending_new_plan;
+    let applied_at = mandate.pending_effective_at;
     mandate.clear_pending();
     mandate.version = crate::state::CURRENT_ACCOUNT_VERSION;
     write_mandate(&ctx.accounts.mandate.to_account_info(), &mandate, false)?;
@@ -53,8 +59,13 @@ pub fn handler(ctx: Context<CancelPlanChange>) -> Result<()> {
         schema_version: 1,
         mandate: ctx.accounts.mandate.key(),
         mint: protocol_config.wrapped_usdc_mint(),
-        cancelled_plan,
+        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
+        old_plan,
+        new_plan,
+        proration_amount: 0,
+        change_type: 2,
         signer: authority,
+        applied_at,
         timestamp,
     });
 

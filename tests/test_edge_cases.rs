@@ -16,7 +16,15 @@ fn setup_fixture(
     frequency: u64,
     trial_period: u64,
     max_pulls: u64,
-) -> (TestHarness, SubscriptionFixture, VelaPlan, VelaMandate, Pubkey, Pubkey, Pubkey) {
+) -> (
+    TestHarness,
+    SubscriptionFixture,
+    VelaPlan,
+    VelaMandate,
+    Pubkey,
+    Pubkey,
+    Pubkey,
+) {
     let mut harness = TestHarness::new();
     let fixture = harness.subscribe_fixture(amount, frequency, trial_period, max_pulls);
     let plan: VelaPlan = harness.fetch_anchor_account(&fixture.plan);
@@ -54,18 +62,22 @@ fn setup_fixture(
     let merchant_wrapped_pubkey =
         harness.create_token_2022_ata(&admin, &harness.merchant_pubkey(), &wrapped_mint_pubkey);
 
-    (harness, fixture, plan, mandate, subscriber_wrapped_pubkey, merchant_wrapped_pubkey, wrapped_mint_pubkey)
+    (
+        harness,
+        fixture,
+        plan,
+        mandate,
+        subscriber_wrapped_pubkey,
+        merchant_wrapped_pubkey,
+        wrapped_mint_pubkey,
+    )
 }
 
 fn subscriber_pubkey(fixture: &SubscriptionFixture) -> Pubkey {
     Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes())
 }
 
-fn assert_custom_error(
-    error: &litesvm::types::FailedTransactionMetadata,
-    code: u32,
-    label: &str,
-) {
+fn assert_custom_error(error: &litesvm::types::FailedTransactionMetadata, code: u32, label: &str) {
     assert!(
         format!("{:?}", error.err).contains(&format!("Custom({code})")),
         "expected {label} custom error {code}, got {:?}",
@@ -86,7 +98,12 @@ fn test_expired_mandate_pull_fails() {
     let subscriber = subscriber_pubkey(&fixture);
 
     harness.set_clock_timestamp(mandate.next_payment_due);
-    harness.create_pull_approval_with_amount(&fixture.mandate, mandate.next_payment_due, true, plan.amount);
+    harness.create_pull_approval_with_amount(
+        &fixture.mandate,
+        mandate.next_payment_due,
+        true,
+        plan.amount,
+    );
     harness
         .send_execute_pull(
             &fixture.subscriber,
@@ -119,7 +136,10 @@ fn test_expired_mandate_pull_fails() {
         .expect("second pull should succeed");
 
     let mandate_after_second: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
-    assert!(matches!(mandate_after_second.status, MandateStatus::Expired));
+    assert!(matches!(
+        mandate_after_second.status,
+        MandateStatus::Expired
+    ));
 
     harness.set_clock_timestamp(mandate_after_second.next_payment_due);
     let error = harness
@@ -164,7 +184,12 @@ fn test_double_pull_same_period_fails() {
     let subscriber = subscriber_pubkey(&fixture);
 
     harness.set_clock_timestamp(mandate.next_payment_due);
-    harness.create_pull_approval_with_amount(&fixture.mandate, mandate.next_payment_due, true, plan.amount);
+    harness.create_pull_approval_with_amount(
+        &fixture.mandate,
+        mandate.next_payment_due,
+        true,
+        plan.amount,
+    );
     harness
         .send_execute_pull(
             &fixture.subscriber,
@@ -209,15 +234,15 @@ fn test_insufficient_balance_pull_fails() {
     // Create a separate mandate-owned wrapped account with 0 balance.
     let empty_wrapped = Keypair::new();
     let empty_wrapped_pubkey = helpers::to_anchor_pubkey(empty_wrapped.pubkey());
-    harness.inject_token_2022_account(
-        &empty_wrapped_pubkey,
-        &wrapped_mint,
-        &fixture.mandate,
-        0,
-    );
+    harness.inject_token_2022_account(&empty_wrapped_pubkey, &wrapped_mint, &fixture.mandate, 0);
 
     harness.set_clock_timestamp(mandate.next_payment_due);
-    harness.create_pull_approval_with_amount(&fixture.mandate, mandate.next_payment_due, true, plan.amount);
+    harness.create_pull_approval_with_amount(
+        &fixture.mandate,
+        mandate.next_payment_due,
+        true,
+        plan.amount,
+    );
 
     let error = harness
         .send_execute_pull(
@@ -322,7 +347,12 @@ fn test_pull_after_cancel_fails() {
 #[test]
 fn test_expiry_date_passed() {
     let (mut harness, fixture, plan, mandate, sub_wrapped, merch_wrapped, wrapped_mint) =
-        setup_fixture(25_000_000, MIN_FREQUENCY_SECONDS, MIN_FREQUENCY_SECONDS, 100);
+        setup_fixture(
+            25_000_000,
+            MIN_FREQUENCY_SECONDS,
+            MIN_FREQUENCY_SECONDS,
+            100,
+        );
     let subscriber = subscriber_pubkey(&fixture);
 
     assert!(mandate.expiry > 0, "fixture should set an expiry");

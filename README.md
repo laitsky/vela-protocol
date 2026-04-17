@@ -114,12 +114,14 @@ Circuits are defined in `encrypted-ixs/src/lib.rs` and compiled to `build/`.
 
 All circuits are written to satisfy MPC determinism constraints — no early returns, fixed-size loops, conditional assignment instead of branching.
 
-**Build artifacts in `build/`:**
-- `*.arcis` — compiled circuit binary (tracked)
-- `*.arcis.ir` — intermediate representation (tracked)
-- `*.idarc` — Arcium circuit metadata (tracked)
-- `*.ts` — generated TypeScript type definitions (tracked)
-- `*.hash` / `*.weight` — content hash and resource estimate (tracked)
+**Build artifacts in `build/` (gitignored — regenerated via `arcium build`):**
+- `*.arcis` — compiled circuit binary
+- `*.arcis.ir` — intermediate representation
+- `*.idarc` — Arcium circuit metadata
+- `*.ts` — generated TypeScript type definitions
+- `*.hash` / `*.weight` — content hash and resource estimate
+
+Run `arcium build` before `anchor build` on a fresh clone — the program embeds `.arcis` bytecode at compile time via `include_bytes!`.
 
 ## Development
 
@@ -146,8 +148,14 @@ bun install
 ### Build
 
 ```sh
+# Compile Arcium circuits to build/ (required before `anchor build` on a fresh clone)
+arcium build
+
 # Build Anchor programs
 anchor build
+
+# Or run both steps together
+bun run build:programs
 
 # Type-check TypeScript
 bun run typecheck
@@ -162,7 +170,7 @@ cargo test -p vela-protocol -- --nocapture
 # TypeScript integration tests (Bun + LiteSVM)
 bun test ts-tests/
 
-# Full CI pipeline
+# Full CI pipeline (rebuilds Arcium circuits first)
 bun run ci:protocol
 ```
 
@@ -191,7 +199,7 @@ programs/
   vela-protocol/       # Main billing program
   vela-transfer-hook/  # Token-2022 transfer hook validator
 encrypted-ixs/          # Arcium circuit definitions (arcis DSL)
-build/                  # Compiled circuit artifacts
+build/                  # Compiled circuit artifacts (gitignored)
 tests/                  # Rust integration tests (13 tests, LiteSVM)
 ts-tests/               # TypeScript integration tests (5 tests, Bun)
 migrations/             # Anchor deploy migrations

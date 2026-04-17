@@ -22,12 +22,10 @@ fn test_higher_price_upgrade_requires_subscriber_authority_and_preserves_credent
     );
 
     let merchant = fixture.harness.merchant.insecure_clone();
-    let credential_before = fixture
-        .harness
-        .derive_credential_ata(
-            &anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes()),
-            &fixture.plan_a_state.credential_mint,
-        );
+    let credential_before = fixture.harness.derive_credential_ata(
+        &anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes()),
+        &fixture.plan_a_state.credential_mint,
+    );
 
     let error = fixture
         .harness
@@ -57,12 +55,10 @@ fn test_higher_price_upgrade_requires_subscriber_authority_and_preserves_credent
     let mandate_after = fetch_mandate(&fixture.harness, &fixture.mandate);
     assert_eq!(mandate_after.plan, fixture.plan_b);
 
-    let credential_after = fixture
-        .harness
-        .derive_credential_ata(
-            &anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes()),
-            &fixture.plan_b_state.credential_mint,
-        );
+    let credential_after = fixture.harness.derive_credential_ata(
+        &anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes()),
+        &fixture.plan_b_state.credential_mint,
+    );
     assert_eq!(credential_before, credential_after);
 }
 

@@ -12,10 +12,11 @@ use solana_keypair::Keypair;
 use solana_signer::Signer;
 use vela_protocol::{
     instructions::{
-        keeper_config_account::load_keeper_config,
-        protocol_config_account::load_protocol_config,
+        keeper_config_account::load_keeper_config, protocol_config_account::load_protocol_config,
     },
-    state::{ClusterType, KeeperConfig, KeeperMode, ProtocolConfig},
+    state::{
+        ClusterType, KeeperConfig, KeeperMode, ProtocolConfig, PROTOCOL_CONFIG_RESERVED_BYTES,
+    },
 };
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -49,7 +50,12 @@ fn keeper_config_address() -> (Pubkey, u8) {
     Pubkey::find_program_address(&[KeeperConfig::SEED_PREFIX], &vela_protocol::ID)
 }
 
-fn write_legacy_protocol_config(harness: &mut TestHarness, config: Pubkey, admin: Pubkey, bump: u8) {
+fn write_legacy_protocol_config(
+    harness: &mut TestHarness,
+    config: Pubkey,
+    admin: Pubkey,
+    bump: u8,
+) {
     let legacy = LegacyProtocolConfig {
         admin,
         cluster_pubkey: Pubkey::new_unique(),
@@ -240,7 +246,7 @@ fn test_protocol_and_keeper_loaders_accept_legacy_singletons() {
     assert_eq!(protocol.admin, admin);
     assert_eq!(protocol.cluster_offset, 456);
     assert_eq!(protocol.version, 1);
-    assert_eq!(protocol._reserved, [0u8; 64]);
+    assert_eq!(protocol._reserved, [0u8; PROTOCOL_CONFIG_RESERVED_BYTES]);
     assert_eq!(keeper.admin, admin);
     assert_eq!(keeper.keeper_authority, keeper_authority);
     assert_eq!(keeper.version, 1);
@@ -265,7 +271,7 @@ fn test_config_loaders_reject_unsupported_v2_versions() {
         keeper_config_address().1,
     ));
 
-    let protocol_version_offset = protocol_bytes.len() - 1 - 64;
+    let protocol_version_offset = protocol_bytes.len() - 1 - PROTOCOL_CONFIG_RESERVED_BYTES;
     protocol_bytes[protocol_version_offset] = 9;
     let keeper_version_offset = keeper_bytes.len() - 1 - 64;
     keeper_bytes[keeper_version_offset] = 9;
@@ -357,11 +363,11 @@ fn test_init_config_and_keeper_config_write_versioned_accounts() {
         to_anchor_pubkey(admin.pubkey()),
     );
 
-    let protocol: ProtocolConfig = harness.fetch_anchor_account(&protocol_config);
+    let protocol_bytes = harness.fetch_account_data(&protocol_config);
     let keeper: KeeperConfig = harness.fetch_anchor_account(&keeper_config);
 
-    assert_eq!(protocol.version, 1);
-    assert_eq!(protocol._reserved, [0u8; 64]);
+    assert_eq!(protocol_bytes.len(), ProtocolConfig::SIZE);
+    assert!(protocol_bytes.starts_with(&ProtocolConfig::DISCRIMINATOR));
     assert_eq!(keeper.version, 1);
     assert_eq!(keeper._reserved, [0u8; 64]);
 }
@@ -371,8 +377,12 @@ fn test_initializer_admin_consumers_reference_compatibility_helpers() {
     let init_config = include_str!("../programs/vela-protocol/src/instructions/init_config.rs");
     let init_keeper_config =
         include_str!("../programs/vela-protocol/src/instructions/init_keeper_config.rs");
+    let init_token_config =
+        include_str!("../programs/vela-protocol/src/instructions/init_token_config.rs");
     let update_keeper_config =
         include_str!("../programs/vela-protocol/src/instructions/update_keeper_config.rs");
+    let update_token_config =
+        include_str!("../programs/vela-protocol/src/instructions/update_token_config.rs");
     let init_wrapped_mint =
         include_str!("../programs/vela-protocol/src/instructions/init_wrapped_mint.rs");
     let admin_cancel = include_str!("../programs/vela-protocol/src/instructions/admin_cancel.rs");
@@ -383,7 +393,9 @@ fn test_initializer_admin_consumers_reference_compatibility_helpers() {
 
     assert!(init_config.contains("load_protocol_config"));
     assert!(init_keeper_config.contains("load_protocol_config"));
+    assert!(init_token_config.contains("load_protocol_config"));
     assert!(update_keeper_config.contains("load_protocol_config"));
+    assert!(update_token_config.contains("load_protocol_config"));
     assert!(update_keeper_config.contains("load_keeper_config"));
     assert!(init_wrapped_mint.contains("load_protocol_config"));
     assert!(admin_cancel.contains("load_protocol_config"));

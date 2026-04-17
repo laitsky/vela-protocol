@@ -3,14 +3,15 @@ mod helpers;
 
 use std::any::type_name;
 
-use anchor_lang::{AnchorDeserialize, Discriminator};
 use anchor_lang::__private::base64::{engine::general_purpose::STANDARD, Engine as _};
+use anchor_lang::{AnchorDeserialize, Discriminator};
 use helpers::TestHarness;
 use litesvm::types::TransactionMetadata;
 use solana_signer::Signer;
+use vela_protocol::constants::WRAPPED_USDC_SYMBOL;
 use vela_protocol::state::{
-    MerchantState, StreamCancelled, StreamCreated, StreamMandate, StreamPaused, StreamRateUpdated,
-    StreamResumed, StreamSettled,
+    MandateUpgradeFinalized, MandateUpgradeInitiated, MerchantState, StreamCancelled,
+    StreamCreated, StreamMandate, StreamPaused, StreamRateUpdated, StreamResumed, StreamSettled,
 };
 
 struct StreamFixture {
@@ -32,7 +33,8 @@ fn setup_stream_fixture(
 ) -> StreamFixture {
     let mut harness = TestHarness::new();
     let subscriber = harness.create_wallet();
-    let subscriber_pubkey = anchor_lang::prelude::Pubkey::new_from_array(subscriber.pubkey().to_bytes());
+    let subscriber_pubkey =
+        anchor_lang::prelude::Pubkey::new_from_array(subscriber.pubkey().to_bytes());
     let admin = harness.merchant.insecure_clone();
     let spl_usdc_mint = harness.create_spl_mint(&admin, 6);
     harness.init_protocol_config(&admin);
@@ -76,7 +78,8 @@ fn setup_stream_fixture(
         u64::MAX,
     );
 
-    let subscriber_usdc = harness.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);
+    let subscriber_usdc =
+        harness.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);
     harness.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, wrapped_amount);
     let subscriber_wrapped =
         harness.create_token_2022_ata(&admin, &stream_mandate, &wrapped_mint_pubkey);
@@ -158,9 +161,13 @@ fn test_create_stream_mandate_emits_stream_created() {
     );
 
     assert_eq!(event.schema_version, 1);
-    assert_eq!(event.subscriber, anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes()));
+    assert_eq!(
+        event.subscriber,
+        anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes())
+    );
     assert_eq!(event.merchant, merchant);
     assert_eq!(event.mint, fixture.wrapped_mint);
+    assert_eq!(event.token_symbol, WRAPPED_USDC_SYMBOL);
     assert_eq!(event.rate_per_second, 20);
     assert_eq!(event.authorized_max_rate, 25);
     assert_eq!(event.max_streamed, Some(10_000));
@@ -170,7 +177,9 @@ fn test_create_stream_mandate_emits_stream_created() {
 #[test]
 fn test_execute_stream_emits_stream_settled() {
     let mut fixture = setup_stream_fixture(10, 10, None, 60, 10_000);
-    fixture.harness.set_clock_timestamp(fixture.created_at + 120);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 120);
     let metadata = fixture
         .harness
         .send_execute_stream(
@@ -186,6 +195,8 @@ fn test_execute_stream_emits_stream_settled() {
     let event = assert_single_event::<StreamSettled>(&metadata);
     assert_eq!(event.schema_version, 1);
     assert_eq!(event.mandate, fixture.stream_mandate);
+    assert_eq!(event.mint, fixture.wrapped_mint);
+    assert_eq!(event.token_symbol, WRAPPED_USDC_SYMBOL);
     assert_eq!(event.amount, 1_200);
     assert_eq!(event.total_streamed_after, 1_200);
     assert_eq!(event.last_settled_ts, fixture.created_at + 120);
@@ -195,7 +206,9 @@ fn test_execute_stream_emits_stream_settled() {
 #[test]
 fn test_pause_stream_emits_stream_paused() {
     let mut fixture = setup_stream_fixture(10, 10, None, 60, 10_000);
-    fixture.harness.set_clock_timestamp(fixture.created_at + 120);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 120);
     let metadata = fixture
         .harness
         .send_pause_stream(
@@ -210,8 +223,13 @@ fn test_pause_stream_emits_stream_paused() {
     let event = assert_single_event::<StreamPaused>(&metadata);
     assert_eq!(event.schema_version, 1);
     assert_eq!(event.mandate, fixture.stream_mandate);
+    assert_eq!(event.mint, fixture.wrapped_mint);
+    assert_eq!(event.token_symbol, WRAPPED_USDC_SYMBOL);
     assert_eq!(event.paused_at, fixture.created_at + 120);
-    assert_eq!(event.signer, anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes()));
+    assert_eq!(
+        event.signer,
+        anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes())
+    );
     assert_eq!(event.final_settle_amount, 1_200);
     assert_eq!(event.timestamp, fixture.created_at + 120);
 }
@@ -219,7 +237,9 @@ fn test_pause_stream_emits_stream_paused() {
 #[test]
 fn test_resume_stream_emits_stream_resumed() {
     let mut fixture = setup_stream_fixture(10, 10, None, 60, 10_000);
-    fixture.harness.set_clock_timestamp(fixture.created_at + 120);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 120);
     fixture
         .harness
         .send_pause_stream(
@@ -230,7 +250,9 @@ fn test_resume_stream_emits_stream_resumed() {
             &fixture.wrapped_mint,
         )
         .expect("pause_stream should succeed");
-    fixture.harness.set_clock_timestamp(fixture.created_at + 420);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 420);
 
     let metadata = fixture
         .harness
@@ -240,16 +262,23 @@ fn test_resume_stream_emits_stream_resumed() {
     let event = assert_single_event::<StreamResumed>(&metadata);
     assert_eq!(event.schema_version, 1);
     assert_eq!(event.mandate, fixture.stream_mandate);
+    assert_eq!(event.mint, fixture.wrapped_mint);
+    assert_eq!(event.token_symbol, WRAPPED_USDC_SYMBOL);
     assert_eq!(event.resumed_at, fixture.created_at + 420);
     assert_eq!(event.pause_duration_secs, 300);
-    assert_eq!(event.signer, anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes()));
+    assert_eq!(
+        event.signer,
+        anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes())
+    );
     assert_eq!(event.timestamp, fixture.created_at + 420);
 }
 
 #[test]
 fn test_update_stream_rate_emits_stream_rate_updated() {
     let mut fixture = setup_stream_fixture(10, 20, None, 60, 10_000);
-    fixture.harness.set_clock_timestamp(fixture.created_at + 120);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 120);
     let metadata = fixture
         .harness
         .send_update_stream_rate(
@@ -266,19 +295,44 @@ fn test_update_stream_rate_emits_stream_rate_updated() {
     let event = assert_single_event::<StreamRateUpdated>(&metadata);
     assert_eq!(event.schema_version, 1);
     assert_eq!(event.mandate, fixture.stream_mandate);
+    assert_eq!(event.mint, fixture.wrapped_mint);
+    assert_eq!(event.token_symbol, WRAPPED_USDC_SYMBOL);
     assert_eq!(event.old_rate_per_second, 10);
     assert_eq!(event.new_rate_per_second, 15);
     assert_eq!(event.old_authorized_max_rate, 20);
     assert_eq!(event.new_authorized_max_rate, 25);
-    assert_eq!(event.signer, anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes()));
+    assert_eq!(
+        event.signer,
+        anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes())
+    );
     assert_eq!(event.final_settle_amount, 1_200);
     assert_eq!(event.timestamp, fixture.created_at + 120);
+
+    let initiated = assert_single_event::<MandateUpgradeInitiated>(&metadata);
+    assert_eq!(initiated.mandate, fixture.stream_mandate);
+    assert_eq!(initiated.old_plan, anchor_lang::prelude::Pubkey::default());
+    assert_eq!(initiated.new_plan, anchor_lang::prelude::Pubkey::default());
+    assert_eq!(initiated.proration_amount, 1_200);
+    assert_eq!(initiated.change_type, 1);
+    assert_eq!(initiated.mint, fixture.wrapped_mint);
+    assert_eq!(initiated.token_symbol, WRAPPED_USDC_SYMBOL);
+
+    let finalized = assert_single_event::<MandateUpgradeFinalized>(&metadata);
+    assert_eq!(finalized.mandate, fixture.stream_mandate);
+    assert_eq!(finalized.old_plan, anchor_lang::prelude::Pubkey::default());
+    assert_eq!(finalized.new_plan, anchor_lang::prelude::Pubkey::default());
+    assert_eq!(finalized.proration_amount, 1_200);
+    assert_eq!(finalized.change_type, 1);
+    assert_eq!(finalized.mint, fixture.wrapped_mint);
+    assert_eq!(finalized.token_symbol, WRAPPED_USDC_SYMBOL);
 }
 
 #[test]
 fn test_cancel_stream_emits_stream_cancelled() {
     let mut fixture = setup_stream_fixture(10, 10, None, 60, 10_000);
-    fixture.harness.set_clock_timestamp(fixture.created_at + 120);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 120);
     let metadata = fixture
         .harness
         .send_cancel_stream(
@@ -293,8 +347,13 @@ fn test_cancel_stream_emits_stream_cancelled() {
     let event = assert_single_event::<StreamCancelled>(&metadata);
     assert_eq!(event.schema_version, 1);
     assert_eq!(event.mandate, fixture.stream_mandate);
+    assert_eq!(event.mint, fixture.wrapped_mint);
+    assert_eq!(event.token_symbol, WRAPPED_USDC_SYMBOL);
     assert_eq!(event.cancelled_at, fixture.created_at + 120);
-    assert_eq!(event.signer, anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes()));
+    assert_eq!(
+        event.signer,
+        anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes())
+    );
     assert_eq!(event.final_settle_amount, 1_200);
     assert_eq!(event.total_streamed_final, 1_200);
     assert_eq!(event.timestamp, fixture.created_at + 120);

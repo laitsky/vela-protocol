@@ -108,14 +108,7 @@ fn test_update_mandate_realloc_tail_compatibility() {
     assert!(grown_len > original_len);
 
     harness
-        .send_update_mandate(
-            &mandate,
-            None,
-            Some(before.amount + 7),
-            None,
-            None,
-            None,
-        )
+        .send_update_mandate(&mandate, None, Some(before.amount + 7), None, None, None)
         .expect("update_mandate should succeed after tail realloc growth");
 
     let after: VelaMandate = harness.fetch_anchor_account(&mandate);

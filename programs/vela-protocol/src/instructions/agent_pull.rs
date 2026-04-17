@@ -11,7 +11,7 @@ use solana_pubkey::Pubkey as SplPubkey;
 use crate::{
     constants::{
         AGENT_MANDATE_SEED, AGENT_PULL_APPROVAL_TTL_SECONDS, EXTRA_ACCOUNT_METAS_SEED,
-        TRANSFER_HOOK_PROGRAM_ID, USDC_DECIMALS,
+        USDC_DECIMALS,
     },
     errors::VelaError,
     instructions::agent_mandate_account::{load_agent_mandate, write_agent_mandate},
@@ -59,6 +59,9 @@ pub struct AgentPull<'info> {
     )]
     pub pull_approval: Account<'info, PullApproval>,
 
+    /// CHECK: TokenConfig PDA for the wrapped mint. Validated by transfer hook.
+    pub token_config: UncheckedAccount<'info>,
+
     #[account(
         mut,
         address = protocol_config.wrapped_usdc_mint,
@@ -77,8 +80,7 @@ pub struct AgentPull<'info> {
     )]
     pub wrapping_vault: Box<Account<'info, SplTokenAccount>>,
 
-    /// CHECK: Dedicated transfer-hook validator program.
-    #[account(address = TRANSFER_HOOK_PROGRAM_ID)]
+    /// CHECK: Transfer hook program validated in handler against ProtocolConfig.transfer_hook_program_id.
     pub hook_program: UncheckedAccount<'info>,
 
     /// CHECK: PDA owned by the hook program and derived from the wrapped mint.
@@ -119,6 +121,16 @@ pub fn handler<'a, 'b, 'c, 'info>(
     require!(
         !ctx.accounts.protocol_config.paused,
         VelaError::ProtocolPaused
+    );
+    let hook_program_id = ctx.accounts.protocol_config.transfer_hook_program_id;
+    require!(
+        hook_program_id != Pubkey::default(),
+        VelaError::InvalidProtocolConfig
+    );
+    require_keys_eq!(
+        ctx.accounts.hook_program.key(),
+        hook_program_id,
+        VelaError::InvalidProtocolConfig
     );
 
     let service = ctx.accounts.service_wrapped_account.owner;
@@ -161,7 +173,10 @@ pub fn handler<'a, 'b, 'c, 'info>(
             VelaError::LifetimeCapExceeded
         );
 
-        require!(amount >= mandate.min_pull_amount, VelaError::PullAmountTooSmall);
+        require!(
+            amount >= mandate.min_pull_amount,
+            VelaError::PullAmountTooSmall
+        );
         if mandate.last_pull_at > 0 && mandate.min_pull_interval > 0 {
             let elapsed = now.saturating_sub(mandate.last_pull_at);
             require!(
@@ -191,7 +206,9 @@ pub fn handler<'a, 'b, 'c, 'info>(
         let approval_info = ctx.accounts.pull_approval.to_account_info();
         let mut approval_data = approval_info.try_borrow_mut_data()?;
         let mut approval_slice: &mut [u8] = &mut approval_data;
-        ctx.accounts.pull_approval.try_serialize(&mut approval_slice)?;
+        ctx.accounts
+            .pull_approval
+            .try_serialize(&mut approval_slice)?;
     }
 
     let authority_key = ctx.accounts.authority.key();
@@ -225,7 +242,14 @@ pub fn handler<'a, 'b, 'c, 'info>(
         SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.wrapping_vault.key()), false),
         SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.protocol_config.key()), false),
         SplAccountMeta::new(spl_pubkey(&ctx.accounts.pull_approval.key()), false),
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.extra_account_meta_list.key()), false),
+        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.token_config.key()), false),
+        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.system_program.key()), false),
+        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.system_program.key()), false),
+        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.system_program.key()), false),
+        SplAccountMeta::new_readonly(
+            spl_pubkey(&ctx.accounts.extra_account_meta_list.key()),
+            false,
+        ),
         SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.hook_program.key()), false),
     ]);
     let transfer_ix = convert_instruction(transfer_ix);
@@ -238,6 +262,10 @@ pub fn handler<'a, 'b, 'c, 'info>(
         ctx.accounts.wrapping_vault.to_account_info(),
         ctx.accounts.protocol_config.to_account_info(),
         ctx.accounts.pull_approval.to_account_info(),
+        ctx.accounts.token_config.to_account_info(),
+        ctx.accounts.system_program.to_account_info(),
+        ctx.accounts.system_program.to_account_info(),
+        ctx.accounts.system_program.to_account_info(),
         ctx.accounts.extra_account_meta_list.to_account_info(),
         ctx.accounts.hook_program.to_account_info(),
     ];
@@ -301,7 +329,9 @@ fn anchor_pubkey(key: SplPubkey) -> Pubkey {
     Pubkey::new_from_array(key.to_bytes())
 }
 
-fn convert_instruction(ix: SplInstruction) -> anchor_lang::solana_program::instruction::Instruction {
+fn convert_instruction(
+    ix: SplInstruction,
+) -> anchor_lang::solana_program::instruction::Instruction {
     anchor_lang::solana_program::instruction::Instruction {
         program_id: anchor_pubkey(ix.program_id),
         accounts: ix

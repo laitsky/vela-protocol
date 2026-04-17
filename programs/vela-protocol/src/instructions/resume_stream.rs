@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::{
+    constants::WRAPPED_USDC_SYMBOL,
     errors::VelaError,
     instructions::stream_account::{
         load_stream_mandate, validate_stream_mandate_address, write_stream_mandate,
@@ -53,6 +54,8 @@ pub fn handler(ctx: Context<ResumeStream>) -> Result<()> {
     emit!(StreamResumed {
         schema_version: 1,
         mandate: ctx.accounts.mandate.key(),
+        mint: mandate.mint,
+        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
         resumed_at: clock_now,
         pause_duration_secs: pause_duration as u64,
         signer: authority,

@@ -59,7 +59,8 @@ fn setup_subscription_with_t22(
     harness.init_extra_account_meta_list(&admin, &wrapped_mint_pubkey, &wrapping_vault);
 
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
-    let subscriber_usdc = harness.create_spl_token_account(&fixture.subscriber, &spl_usdc_mint, &subscriber);
+    let subscriber_usdc =
+        harness.create_spl_token_account(&fixture.subscriber, &spl_usdc_mint, &subscriber);
     harness.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, amount * 10);
 
     let subscriber_wrapped_pubkey =
@@ -144,7 +145,8 @@ fn test_init_wrapped_mint_requires_protocol_config() {
         .expect_err("init_wrapped_mint without ProtocolConfig should fail");
 
     assert!(
-        format!("{:?}", error.err).contains("Custom(") || format!("{:?}", error.err).contains("AccountNotFound"),
+        format!("{:?}", error.err).contains("Custom(")
+            || format!("{:?}", error.err).contains("AccountNotFound"),
         "expected missing config error, got {:?}",
         error.err,
     );
@@ -165,8 +167,14 @@ fn test_init_extra_account_meta_list() {
 
     // Verify ExtraAccountMetaList PDA exists and has non-empty data
     let data = harness.fetch_account_data(&extra_account_meta_list);
-    assert!(!data.is_empty(), "ExtraAccountMetaList should have non-empty data");
-    assert!(data.len() > 8, "ExtraAccountMetaList should contain TLV entries");
+    assert!(
+        !data.is_empty(),
+        "ExtraAccountMetaList should have non-empty data"
+    );
+    assert!(
+        data.len() > 8,
+        "ExtraAccountMetaList should contain TLV entries"
+    );
 }
 
 // ================================================================
@@ -203,13 +211,19 @@ fn test_transfer_hook_with_valid_approval() {
 
     // Mandate should have pulls_executed incremented
     let mandate_after: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
-    assert_eq!(mandate_after.pulls_executed, 1, "mandate.pulls_executed should be 1 after successful pull");
+    assert_eq!(
+        mandate_after.pulls_executed, 1,
+        "mandate.pulls_executed should be 1 after successful pull"
+    );
     assert!(matches!(mandate_after.status, MandateStatus::Active));
 
     // PullApproval should be closed (refunded to payer)
     let approval_pda = harness.derive_pull_approval_address(&fixture.mandate);
     assert!(
-        harness.svm.get_account(&helpers::to_address(approval_pda)).is_none(),
+        harness
+            .svm
+            .get_account(&helpers::to_address(approval_pda))
+            .is_none(),
         "PullApproval PDA should be closed after successful execute_pull"
     );
 }
@@ -361,6 +375,7 @@ fn call_transfer_hook_directly(
     wrapping_vault: &Pubkey,
     config: &Pubkey,
     pull_approval: &Pubkey,
+    token_config: &Pubkey,
     amount: u64,
     caller: &solana_keypair::Keypair,
 ) -> Result<litesvm::types::TransactionMetadata, litesvm::types::FailedTransactionMetadata> {
@@ -376,6 +391,8 @@ fn call_transfer_hook_directly(
     // 6: wrapping_vault
     // 7: protocol_config
     // 8: pull_approval
+    // 9: token_config
+    // 10-12: reserved placeholders
 
     let (extra_account_meta_list, _) = harness.derive_extra_account_meta_list(mint);
 
@@ -396,6 +413,10 @@ fn call_transfer_hook_directly(
         AccountMeta::new_readonly(helpers::to_address(*wrapping_vault), false),
         AccountMeta::new_readonly(helpers::to_address(*config), false),
         AccountMeta::new(helpers::to_address(*pull_approval), false),
+        AccountMeta::new_readonly(helpers::to_address(*token_config), false),
+        AccountMeta::new_readonly(helpers::to_address(anchor_lang::system_program::ID), false),
+        AccountMeta::new_readonly(helpers::to_address(anchor_lang::system_program::ID), false),
+        AccountMeta::new_readonly(helpers::to_address(anchor_lang::system_program::ID), false),
     ];
 
     let ix = solana_instruction::Instruction {
@@ -410,11 +431,20 @@ fn call_transfer_hook_directly(
 fn test_hook_handler_validates_approval_directly() {
     // Call the transfer hook instruction directly with a valid approval.
     // This tests the hook handler logic in isolation.
-    let (mut harness, fixture, plan, mandate, subscriber_wrapped_pubkey, merchant_wrapped_pubkey, wrapped_mint_pubkey) =
-        setup_subscription_with_t22(25_000_000, 2);
+    let (
+        mut harness,
+        fixture,
+        plan,
+        mandate,
+        subscriber_wrapped_pubkey,
+        merchant_wrapped_pubkey,
+        wrapped_mint_pubkey,
+    ) = setup_subscription_with_t22(25_000_000, 2);
     let config = harness.derive_config();
-    let config_account: vela_protocol::state::ProtocolConfig = harness.fetch_anchor_account(&config);
+    let config_account: vela_protocol::state::ProtocolConfig =
+        harness.fetch_anchor_account(&config);
     let wrapping_vault = config_account.wrapping_vault;
+    let token_config = harness.derive_token_config_address(&wrapped_mint_pubkey);
 
     harness.set_clock_timestamp(mandate.next_payment_due);
     let approval_pda = harness.create_pull_approval_with_amount(
@@ -437,6 +467,7 @@ fn test_hook_handler_validates_approval_directly() {
         &wrapping_vault,
         &config,
         &approval_pda,
+        &token_config,
         plan.amount,
         &caller,
     );
@@ -447,11 +478,20 @@ fn test_hook_handler_validates_approval_directly() {
 #[test]
 fn test_hook_handler_rejects_no_approval_directly() {
     // Call the transfer hook instruction directly with NO approval account.
-    let (mut harness, fixture, plan, _mandate, subscriber_wrapped_pubkey, merchant_wrapped_pubkey, wrapped_mint_pubkey) =
-        setup_subscription_with_t22(25_000_000, 2);
+    let (
+        mut harness,
+        fixture,
+        plan,
+        _mandate,
+        subscriber_wrapped_pubkey,
+        merchant_wrapped_pubkey,
+        wrapped_mint_pubkey,
+    ) = setup_subscription_with_t22(25_000_000, 2);
     let config = harness.derive_config();
-    let config_account: vela_protocol::state::ProtocolConfig = harness.fetch_anchor_account(&config);
+    let config_account: vela_protocol::state::ProtocolConfig =
+        harness.fetch_anchor_account(&config);
     let wrapping_vault = config_account.wrapping_vault;
+    let token_config = harness.derive_token_config_address(&wrapped_mint_pubkey);
 
     // Use a random pubkey as "pull_approval" (not a real account owned by program)
     let fake_approval = Keypair::new();
@@ -469,6 +509,7 @@ fn test_hook_handler_rejects_no_approval_directly() {
         &wrapping_vault,
         &config,
         &fake_approval_pubkey,
+        &token_config,
         plan.amount,
         &caller,
     )

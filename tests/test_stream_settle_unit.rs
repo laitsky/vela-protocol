@@ -38,7 +38,12 @@ fn fresh_mandate(rate: u64, last: i64, cap: Option<u64>) -> StreamMandate {
         status: StreamStatus::Active,
         mandate_index: 0,
         bump: 255,
-        _reserved: [0u8; 56],
+        pending_new_rate_per_second: 0,
+        pending_new_authorized_max_rate: 0,
+        pending_effective_at: 0,
+        pending_change_type: 0,
+        pending_nonce_short: [0u8; 8],
+        _reserved_v2: [0u8; 23],
     }
 }
 
@@ -98,7 +103,10 @@ fn clock_regression_is_rejected() {
 
     let error = settle_accrued_in_place(&mut mandate, 99).unwrap_err();
 
-    assert_eq!(error_code(error), vela_error_code(VelaError::ClockRegression));
+    assert_eq!(
+        error_code(error),
+        vela_error_code(VelaError::ClockRegression)
+    );
     assert_eq!(mandate.total_streamed, 0);
     assert_eq!(mandate.last_settled_ts, 100);
 }

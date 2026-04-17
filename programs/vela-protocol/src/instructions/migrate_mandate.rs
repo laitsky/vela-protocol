@@ -10,9 +10,7 @@ use crate::{
         plan_account::load_plan_account,
         protocol_config_account::load_protocol_config,
     },
-    state::{
-        MerchantState, ProtocolConfig, VelaMandate, CURRENT_ACCOUNT_VERSION,
-    },
+    state::{MerchantState, ProtocolConfig, VelaMandate, CURRENT_ACCOUNT_VERSION},
 };
 
 #[derive(Accounts)]

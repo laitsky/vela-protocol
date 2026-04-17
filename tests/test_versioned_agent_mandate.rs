@@ -96,7 +96,10 @@ fn test_agent_mandate_loader_accepts_legacy_bytes() {
 
     assert_eq!(loaded.authority, authority);
     assert_eq!(loaded.agent, agent);
-    assert_eq!(loaded.version, vela_protocol::state::CURRENT_ACCOUNT_VERSION);
+    assert_eq!(
+        loaded.version,
+        vela_protocol::state::CURRENT_ACCOUNT_VERSION
+    );
     assert_eq!(
         loaded._reserved,
         [0u8; vela_protocol::state::ACCOUNT_RESERVED_BYTES]
@@ -160,7 +163,10 @@ fn test_create_agent_mandate_writes_versioned_accounts() {
         .expect("create_agent_mandate should succeed");
 
     let mandate = harness.fetch_agent_mandate(&fixture.agent_mandate);
-    assert_eq!(mandate.version, vela_protocol::state::CURRENT_ACCOUNT_VERSION);
+    assert_eq!(
+        mandate.version,
+        vela_protocol::state::CURRENT_ACCOUNT_VERSION
+    );
     assert_eq!(
         mandate._reserved,
         [0u8; vela_protocol::state::ACCOUNT_RESERVED_BYTES]
@@ -187,8 +193,8 @@ fn test_agent_mandate_consumers_use_compatibility_loader() {
         .expect("revoke_agent_mandate.rs should exist");
     let drain = fs::read_to_string(instruction_path("drain_agent_mandate.rs"))
         .expect("drain_agent_mandate.rs should exist");
-    let agent_pull = fs::read_to_string(instruction_path("agent_pull.rs"))
-        .expect("agent_pull.rs should exist");
+    let agent_pull =
+        fs::read_to_string(instruction_path("agent_pull.rs")).expect("agent_pull.rs should exist");
 
     assert!(create.contains("load_agent_mandate"));
     assert!(adjust.contains("load_agent_mandate"));
@@ -533,7 +539,10 @@ fn test_legacy_agent_mandate_roundtrip_preserves_fields() {
     assert_eq!(current.services[1].daily_limit, 5_000_000);
     assert_eq!(current.services[1].daily_spent, 300_000);
     assert_eq!(current.bump, bump);
-    assert_eq!(current.version, vela_protocol::state::CURRENT_ACCOUNT_VERSION);
+    assert_eq!(
+        current.version,
+        vela_protocol::state::CURRENT_ACCOUNT_VERSION
+    );
     assert_eq!(
         current._reserved,
         [0u8; vela_protocol::state::ACCOUNT_RESERVED_BYTES]

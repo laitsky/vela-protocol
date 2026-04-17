@@ -236,5 +236,29 @@ path = "../../tests/upgrade_idempotency.rs"
 name = "upgrade_auth_ceiling"
 path = "../../tests/upgrade_auth_ceiling.rs"
 
+[[test]]
+name = "upgrade_scheduled_autoapply"
+path = "../../tests/upgrade_scheduled_autoapply.rs"
+
+[[test]]
+name = "credential_rebinding_invariant"
+path = "../../tests/credential_rebinding_invariant.rs"
+
+[[test]]
+name = "upgrade_events_distinct"
+path = "../../tests/upgrade_events_distinct.rs"
+
+[[test]]
+name = "init_token_config_decimals_assert"
+path = "../../tests/init_token_config_decimals_assert.rs"
+
+[[test]]
+name = "usdc_regression"
+path = "../../tests/usdc_regression.rs"
+
+[[test]]
+name = "time_warp_dst"
+path = "../../tests/time_warp_dst.rs"
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

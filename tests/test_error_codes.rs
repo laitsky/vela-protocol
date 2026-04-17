@@ -32,6 +32,12 @@ fn phase_40_domain_ranges_are_reserved() {
 }
 
 #[test]
+fn phase_41_domain_ranges_are_reserved() {
+    assert_eq!(error_code(VelaError::TokenNotRegistered), 12500);
+    assert_eq!(error_code(VelaError::MetaListAlreadyInitialized), 12600);
+}
+
+#[test]
 fn shared_metadata_and_upgradeable_config_are_declared() {
     assert_eq!(LEGACY_ACCOUNT_VERSION, 0);
     assert_eq!(CURRENT_ACCOUNT_VERSION, 1);

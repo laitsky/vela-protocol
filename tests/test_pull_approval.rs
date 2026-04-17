@@ -1,6 +1,7 @@
 #[path = "helpers/mod.rs"]
 mod helpers;
 
+use anchor_lang::prelude::Pubkey;
 use helpers::{SubscriptionFixture, TestHarness};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
@@ -8,9 +9,16 @@ use vela_protocol::{
     constants::MIN_FREQUENCY_SECONDS,
     state::{VelaMandate, VelaPlan},
 };
-use anchor_lang::prelude::Pubkey;
 
-fn setup_fixture() -> (TestHarness, SubscriptionFixture, VelaPlan, VelaMandate, Pubkey, Pubkey, Pubkey) {
+fn setup_fixture() -> (
+    TestHarness,
+    SubscriptionFixture,
+    VelaPlan,
+    VelaMandate,
+    Pubkey,
+    Pubkey,
+    Pubkey,
+) {
     let mut harness = TestHarness::new();
     let fixture = harness.subscribe_fixture(25_000_000, MIN_FREQUENCY_SECONDS, 0, 2);
     let plan: VelaPlan = harness.fetch_anchor_account(&fixture.plan);
@@ -48,12 +56,21 @@ fn setup_fixture() -> (TestHarness, SubscriptionFixture, VelaPlan, VelaMandate, 
     let merchant_wrapped_pubkey =
         harness.create_token_2022_ata(&admin, &harness.merchant_pubkey(), &wrapped_mint_pubkey);
 
-    (harness, fixture, plan, mandate, subscriber_wrapped_pubkey, merchant_wrapped_pubkey, wrapped_mint_pubkey)
+    (
+        harness,
+        fixture,
+        plan,
+        mandate,
+        subscriber_wrapped_pubkey,
+        merchant_wrapped_pubkey,
+        wrapped_mint_pubkey,
+    )
 }
 
 #[test]
 fn test_pull_with_valid_approval() {
-    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) = setup_fixture();
+    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) =
+        setup_fixture();
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
     harness.set_clock_timestamp(mandate_before.next_payment_due);
@@ -76,14 +93,18 @@ fn test_pull_with_valid_approval() {
         .expect("execute_pull should consume a valid approval");
 
     assert!(
-        harness.svm.get_account(&helpers::to_address(approval)).is_none(),
+        harness
+            .svm
+            .get_account(&helpers::to_address(approval))
+            .is_none(),
         "approval PDA should be closed after a successful pull",
     );
 }
 
 #[test]
 fn test_pull_with_expired_approval_fails() {
-    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) = setup_fixture();
+    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) =
+        setup_fixture();
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
     // Set clock past valid_until so approval is expired

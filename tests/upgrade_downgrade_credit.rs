@@ -30,7 +30,13 @@ fn test_update_mandate_plan_turns_downgrade_into_credit_balance() {
         )
         .expect("downgrade should succeed");
 
-    assert_upgrade_events(&metadata, fixture.mandate, fixture.plan_a, fixture.plan_b, -5_000_000);
+    assert_upgrade_events(
+        &metadata,
+        fixture.mandate,
+        fixture.plan_a,
+        fixture.plan_b,
+        -5_000_000,
+    );
     let credit_event = assert_single_event::<MandateCreditAdded>(&metadata);
     assert_eq!(credit_event.credit_amount, 5_000_000);
     assert_eq!(credit_event.new_credit_balance, 5_000_000);

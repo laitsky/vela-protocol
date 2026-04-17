@@ -5,7 +5,7 @@ use crate::{
     instructions::plan_account::{
         load_plan_account, write_plan, write_usage_plan, LoadedPlanAccount,
     },
-    state::{UsagePlan, VelaPlan, CURRENT_ACCOUNT_VERSION, ACCOUNT_RESERVED_BYTES},
+    state::{UsagePlan, VelaPlan, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION},
 };
 
 #[derive(Accounts)]

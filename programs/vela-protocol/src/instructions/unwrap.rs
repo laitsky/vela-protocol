@@ -1,11 +1,16 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
-    token::{transfer_checked, Mint as SplMint, Token, TokenAccount as SplTokenAccount, TransferChecked},
+    token::{
+        transfer_checked, Mint as SplMint, Token, TokenAccount as SplTokenAccount, TransferChecked,
+    },
     token_2022::Token2022,
     token_interface::{burn, Burn, Mint, TokenAccount},
 };
 
-use crate::{constants::USDC_DECIMALS, errors::VelaError, instructions::protocol_config_account::load_protocol_config, state::ProtocolConfig};
+use crate::{
+    constants::USDC_DECIMALS, errors::VelaError,
+    instructions::protocol_config_account::load_protocol_config, state::ProtocolConfig,
+};
 
 #[derive(Accounts)]
 pub struct Unwrap<'info> {

@@ -23,6 +23,8 @@ cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [test]
+# Anchor test deploys use the provider wallet as the upgrade authority for both
+# vela_protocol and vela_transfer_hook when upgradeable = true.
 upgradeable = true
 
 [scripts]

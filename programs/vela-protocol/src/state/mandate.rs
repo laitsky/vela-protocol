@@ -34,7 +34,8 @@ pub struct VelaMandate {
 
 impl VelaMandate {
     pub const SEED_PREFIX: &'static [u8] = b"mandate";
-    pub const SIZE: usize = 8 + 32 + 32 + 32 + (11 * 8) + 1 + 1 + 1 + 8 + 1 + 8 + 32 + 8 + 1 + 8 + 7;
+    pub const SIZE: usize =
+        8 + 32 + 32 + 32 + (11 * 8) + 1 + 1 + 1 + 8 + 1 + 8 + 32 + 8 + 1 + 8 + 7;
 
     pub fn current_version() -> u8 {
         CURRENT_ACCOUNT_VERSION

@@ -42,12 +42,18 @@ fn main() {
 
 fn load_inputs(build_dir: &PathBuf, circuit: &str) -> Vec<String> {
     let json = load_idarc(build_dir, circuit);
-    flatten_schema_array(json.get("inputs").and_then(Value::as_array), SchemaKind::Input)
+    flatten_schema_array(
+        json.get("inputs").and_then(Value::as_array),
+        SchemaKind::Input,
+    )
 }
 
 fn load_outputs(build_dir: &PathBuf, circuit: &str) -> Vec<String> {
     let json = load_idarc(build_dir, circuit);
-    flatten_schema_array(json.get("outputs").and_then(Value::as_array), SchemaKind::Output)
+    flatten_schema_array(
+        json.get("outputs").and_then(Value::as_array),
+        SchemaKind::Output,
+    )
 }
 
 fn load_idarc(build_dir: &PathBuf, circuit: &str) -> Value {

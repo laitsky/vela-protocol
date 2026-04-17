@@ -1,8 +1,8 @@
+use crate::errors::VelaError;
 use crate::instructions::arcium_accounts::validate_cluster_configuration;
 use crate::instructions::protocol_config_account::{
     load_protocol_config, upgrade_protocol_config, write_protocol_config,
 };
-use crate::errors::VelaError;
 use crate::state::{ClusterType, ProtocolConfig};
 use anchor_lang::prelude::*;
 

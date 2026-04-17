@@ -134,7 +134,13 @@ fn setup_wrap_test() -> (
     let (wrapped_usdc_mint, wrapping_vault) =
         init_wrapped_mint(&mut harness, &admin, &wrapped_mint_keypair, &spl_usdc_mint);
 
-    (harness, admin, spl_usdc_mint, wrapped_usdc_mint, wrapping_vault)
+    (
+        harness,
+        admin,
+        spl_usdc_mint,
+        wrapped_usdc_mint,
+        wrapping_vault,
+    )
 }
 
 #[test]
@@ -149,7 +155,8 @@ fn test_wrap_before_mint_initialized_fails() {
     // Bootstrap config (without init_wrapped_mint)
     init_config(&mut harness, &admin);
 
-    let subscriber_usdc = harness.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);
+    let subscriber_usdc =
+        harness.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);
     // admin is the mint authority (create_spl_mint sets authority to admin)
     harness.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, 1_000_000);
 
@@ -177,7 +184,8 @@ fn test_wrap_before_mint_initialized_fails() {
     .expect_err("wrap should fail when wrapped mint not in config");
 
     assert!(
-        format!("{:?}", error.err).contains("Custom(") || format!("{:?}", error.err).contains("ConstraintAddress"),
+        format!("{:?}", error.err).contains("Custom(")
+            || format!("{:?}", error.err).contains("ConstraintAddress"),
         "expected address constraint or WrappedMintNotInitialized error, got {:?}",
         error.err,
     );
@@ -192,7 +200,8 @@ fn test_wrap_spl_usdc_to_wrapped() {
     let wrap_amount = 1_000_000; // 1 USDC
 
     // Create subscriber's SPL USDC account and fund it
-    let subscriber_usdc = harness.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);
+    let subscriber_usdc =
+        harness.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);
     harness.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, wrap_amount * 2);
 
     // Create the real Token-2022 ATA so account extensions match the wrapped mint.
@@ -215,11 +224,17 @@ fn test_wrap_spl_usdc_to_wrapped() {
 
     // Verify SPL USDC balance decreased
     let sub_usdc_after = harness.fetch_spl_token_account(&subscriber_usdc);
-    assert_eq!(sub_usdc_after.amount, wrap_amount, "subscriber SPL USDC should decrease by wrap_amount");
+    assert_eq!(
+        sub_usdc_after.amount, wrap_amount,
+        "subscriber SPL USDC should decrease by wrap_amount"
+    );
 
     // Verify vault received SPL USDC
     let vault_after = harness.fetch_spl_token_account(&wrapping_vault);
-    assert_eq!(vault_after.amount, wrap_amount, "vault should receive wrap_amount SPL USDC");
+    assert_eq!(
+        vault_after.amount, wrap_amount,
+        "vault should receive wrap_amount SPL USDC"
+    );
 }
 
 #[test]
@@ -274,8 +289,7 @@ fn test_unwrap_wrapped_to_spl() {
     // Verify user's SPL USDC increased
     let user_usdc_after = harness.fetch_spl_token_account(&user_usdc);
     assert_eq!(
-        user_usdc_after.amount,
-        unwrap_amount,
+        user_usdc_after.amount, unwrap_amount,
         "user SPL USDC should increase by unwrap_amount"
     );
 }
@@ -287,7 +301,8 @@ fn test_wrap_insufficient_balance_fails() {
     let subscriber_pubkey = helpers::to_anchor_pubkey(subscriber.pubkey());
 
     // Create account with only 100 USDC (admin is the mint authority)
-    let subscriber_usdc = harness.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);
+    let subscriber_usdc =
+        harness.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);
     harness.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, 100);
 
     // Create the real Token-2022 ATA before attempting to wrap.

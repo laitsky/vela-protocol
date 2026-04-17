@@ -293,8 +293,7 @@ fn handler_transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> 
                 elapsed_i64 >= i64::from(stream.min_settle_interval),
                 VelaError::MinSettleIntervalViolation
             );
-            let elapsed =
-                u128::from(u64::try_from(elapsed_i64).map_err(|_| VelaError::Overflow)?);
+            let elapsed = u128::from(u64::try_from(elapsed_i64).map_err(|_| VelaError::Overflow)?);
             let gross = elapsed
                 .checked_mul(u128::from(stream.rate_per_second))
                 .ok_or(VelaError::Overflow)?;

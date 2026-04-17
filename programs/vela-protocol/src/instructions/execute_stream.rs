@@ -5,12 +5,14 @@ use solana_program_error::ProgramError as SplProgramError;
 use solana_pubkey::Pubkey as SplPubkey;
 
 use crate::{
-    constants::{EXTRA_ACCOUNT_METAS_SEED, USDC_DECIMALS},
+    constants::{EXTRA_ACCOUNT_METAS_SEED, USDC_DECIMALS, WRAPPED_USDC_SYMBOL},
     errors::VelaError,
     instructions::{
         keeper_config_account::load_keeper_config,
         protocol_config_account::load_protocol_config,
-        stream_account::{load_stream_mandate, validate_stream_mandate_address, write_stream_mandate},
+        stream_account::{
+            load_stream_mandate, validate_stream_mandate_address, write_stream_mandate,
+        },
     },
     state::{KeeperConfig, ProtocolConfig, PullApproval, StreamMandate, StreamSettled},
 };
@@ -107,7 +109,10 @@ pub fn handler<'a, 'b, 'c, 'info>(
     );
 
     let (expected_approval, _) = Pubkey::find_program_address(
-        &[PullApproval::SEED_PREFIX, ctx.accounts.stream_mandate.key().as_ref()],
+        &[
+            PullApproval::SEED_PREFIX,
+            ctx.accounts.stream_mandate.key().as_ref(),
+        ],
         &crate::ID,
     );
     require_keys_eq!(
@@ -166,6 +171,8 @@ pub fn handler<'a, 'b, 'c, 'info>(
     emit!(StreamSettled {
         schema_version: 1,
         mandate: ctx.accounts.stream_mandate.key(),
+        mint: stream.mint,
+        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
         amount: settle_amount,
         total_streamed_after: stream.total_streamed,
         last_settled_ts: stream.last_settled_ts,

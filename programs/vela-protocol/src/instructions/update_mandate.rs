@@ -6,7 +6,9 @@ use anchor_lang::{
 use crate::{
     errors::VelaError,
     instructions::{
-        mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate_account},
+        mandate_account::{
+            load_mandate_account, validate_loaded_mandate_address, write_mandate_account,
+        },
         plan_account::load_plan_account,
     },
     state::{VelaMandate, ACCOUNT_RESERVED_BYTES},
@@ -46,16 +48,28 @@ pub fn handler(
     let merchant_key = ctx.accounts.merchant.key();
     let mut mandate = load_mandate_account(&ctx.accounts.mandate.to_account_info())?;
     validate_loaded_mandate_address(&ctx.accounts.mandate.key(), &mandate)?;
-    require_keys_eq!(mandate.merchant(), merchant_key, VelaError::UnauthorizedCancel);
+    require_keys_eq!(
+        mandate.merchant(),
+        merchant_key,
+        VelaError::UnauthorizedCancel
+    );
     require!(
         matches!(mandate.status(), crate::state::MandateStatus::Active),
         VelaError::MandateNotActive
     );
 
     let target_plan_key = plan.unwrap_or(mandate.plan());
-    require_keys_eq!(ctx.accounts.plan.key(), target_plan_key, VelaError::MigrationPreconditionFailed);
+    require_keys_eq!(
+        ctx.accounts.plan.key(),
+        target_plan_key,
+        VelaError::MigrationPreconditionFailed
+    );
     let target_plan = load_plan_account(&ctx.accounts.plan.to_account_info())?;
-    require_keys_eq!(target_plan.merchant(), merchant_key, VelaError::UnauthorizedCancel);
+    require_keys_eq!(
+        target_plan.merchant(),
+        merchant_key,
+        VelaError::UnauthorizedCancel
+    );
     require!(
         matches!(target_plan.status(), crate::state::PlanStatus::Active),
         VelaError::PlanNotActive

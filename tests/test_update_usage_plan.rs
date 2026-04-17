@@ -2,8 +2,8 @@
 mod helpers;
 
 use helpers::TestHarness;
-use vela_protocol::{
-    state::{PlanStatus, PricingTier, UsagePlan, CURRENT_ACCOUNT_VERSION, ACCOUNT_RESERVED_BYTES},
+use vela_protocol::state::{
+    PlanStatus, PricingTier, UsagePlan, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION,
 };
 
 /// Test: update_usage_plan instruction allows merchant to modify usage plan fields.
@@ -22,9 +22,17 @@ fn test_update_usage_plan_modifies_fields() {
     let initial_settlement = 3600u64;
 
     let addresses = harness.derive_usage_plan_addresses(plan_id);
-    harness.send_init_merchant_credential()
+    harness
+        .send_init_merchant_credential()
         .expect("init_merchant_credential should succeed");
-    harness.send_create_usage_plan(plan_id, unit_name, initial_tiers.clone(), initial_max_charge, initial_settlement)
+    harness
+        .send_create_usage_plan(
+            plan_id,
+            unit_name,
+            initial_tiers.clone(),
+            initial_max_charge,
+            initial_settlement,
+        )
         .expect("create_usage_plan should succeed");
 
     // Verify initial state
@@ -34,18 +42,28 @@ fn test_update_usage_plan_modifies_fields() {
 
     // Update the usage plan
     let new_tiers = vec![
-        PricingTier { up_to: 1000, rate_per_unit: 50, _padding: 0 },
-        PricingTier { up_to: 0, rate_per_unit: 25, _padding: 0 },
+        PricingTier {
+            up_to: 1000,
+            rate_per_unit: 50,
+            _padding: 0,
+        },
+        PricingTier {
+            up_to: 0,
+            rate_per_unit: 25,
+            _padding: 0,
+        },
     ];
     let new_max_charge = 100_000_000u64;
     let new_settlement = 7200u64;
 
-    harness.send_update_usage_plan(
-        plan_id,
-        Some(new_tiers.clone()),
-        Some(new_max_charge),
-        Some(new_settlement),
-    ).expect("update_usage_plan should succeed");
+    harness
+        .send_update_usage_plan(
+            plan_id,
+            Some(new_tiers.clone()),
+            Some(new_max_charge),
+            Some(new_settlement),
+        )
+        .expect("update_usage_plan should succeed");
 
     let updated: UsagePlan = harness.fetch_anchor_account(&addresses.usage_plan);
     assert_eq!(updated.max_charge_per_period, new_max_charge);
@@ -74,24 +92,28 @@ fn test_update_usage_plan_rejects_non_merchant() {
 
     let plan_id = 20u64;
     let unit_name = [0u8; 32];
-    let tiers = vec![PricingTier { up_to: 0, rate_per_unit: 100, _padding: 0 }];
+    let tiers = vec![PricingTier {
+        up_to: 0,
+        rate_per_unit: 100,
+        _padding: 0,
+    }];
 
-    harness.send_init_merchant_credential()
+    harness
+        .send_init_merchant_credential()
         .expect("init_merchant_credential should succeed");
-    harness.send_create_usage_plan(plan_id, unit_name, tiers, 50_000_000, 3600)
+    harness
+        .send_create_usage_plan(plan_id, unit_name, tiers, 50_000_000, 3600)
         .expect("create_usage_plan should succeed");
 
     let imposter = harness.create_wallet();
 
-    let result = harness.send_update_usage_plan_as(
-        &imposter,
-        plan_id,
-        None,
-        Some(100_000_000),
-        None,
-    );
+    let result =
+        harness.send_update_usage_plan_as(&imposter, plan_id, None, Some(100_000_000), None);
 
-    assert!(result.is_err(), "update_usage_plan must reject non-merchant signer");
+    assert!(
+        result.is_err(),
+        "update_usage_plan must reject non-merchant signer"
+    );
 }
 
 /// Test: update_usage_plan with all None fields returns NoUpdateProvided error.
@@ -101,21 +123,25 @@ fn test_update_usage_plan_rejects_empty_update() {
 
     let plan_id = 30u64;
     let unit_name = [0u8; 32];
-    let tiers = vec![PricingTier { up_to: 0, rate_per_unit: 100, _padding: 0 }];
+    let tiers = vec![PricingTier {
+        up_to: 0,
+        rate_per_unit: 100,
+        _padding: 0,
+    }];
 
-    harness.send_init_merchant_credential()
+    harness
+        .send_init_merchant_credential()
         .expect("init_merchant_credential should succeed");
-    harness.send_create_usage_plan(plan_id, unit_name, tiers, 50_000_000, 3600)
+    harness
+        .send_create_usage_plan(plan_id, unit_name, tiers, 50_000_000, 3600)
         .expect("create_usage_plan should succeed");
 
-    let result = harness.send_update_usage_plan(
-        plan_id,
-        None,
-        None,
-        None,
-    );
+    let result = harness.send_update_usage_plan(plan_id, None, None, None);
 
-    assert!(result.is_err(), "update_usage_plan must reject empty update");
+    assert!(
+        result.is_err(),
+        "update_usage_plan must reject empty update"
+    );
 }
 
 /// Test: update_usage_plan partial update only changes specified fields.
@@ -125,27 +151,39 @@ fn test_update_usage_plan_partial_update() {
 
     let plan_id = 40u64;
     let unit_name = *b"bytes\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
-    let initial_tiers = vec![PricingTier { up_to: 0, rate_per_unit: 100, _padding: 0 }];
+    let initial_tiers = vec![PricingTier {
+        up_to: 0,
+        rate_per_unit: 100,
+        _padding: 0,
+    }];
     let initial_max_charge = 50_000_000u64;
     let initial_settlement = 3600u64;
 
-    harness.send_init_merchant_credential()
+    harness
+        .send_init_merchant_credential()
         .expect("init_merchant_credential should succeed");
-    harness.send_create_usage_plan(plan_id, unit_name, initial_tiers, initial_max_charge, initial_settlement)
+    harness
+        .send_create_usage_plan(
+            plan_id,
+            unit_name,
+            initial_tiers,
+            initial_max_charge,
+            initial_settlement,
+        )
         .expect("create_usage_plan should succeed");
 
     // Only update max_charge_per_period
     let new_max_charge = 200_000_000u64;
     let addresses = harness.derive_usage_plan_addresses(plan_id);
-    harness.send_update_usage_plan(
-        plan_id,
-        None,
-        Some(new_max_charge),
-        None,
-    ).expect("partial update_usage_plan should succeed");
+    harness
+        .send_update_usage_plan(plan_id, None, Some(new_max_charge), None)
+        .expect("partial update_usage_plan should succeed");
 
     let updated: UsagePlan = harness.fetch_anchor_account(&addresses.usage_plan);
     assert_eq!(updated.max_charge_per_period, new_max_charge);
-    assert_eq!(updated.settlement_frequency, initial_settlement, "settlement_frequency should be unchanged");
+    assert_eq!(
+        updated.settlement_frequency, initial_settlement,
+        "settlement_frequency should be unchanged"
+    );
     assert_eq!(updated.tier_count, 1, "tier_count should be unchanged");
 }

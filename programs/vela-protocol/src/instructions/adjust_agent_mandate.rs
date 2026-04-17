@@ -86,7 +86,10 @@ pub fn handler(
     }
 
     if let Some(next_daily_limit) = daily_limit {
-        require!(next_daily_limit >= mandate.daily_spent, VelaError::InvalidAmount);
+        require!(
+            next_daily_limit >= mandate.daily_spent,
+            VelaError::InvalidAmount
+        );
         mandate.daily_limit = next_daily_limit;
     }
     if let Some(next_lifetime_cap) = lifetime_cap {

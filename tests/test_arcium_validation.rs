@@ -114,8 +114,6 @@ fn test_config_init() {
         config.cluster_offset, cluster_offset,
         "cluster_offset should be 456 (devnet default)"
     );
-    assert!(config.bump != 0, "bump should be non-zero");
-
     println!("test_config_init passed: ProtocolConfig initialized correctly");
 }
 

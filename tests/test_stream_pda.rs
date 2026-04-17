@@ -21,7 +21,12 @@ fn stream_mandate_pda_seeds() {
     );
 
     let (pda2, _) = Pubkey::find_program_address(
-        &[b"stream", subscriber.as_ref(), merchant.as_ref(), &index.to_le_bytes()],
+        &[
+            b"stream",
+            subscriber.as_ref(),
+            merchant.as_ref(),
+            &index.to_le_bytes(),
+        ],
         &vela_protocol::ID,
     );
 

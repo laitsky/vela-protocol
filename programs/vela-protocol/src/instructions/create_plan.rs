@@ -1,10 +1,6 @@
 use anchor_lang::{
     prelude::*,
-    solana_program::{
-        program::invoke_signed,
-        program_error::ProgramError,
-        system_instruction,
-    },
+    solana_program::{program::invoke_signed, program_error::ProgramError, system_instruction},
 };
 use solana_pubkey::Pubkey as SplPubkey;
 
@@ -15,7 +11,7 @@ use crate::{
         ensure_merchant_state, resolve_merchant_credential_mint, write_merchant_state,
     },
     instructions::plan_account::write_plan,
-    state::{MerchantState, PlanStatus, VelaPlan, CURRENT_ACCOUNT_VERSION, ACCOUNT_RESERVED_BYTES},
+    state::{MerchantState, PlanStatus, VelaPlan, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION},
 };
 
 #[derive(Accounts)]
@@ -75,7 +71,11 @@ pub fn handler(
     let plan_key = ctx.accounts.plan.key();
     let credential_mint_key = ctx.accounts.credential_mint.key();
     let (expected_plan_key, plan_bump) = Pubkey::find_program_address(
-        &[VelaPlan::SEED_PREFIX, merchant_key.as_ref(), plan_id_bytes.as_ref()],
+        &[
+            VelaPlan::SEED_PREFIX,
+            merchant_key.as_ref(),
+            plan_id_bytes.as_ref(),
+        ],
         &crate::ID,
     );
     if plan_key != expected_plan_key {

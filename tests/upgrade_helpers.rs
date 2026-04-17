@@ -5,15 +5,19 @@ pub mod helpers;
 
 use std::any::type_name;
 
-use anchor_lang::{AnchorDeserialize, Discriminator};
 use anchor_lang::__private::base64::{engine::general_purpose::STANDARD, Engine as _};
-use helpers::TestHarness;
+use anchor_lang::{AnchorDeserialize, Discriminator, InstructionData, ToAccountMetas};
+use helpers::{convert_account_meta, TestHarness};
 use litesvm::types::{FailedTransactionMetadata, TransactionMetadata};
+use solana_instruction::Instruction;
 use solana_keypair::Keypair;
 use solana_program_pack::Pack;
 use solana_signer::Signer;
 use spl_token_2022::state::Account as Token2022Account;
-use vela_protocol::state::{MandateUpgradeCancelled, MandateUpgradeFinalized, MandateUpgradeInitiated, VelaMandate, VelaPlan};
+use vela_protocol::state::{
+    MandateUpgradeCancelled, MandateUpgradeFinalized, MandateUpgradeInitiated, VelaMandate,
+    VelaPlan,
+};
 
 pub const PERIOD_SECONDS: u64 = 30 * 24 * 60 * 60;
 
@@ -31,13 +35,11 @@ pub struct PeriodicUpgradeFixture {
     pub spl_usdc_mint: anchor_lang::prelude::Pubkey,
 }
 
-pub fn setup_periodic_upgrade_fixture(
-    amount_a: u64,
-    amount_b: u64,
-) -> PeriodicUpgradeFixture {
+pub fn setup_periodic_upgrade_fixture(amount_a: u64, amount_b: u64) -> PeriodicUpgradeFixture {
     let mut harness = TestHarness::new();
     let subscriber = harness.create_wallet();
-    let subscriber_pubkey = anchor_lang::prelude::Pubkey::new_from_array(subscriber.pubkey().to_bytes());
+    let subscriber_pubkey =
+        anchor_lang::prelude::Pubkey::new_from_array(subscriber.pubkey().to_bytes());
 
     harness
         .send_init_merchant_credential()
@@ -71,8 +73,7 @@ pub fn setup_periodic_upgrade_fixture(
         harness.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);
     harness.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, amount_a * 10);
 
-    let subscriber_wrapped =
-        harness.create_token_2022_ata(&admin, &mandate, &wrapped_mint_pubkey);
+    let subscriber_wrapped = harness.create_token_2022_ata(&admin, &mandate, &wrapped_mint_pubkey);
     harness
         .send_wrap(
             &subscriber,
@@ -107,10 +108,7 @@ pub fn fetch_mandate(harness: &TestHarness, mandate: &anchor_lang::prelude::Pubk
     harness.fetch_anchor_account(mandate)
 }
 
-pub fn wrapped_balance(
-    harness: &TestHarness,
-    account: &anchor_lang::prelude::Pubkey,
-) -> u64 {
+pub fn wrapped_balance(harness: &TestHarness, account: &anchor_lang::prelude::Pubkey) -> u64 {
     Token2022Account::unpack_from_slice(&harness.fetch_account_data(account))
         .expect("token-2022 account should unpack")
         .amount
@@ -199,9 +197,82 @@ pub fn assert_upgrade_events(
 pub fn assert_cancel_event(
     metadata: &TransactionMetadata,
     mandate: anchor_lang::prelude::Pubkey,
-    cancelled_plan: anchor_lang::prelude::Pubkey,
+    old_plan: anchor_lang::prelude::Pubkey,
+    new_plan: anchor_lang::prelude::Pubkey,
 ) {
     let cancelled = assert_single_event::<MandateUpgradeCancelled>(metadata);
     assert_eq!(cancelled.mandate, mandate);
-    assert_eq!(cancelled.cancelled_plan, cancelled_plan);
+    assert_eq!(cancelled.old_plan, old_plan);
+    assert_eq!(cancelled.new_plan, new_plan);
+    assert_eq!(cancelled.proration_amount, 0);
+    assert_eq!(cancelled.change_type, 2);
+}
+
+pub fn send_periodic_execute_pull(
+    fixture: &mut PeriodicUpgradeFixture,
+    payer: &Keypair,
+    plan: &anchor_lang::prelude::Pubkey,
+    pending_plan: Option<&anchor_lang::prelude::Pubkey>,
+) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+    let subscriber =
+        anchor_lang::prelude::Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
+    let config = fixture.harness.derive_config();
+    let config_account: vela_protocol::state::ProtocolConfig =
+        fixture.harness.fetch_anchor_account(&config);
+    let (extra_account_meta_list, _) = fixture
+        .harness
+        .derive_extra_account_meta_list(&fixture.wrapped_mint);
+    let keeper_config = fixture.harness.ensure_keeper_config(payer);
+
+    let accounts = vela_protocol::accounts::ExecutePull {
+        payer: anchor_lang::prelude::Pubkey::new_from_array(payer.pubkey().to_bytes()),
+        subscriber,
+        merchant: fixture.harness.merchant_pubkey(),
+        keeper_config,
+        plan: *plan,
+        mandate: fixture.mandate,
+        subscriber_wrapped_account: fixture.subscriber_wrapped,
+        merchant_wrapped_account: fixture.merchant_wrapped,
+        wrapped_usdc_mint: fixture.wrapped_mint,
+        pull_approval: fixture
+            .harness
+            .derive_pull_approval_address(&fixture.mandate),
+        token_config: fixture
+            .harness
+            .derive_token_config_address(&fixture.wrapped_mint),
+        protocol_config: config,
+        wrapping_vault: config_account.wrapping_vault,
+        hook_program: anchor_lang::prelude::Pubkey::new_from_array(
+            vela_transfer_hook::ID.to_bytes(),
+        ),
+        extra_account_meta_list,
+        protocol_program: vela_protocol::ID,
+        token_2022_program: anchor_spl::token_2022::ID,
+        system_program: anchor_lang::system_program::ID,
+    };
+
+    let mut metas = accounts
+        .to_account_metas(None)
+        .into_iter()
+        .map(convert_account_meta)
+        .collect::<Vec<_>>();
+
+    if let Some(pending_plan) = pending_plan {
+        metas.push(convert_account_meta(
+            anchor_lang::solana_program::instruction::AccountMeta::new_readonly(
+                *pending_plan,
+                false,
+            ),
+        ));
+    }
+
+    let instruction = Instruction {
+        program_id: fixture.harness.program_id,
+        accounts: metas,
+        data: vela_protocol::instruction::ExecutePull {}.data(),
+    };
+
+    fixture
+        .harness
+        .send_instructions(&[instruction], &[payer], Some(&payer.pubkey()))
 }

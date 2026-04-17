@@ -18,6 +18,7 @@ pub const DEFAULT_CLUSTER_OFFSET: u64 = 456;
 // Transfer hook infrastructure seeds and metadata
 pub const MINT_AUTHORITY_SEED: &[u8] = b"mint-authority";
 pub const EXTRA_ACCOUNT_METAS_SEED: &[u8] = b"extra-account-metas";
+pub const TOKEN_CONFIG_SEED: &[u8] = b"token_config";
 pub const WRAPPED_USDC_NAME: &str = "Vela Wrapped USDC";
 pub const WRAPPED_USDC_SYMBOL: &str = "sUSDC";
 pub const WRAPPED_USDC_URI: &str = "";

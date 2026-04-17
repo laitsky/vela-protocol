@@ -25,9 +25,12 @@ fn test_agent_pull_cu_under_300k() {
         service_wrapped_account,
         pull_approval,
         wrapped_usdc_mint: fixture.wrapped_usdc_mint,
+        token_config: fixture.token_config,
         protocol_config: config,
         wrapping_vault: fixture.wrapping_vault,
-        hook_program: anchor_lang::prelude::Pubkey::new_from_array(vela_transfer_hook::ID.to_bytes()),
+        hook_program: anchor_lang::prelude::Pubkey::new_from_array(
+            vela_transfer_hook::ID.to_bytes(),
+        ),
         extra_account_meta_list: fixture.extra_account_meta_list,
         protocol_program: vela_protocol::ID,
         token_2022_program: helpers::to_anchor_pubkey(helpers::token_2022_address()),
@@ -44,7 +47,11 @@ fn test_agent_pull_cu_under_300k() {
     };
 
     let meta = harness
-        .send_instructions(&[instruction], &[&payer, &fixture.agent], Some(&payer.pubkey()))
+        .send_instructions(
+            &[instruction],
+            &[&payer, &fixture.agent],
+            Some(&payer.pubkey()),
+        )
         .expect("agent_pull should succeed for CU profiling");
     println!("agent_pull CU: {}", meta.compute_units_consumed);
     assert!(
@@ -61,9 +68,7 @@ fn test_agent_pull_cu_under_300k() {
         .expect("service entry should exist");
     assert_eq!(service_entry.daily_spent, 700_000);
 
-    let approval_account = harness
-        .svm
-        .get_account(&helpers::to_address(pull_approval));
+    let approval_account = harness.svm.get_account(&helpers::to_address(pull_approval));
     assert!(
         approval_account.is_none()
             || approval_account

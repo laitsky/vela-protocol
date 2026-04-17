@@ -2,8 +2,12 @@ use anchor_lang::prelude::*;
 use solana_pubkey::Pubkey as SplPubkey;
 
 use crate::errors::VelaError;
-use crate::instructions::merchant_account::{ensure_merchant_state, resolve_merchant_credential_mint};
-use crate::state::{PlanStatus, PricingTier, UsagePlan, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION};
+use crate::instructions::merchant_account::{
+    ensure_merchant_state, resolve_merchant_credential_mint,
+};
+use crate::state::{
+    PlanStatus, PricingTier, UsagePlan, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION,
+};
 
 #[derive(Accounts)]
 #[instruction(plan_id: u64)]

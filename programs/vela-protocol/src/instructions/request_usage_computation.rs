@@ -14,14 +14,12 @@ use crate::{
 use anchor_lang::prelude::*;
 use arcium_anchor::{prelude::*, traits::QueueCompAccs};
 use arcium_client::idl::arcium::{
-    cpi::accounts::QueueComputation as ArciumQueueComputation, types::CallbackAccount,
-    ID_CONST,
+    cpi::accounts::QueueComputation as ArciumQueueComputation, types::CallbackAccount, ID_CONST,
 };
 
 const USAGE_CHARGE_CIRCUIT: &str = "usage_charge";
 const TIERED_PRICING_CIRCUIT: &str = "tiered_pricing";
-const USAGE_COMPUTATION_CALLBACK_DISCRIMINATOR: [u8; 8] =
-    [201, 76, 6, 25, 189, 59, 96, 63];
+const USAGE_COMPUTATION_CALLBACK_DISCRIMINATOR: [u8; 8] = [201, 76, 6, 25, 189, 59, 96, 63];
 
 pub fn request_usage_computation(
     ctx: Context<RequestUsageComputation>,
@@ -47,10 +45,7 @@ pub fn request_usage_computation(
         VelaError::MandateNotActive
     );
     // Prevent double-settlement of the same usage report
-    require!(
-        !usage_report.settled,
-        VelaError::UsageReportAlreadySettled
-    );
+    require!(!usage_report.settled, VelaError::UsageReportAlreadySettled);
     // Ensure the report belongs to this mandate
     require_keys_eq!(
         usage_report.mandate,
@@ -125,13 +120,19 @@ pub fn request_usage_computation(
     approval.bump = ctx.bumps.pull_approval;
 
     mandate.validation_request_nonce = next_request_nonce;
-    write_mandate(&ctx.accounts.mandate.to_account_info(), &mandate, legacy_layout)?;
+    write_mandate(
+        &ctx.accounts.mandate.to_account_info(),
+        &mandate,
+        legacy_layout,
+    )?;
 
     // Build ArgBuilder for the selected circuit.
     // usage_charge circuit expects: (usage_units: Enc<Shared,u64>, rate_per_unit: Enc<Shared,u64>, max_charge: Enc<Shared,u64>)
     // tiered_pricing circuit expects: (usage_units: Enc<Shared,u64>, tier_boundaries: Enc<Shared,[u64;5]>, tier_rates: Enc<Shared,[u64;5]>, tier_count: Enc<Shared,u8>, max_charge: Enc<Shared,u64>)
     // In both cases the full encrypted payload is passed via ciphertext parameter from the client.
-    let mut args = ArgBuilder::new().x25519_pubkey(pub_key).plaintext_u128(nonce);
+    let mut args = ArgBuilder::new()
+        .x25519_pubkey(pub_key)
+        .plaintext_u128(nonce);
     for ct in &ciphertext {
         args = args.encrypted_u64(*ct);
     }

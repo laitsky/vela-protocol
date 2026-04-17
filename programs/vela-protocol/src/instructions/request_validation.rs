@@ -11,13 +11,11 @@ use crate::{
 use anchor_lang::prelude::*;
 use arcium_anchor::{prelude::*, traits::QueueCompAccs};
 use arcium_client::idl::arcium::{
-    cpi::accounts::QueueComputation as ArciumQueueComputation, types::CallbackAccount,
-    ID_CONST,
+    cpi::accounts::QueueComputation as ArciumQueueComputation, types::CallbackAccount, ID_CONST,
 };
 
 const VALIDATE_MANDATE_CIRCUIT: &str = "validate_mandate";
-const VALIDATE_MANDATE_CALLBACK_DISCRIMINATOR: [u8; 8] =
-    [18, 21, 173, 122, 11, 126, 79, 200];
+const VALIDATE_MANDATE_CALLBACK_DISCRIMINATOR: [u8; 8] = [18, 21, 173, 122, 11, 126, 79, 200];
 
 pub fn request_validation(
     ctx: Context<RequestValidation>,
@@ -46,7 +44,10 @@ pub fn request_validation(
     let config = load_protocol_config(&ctx.accounts.config.to_account_info())?.into_current();
     validate_protocol_config(&config)?;
 
-    let next_request_nonce = ctx.accounts.mandate.validation_request_nonce
+    let next_request_nonce = ctx
+        .accounts
+        .mandate
+        .validation_request_nonce
         .checked_add(1)
         .ok_or(VelaError::Overflow)?;
     let computation_offset = derive_validation_computation_offset(

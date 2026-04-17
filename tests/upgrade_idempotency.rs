@@ -2,8 +2,8 @@
 mod upgrade_helpers;
 
 use upgrade_helpers::{
-    assert_cancel_event, assert_no_event, assert_single_event, assert_upgrade_events, fetch_mandate,
-    setup_periodic_upgrade_fixture, wrapped_balance, PERIOD_SECONDS,
+    assert_cancel_event, assert_no_event, assert_single_event, assert_upgrade_events,
+    fetch_mandate, setup_periodic_upgrade_fixture, wrapped_balance, PERIOD_SECONDS,
 };
 use vela_protocol::state::{MandateUpgradeFinalized, MandateUpgradeInitiated};
 
@@ -48,7 +48,13 @@ fn test_immediate_upgrade_is_idempotent_after_first_success() {
         )
         .expect("same-plan retry should noop");
 
-    assert_upgrade_events(&first, fixture.mandate, fixture.plan_a, fixture.plan_b, 5_000_000);
+    assert_upgrade_events(
+        &first,
+        fixture.mandate,
+        fixture.plan_a,
+        fixture.plan_b,
+        5_000_000,
+    );
     assert_no_event::<MandateUpgradeInitiated>(&second);
     assert_eq!(
         wrapped_balance(&fixture.harness, &fixture.subscriber_wrapped),
@@ -91,9 +97,12 @@ fn test_schedule_plan_change_is_same_slot_idempotent_and_cancel_clears_pending()
         .harness
         .send_cancel_plan_change(&fixture.subscriber, &fixture.mandate)
         .expect("cancel should succeed");
-    assert_cancel_event(&cancelled, fixture.mandate, fixture.plan_b);
+    assert_cancel_event(&cancelled, fixture.mandate, fixture.plan_a, fixture.plan_b);
 
     let after_cancel = fetch_mandate(&fixture.harness, &fixture.mandate);
-    assert_eq!(after_cancel.pending_new_plan, anchor_lang::prelude::Pubkey::default());
+    assert_eq!(
+        after_cancel.pending_new_plan,
+        anchor_lang::prelude::Pubkey::default()
+    );
     assert_eq!(after_cancel.pending_change_type, 0);
 }

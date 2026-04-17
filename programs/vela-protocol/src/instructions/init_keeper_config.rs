@@ -10,14 +10,8 @@ pub fn handler(
     keeper_endpoint: Vec<u8>,
     keeper_authority: Pubkey,
 ) -> Result<()> {
-    require!(
-        keeper_endpoint.len() <= 128,
-        VelaError::EndpointTooLong
-    );
-    require!(
-        !keeper_endpoint.is_empty(),
-        VelaError::EndpointEmpty
-    );
+    require!(keeper_endpoint.len() <= 128, VelaError::EndpointTooLong);
+    require!(!keeper_endpoint.is_empty(), VelaError::EndpointEmpty);
     require!(
         keeper_authority != Pubkey::default(),
         VelaError::InvalidKeeperAuthority

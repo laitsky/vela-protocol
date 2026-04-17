@@ -3,7 +3,7 @@ mod helpers;
 
 use anchor_lang::{prelude::Pubkey, InstructionData, ToAccountMetas};
 use helpers::TestHarness;
-use solana_instruction::{Instruction, AccountMeta};
+use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
 use vela_protocol::{
@@ -109,10 +109,7 @@ fn error_has(metadata: &litesvm::types::FailedTransactionMetadata, needle: &str)
         || metadata.meta.logs.iter().any(|log| log.contains(needle))
 }
 
-fn assert_anchor_error(
-    metadata: &litesvm::types::FailedTransactionMetadata,
-    error: VelaError,
-) {
+fn assert_anchor_error(metadata: &litesvm::types::FailedTransactionMetadata, error: VelaError) {
     let code = error as u32 + anchor_lang::error::ERROR_CODE_OFFSET;
     assert!(
         error_has(metadata, &format!("Custom({code})")) || error_has(metadata, &code.to_string()),
@@ -122,11 +119,7 @@ fn assert_anchor_error(
     );
 }
 
-fn execute_stream_ix(
-    fixture: &StreamFixture,
-    payer: &Keypair,
-    subscriber: &Pubkey,
-) -> Instruction {
+fn execute_stream_ix(fixture: &StreamFixture, payer: &Keypair, subscriber: &Pubkey) -> Instruction {
     let config = fixture.harness.derive_config();
     let config_account: ProtocolConfig = fixture.harness.fetch_anchor_account(&config);
     let (extra_account_meta_list, _) = fixture
@@ -145,7 +138,9 @@ fn execute_stream_ix(
         pull_approval: fixture
             .harness
             .derive_pull_approval_address(&fixture.stream_mandate),
-        token_config: fixture.harness.derive_token_config_address(&fixture.wrapped_mint),
+        token_config: fixture
+            .harness
+            .derive_token_config_address(&fixture.wrapped_mint),
         protocol_config: config,
         wrapping_vault: config_account.wrapping_vault,
         hook_program: Pubkey::new_from_array(vela_transfer_hook::ID.to_bytes()),
@@ -186,7 +181,9 @@ fn update_stream_rate_ix(
         pull_approval: fixture
             .harness
             .derive_pull_approval_address(&fixture.stream_mandate),
-        token_config: fixture.harness.derive_token_config_address(&fixture.wrapped_mint),
+        token_config: fixture
+            .harness
+            .derive_token_config_address(&fixture.wrapped_mint),
         protocol_config: config,
         wrapping_vault: config_account.wrapping_vault,
         hook_program: Pubkey::new_from_array(vela_transfer_hook::ID.to_bytes()),
@@ -218,7 +215,9 @@ fn test_long_keeper_downtime() {
     fixture.harness.ensure_keeper_config(&keeper);
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
-    fixture.harness.set_clock_timestamp(fixture.created_at + 7 * 86_400);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 7 * 86_400);
     fixture
         .harness
         .send_execute_stream(
@@ -231,7 +230,9 @@ fn test_long_keeper_downtime() {
         )
         .expect("single settlement after keeper downtime should succeed");
 
-    let mandate: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let mandate: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
     let merchant_wrapped = fixture
         .harness
         .fetch_spl_token_account(&fixture.merchant_wrapped);
@@ -246,7 +247,9 @@ fn test_rate_change_mid_stream() {
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
     let merchant = fixture.harness.merchant.insecure_clone();
 
-    fixture.harness.set_clock_timestamp(fixture.created_at + 100);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 100);
     fixture
         .harness
         .send_update_stream_rate(
@@ -260,7 +263,9 @@ fn test_rate_change_mid_stream() {
         )
         .expect("rate update should settle then mutate");
 
-    fixture.harness.set_clock_timestamp(fixture.created_at + 200);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 200);
     fixture
         .harness
         .send_execute_stream(
@@ -273,7 +278,9 @@ fn test_rate_change_mid_stream() {
         )
         .expect("post-update settlement should succeed");
 
-    let mandate: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let mandate: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
     let merchant_wrapped = fixture
         .harness
         .fetch_spl_token_account(&fixture.merchant_wrapped);
@@ -287,7 +294,9 @@ fn test_cap_reached_mid_settle() {
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
     let merchant = fixture.harness.merchant.insecure_clone();
 
-    fixture.harness.set_clock_timestamp(fixture.created_at + 100);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 100);
     fixture
         .harness
         .send_execute_stream(
@@ -300,14 +309,18 @@ fn test_cap_reached_mid_settle() {
         )
         .expect("first settlement should clamp to cap");
 
-    let after_first: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let after_first: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
     let merchant_after_first = fixture
         .harness
         .fetch_spl_token_account(&fixture.merchant_wrapped);
     assert_eq!(after_first.total_streamed, 500);
     assert_eq!(merchant_after_first.amount, 500);
 
-    fixture.harness.set_clock_timestamp(fixture.created_at + 200);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 200);
     let second = fixture.harness.send_execute_stream(
         &merchant,
         &subscriber,
@@ -319,8 +332,9 @@ fn test_cap_reached_mid_settle() {
 
     match second {
         Ok(_) => {
-            let after_second: StreamMandate =
-                fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+            let after_second: StreamMandate = fixture
+                .harness
+                .fetch_anchor_account(&fixture.stream_mandate);
             let merchant_after_second = fixture
                 .harness
                 .fetch_spl_token_account(&fixture.merchant_wrapped);
@@ -328,8 +342,9 @@ fn test_cap_reached_mid_settle() {
             assert_eq!(merchant_after_second.amount, 500);
         }
         Err(err) => {
-            let after_second: StreamMandate =
-                fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+            let after_second: StreamMandate = fixture
+                .harness
+                .fetch_anchor_account(&fixture.stream_mandate);
             assert_eq!(after_second.total_streamed, 500);
             assert!(
                 error_has(&err, "6700")
@@ -347,8 +362,12 @@ fn test_clock_regression_rejected() {
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
     let merchant = fixture.harness.merchant.insecure_clone();
 
-    fixture.harness.set_clock_timestamp(fixture.created_at + 100);
-    let mut mandate: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 100);
+    let mut mandate: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
     mandate.last_settled_ts = fixture.created_at + 200;
     fixture
         .harness
@@ -368,7 +387,9 @@ fn test_clock_regression_rejected() {
 
     assert_anchor_error(&err, VelaError::ClockRegression);
 
-    let after: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let after: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
     assert_eq!(after.last_settled_ts, fixture.created_at + 200);
     assert_eq!(after.total_streamed, 0);
 }
@@ -377,7 +398,9 @@ fn test_clock_regression_rejected() {
 fn test_pause_resume_cancel_sequence() {
     let mut fixture = setup_stream_fixture(10, 10, None, 60, 50_000);
 
-    fixture.harness.set_clock_timestamp(fixture.created_at + 100);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 100);
     fixture
         .harness
         .send_pause_stream(
@@ -389,21 +412,29 @@ fn test_pause_resume_cancel_sequence() {
         )
         .expect("pause should settle accrued stream");
 
-    let paused: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let paused: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
     assert!(matches!(paused.status, StreamStatus::Paused));
     assert_eq!(paused.total_streamed, 1_000);
 
-    fixture.harness.set_clock_timestamp(fixture.created_at + 3_700);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 3_700);
     fixture
         .harness
         .send_resume_stream(&fixture.subscriber, &fixture.stream_mandate)
         .expect("resume should reactivate mandate");
 
-    let resumed: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let resumed: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
     assert!(matches!(resumed.status, StreamStatus::Active));
     assert_eq!(resumed.total_streamed, 1_000);
 
-    fixture.harness.set_clock_timestamp(fixture.created_at + 3_760);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 3_760);
     fixture
         .harness
         .send_cancel_stream(
@@ -415,7 +446,9 @@ fn test_pause_resume_cancel_sequence() {
         )
         .expect("cancel should settle only post-resume accrual");
 
-    let cancelled: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let cancelled: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
     let merchant_wrapped = fixture
         .harness
         .fetch_spl_token_account(&fixture.merchant_wrapped);
@@ -430,18 +463,23 @@ fn test_concurrent_settle_and_update_rate() {
     let merchant = fixture.harness.merchant.insecure_clone();
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
-    fixture.harness.set_clock_timestamp(fixture.created_at + 100);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 100);
     let execute_ix = execute_stream_ix(&fixture, &merchant, &subscriber);
     let update_ix = update_stream_rate_ix(&fixture, &merchant, Some(20), None);
 
-    let result =
-        fixture
-            .harness
-            .send_instructions(&[execute_ix, update_ix], &[&merchant], Some(&merchant.pubkey()));
+    let result = fixture.harness.send_instructions(
+        &[execute_ix, update_ix],
+        &[&merchant],
+        Some(&merchant.pubkey()),
+    );
 
     match result {
         Ok(_) => {
-            let mandate: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+            let mandate: StreamMandate = fixture
+                .harness
+                .fetch_anchor_account(&fixture.stream_mandate);
             let merchant_wrapped = fixture
                 .harness
                 .fetch_spl_token_account(&fixture.merchant_wrapped);
@@ -450,7 +488,9 @@ fn test_concurrent_settle_and_update_rate() {
             assert_eq!(merchant_wrapped.amount, 1_000);
         }
         Err(_) => {
-            let mandate: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+            let mandate: StreamMandate = fixture
+                .harness
+                .fetch_anchor_account(&fixture.stream_mandate);
             let merchant_wrapped = fixture
                 .harness
                 .fetch_spl_token_account(&fixture.merchant_wrapped);

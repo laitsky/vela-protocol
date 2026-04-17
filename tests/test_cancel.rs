@@ -230,8 +230,9 @@ fn test_cancel_and_admin_cancel_support_legacy_and_v2_mandates() {
 #[test]
 fn test_cancel_merchant_first_and_fallback_credential_resolution() {
     let (mut harness_merchant, fixture_merchant, plan_merchant) = setup_fixture();
-    let subscriber_merchant =
-        anchor_lang::prelude::Pubkey::new_from_array(fixture_merchant.subscriber.pubkey().to_bytes());
+    let subscriber_merchant = anchor_lang::prelude::Pubkey::new_from_array(
+        fixture_merchant.subscriber.pubkey().to_bytes(),
+    );
 
     // merchant-first resolution for V2 mandates.
     harness_merchant
@@ -246,8 +247,9 @@ fn test_cancel_merchant_first_and_fallback_credential_resolution() {
 
     // fallback resolution for legacy mandates.
     let (mut harness_fallback, fixture_fallback, mut plan_fallback) = setup_fixture();
-    let subscriber_fallback =
-        anchor_lang::prelude::Pubkey::new_from_array(fixture_fallback.subscriber.pubkey().to_bytes());
+    let subscriber_fallback = anchor_lang::prelude::Pubkey::new_from_array(
+        fixture_fallback.subscriber.pubkey().to_bytes(),
+    );
     let fallback_mint = anchor_lang::prelude::Pubkey::new_unique();
     harness_fallback.inject_token_2022_mint(&fallback_mint, &fixture_fallback.plan, 1);
     let fallback_ata = harness_fallback.derive_credential_ata(&subscriber_fallback, &fallback_mint);
@@ -258,11 +260,17 @@ fn test_cancel_merchant_first_and_fallback_credential_resolution() {
         1,
     );
 
-    let mut merchant_state: vela_protocol::state::MerchantState =
-        harness_fallback.fetch_anchor_account(&harness_fallback.derive_plan_addresses(plan_fallback.plan_id).merchant_state);
+    let mut merchant_state: vela_protocol::state::MerchantState = harness_fallback
+        .fetch_anchor_account(
+            &harness_fallback
+                .derive_plan_addresses(plan_fallback.plan_id)
+                .merchant_state,
+        );
     merchant_state.credential_mint = anchor_lang::prelude::Pubkey::default();
     harness_fallback.overwrite_anchor_account(
-        &harness_fallback.derive_plan_addresses(plan_fallback.plan_id).merchant_state,
+        &harness_fallback
+            .derive_plan_addresses(plan_fallback.plan_id)
+            .merchant_state,
         &merchant_state,
     );
     plan_fallback.credential_mint = fallback_mint;
@@ -289,7 +297,10 @@ fn test_cancel_merchant_first_and_fallback_credential_resolution() {
 
 /// Read legacy mandate status from raw account data.
 /// Legacy V1 layout: 8 (discriminator) + 96 (3 Pubkeys) + 88 (11 u64/i64 fields) = 192.
-fn read_legacy_mandate_status_byte(harness: &TestHarness, key: &anchor_lang::prelude::Pubkey) -> u8 {
+fn read_legacy_mandate_status_byte(
+    harness: &TestHarness,
+    key: &anchor_lang::prelude::Pubkey,
+) -> u8 {
     let data = harness.fetch_account_data(key);
     data[192]
 }
@@ -348,8 +359,7 @@ fn test_admin_cancel_merchant_first_and_fallback_credential_resolution() {
         )
         .expect("admin_cancel should burn via merchant-first credential resolution");
 
-    let v2_mandate: VelaMandate =
-        harness_merchant.fetch_anchor_account(&fixture_merchant.mandate);
+    let v2_mandate: VelaMandate = harness_merchant.fetch_anchor_account(&fixture_merchant.mandate);
     assert!(matches!(v2_mandate.status, MandateStatus::Cancelled));
 
     // plan-fallback resolution: admin_cancel when MerchantState.credential_mint is zeroed.
@@ -390,7 +400,9 @@ fn test_admin_cancel_merchant_first_and_fallback_credential_resolution() {
             &legacy_mandate,
             &plan_fallback.credential_mint,
         )
-        .expect("admin_cancel should fallback to plan credential when merchant credential is zeroed");
+        .expect(
+            "admin_cancel should fallback to plan credential when merchant credential is zeroed",
+        );
 
     let status_byte = read_legacy_mandate_status_byte(&harness_fallback, &legacy_mandate);
     assert_eq!(

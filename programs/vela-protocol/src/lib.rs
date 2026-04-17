@@ -10,16 +10,16 @@ use crate::instructions::billing_callback::RecordBillingEventOutput;
 use crate::instructions::validation_callback::ValidateMandateOutput;
 use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
-    AdjustAgentMandate, AdminCancel, AgentPull, Cancel, CancelPlanChange, CancelStream, CloseMandate,
-    CreateAgentMandate, CreatePlan, CreateStreamMandate, CreateUsagePlan, DrainAgentMandate,
-    ExecutePull, ExecuteStream, InitConfig, InitKeeperConfig, InitMerchantCredential,
-    InitRecordBillingCompDef, InitTokenConfig, InitTokenConfigIx, InitValidateMandateCompDef,
-    InitWrappedMint, MigrateMandate, MigratePlan, PauseAgentMandate, PauseProtocol, PauseStream,
-    RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation, RequestValidation,
-    ResumeAgentMandate, ResumeStream, RevokeAgentMandate, ServiceLimitInput, SubmitUsageReport,
-    SchedulePlanChange, Subscribe, UnpauseProtocol, Unwrap, UpdateConfig, UpdateKeeperConfig,
-    UpdateMandate, UpdateMandatePlan, UpdatePlan, UpdateStreamRate, UpdateTokenConfig,
-    UpdateTokenConfigIx, UpdateUsagePlan,
+    AdjustAgentMandate, AdminCancel, AgentPull, Cancel, CancelPlanChange, CancelStream,
+    CloseMandate, CreateAgentMandate, CreatePlan, CreateStreamMandate, CreateUsagePlan,
+    DrainAgentMandate, ExecutePull, ExecuteStream, InitConfig, InitKeeperConfig,
+    InitMerchantCredential, InitRecordBillingCompDef, InitTokenConfig, InitTokenConfigIx,
+    InitValidateMandateCompDef, InitWrappedMint, MigrateMandate, MigratePlan, PauseAgentMandate,
+    PauseProtocol, PauseStream, RecordBillingEventCallback, RequestBillingRecord,
+    RequestUsageComputation, RequestValidation, ResumeAgentMandate, ResumeStream,
+    RevokeAgentMandate, SchedulePlanChange, ServiceLimitInput, SubmitUsageReport, Subscribe,
+    UnpauseProtocol, Unwrap, UpdateConfig, UpdateKeeperConfig, UpdateMandate, UpdateMandatePlan,
+    UpdatePlan, UpdateStreamRate, UpdateTokenConfig, UpdateTokenConfigIx, UpdateUsagePlan,
     UsageChargeOutput, UsageComputationCallback, ValidateMandateCallback, Wrap,
 };
 use crate::state::{KeeperMode, PricingTier};
@@ -586,5 +586,4 @@ pub mod vela_protocol {
     ) -> Result<()> {
         instructions::update_stream_rate::handler(ctx, new_rate, new_authorized_max_rate)
     }
-
 }

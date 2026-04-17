@@ -101,7 +101,11 @@ fn test_close_mandate_rejects_non_subscriber_authority() {
     harness.overwrite_anchor_account(&mandate, &cancelled);
 
     let error = harness
-        .send_close_mandate(&harness.merchant.insecure_clone(), &subscriber_pubkey, &mandate)
+        .send_close_mandate(
+            &harness.merchant.insecure_clone(),
+            &subscriber_pubkey,
+            &mandate,
+        )
         .expect_err("non-subscriber authority must be rejected");
     assert!(
         format!("{:?}", error.err).contains("Custom("),

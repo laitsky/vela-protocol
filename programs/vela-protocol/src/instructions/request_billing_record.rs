@@ -14,13 +14,11 @@ use crate::{
 use anchor_lang::prelude::*;
 use arcium_anchor::{prelude::*, traits::QueueCompAccs};
 use arcium_client::idl::arcium::{
-    cpi::accounts::QueueComputation as ArciumQueueComputation, types::CallbackAccount,
-    ID_CONST,
+    cpi::accounts::QueueComputation as ArciumQueueComputation, types::CallbackAccount, ID_CONST,
 };
 
 const RECORD_BILLING_EVENT_CIRCUIT: &str = "record_billing_event";
-const RECORD_BILLING_EVENT_CALLBACK_DISCRIMINATOR: [u8; 8] =
-    [123, 164, 16, 122, 130, 206, 223, 55];
+const RECORD_BILLING_EVENT_CALLBACK_DISCRIMINATOR: [u8; 8] = [123, 164, 16, 122, 130, 206, 223, 55];
 
 pub fn request_billing_record(
     ctx: Context<RequestBillingRecord>,
@@ -49,14 +47,12 @@ pub fn request_billing_record(
     validate_protocol_config(&config)?;
 
     let mandate_key = ctx.accounts.mandate.key();
-    let next_request_nonce = mandate.billing_request_nonce
+    let next_request_nonce = mandate
+        .billing_request_nonce
         .checked_add(1)
         .ok_or(VelaError::Overflow)?;
-    let computation_offset = derive_billing_computation_offset(
-        &mandate_key,
-        mandate.pulls_executed,
-        next_request_nonce,
-    );
+    let computation_offset =
+        derive_billing_computation_offset(&mandate_key, mandate.pulls_executed, next_request_nonce);
     require!(
         requested_computation_offset == computation_offset,
         VelaError::InvalidComputationOffset
@@ -81,8 +77,7 @@ pub fn request_billing_record(
         RECORD_BILLING_EVENT_CIRCUIT,
     )?;
 
-    let frequency =
-        i64::try_from(ctx.accounts.plan.frequency).map_err(|_| VelaError::Overflow)?;
+    let frequency = i64::try_from(ctx.accounts.plan.frequency).map_err(|_| VelaError::Overflow)?;
     let billing_period_end = mandate.next_payment_due;
     let billing_period_start = billing_period_end
         .checked_sub(frequency)
@@ -103,7 +98,11 @@ pub fn request_billing_record(
     billing_event.bump = ctx.bumps.billing_event;
 
     mandate.billing_request_nonce = next_request_nonce;
-    write_mandate(&ctx.accounts.mandate.to_account_info(), &mandate, legacy_layout)?;
+    write_mandate(
+        &ctx.accounts.mandate.to_account_info(),
+        &mandate,
+        legacy_layout,
+    )?;
 
     let args = ArgBuilder::new()
         .plaintext_u64(ctx.accounts.plan.amount)

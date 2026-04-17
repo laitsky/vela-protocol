@@ -35,6 +35,7 @@ pub struct StreamCreated {
     pub subscriber: Pubkey,
     pub merchant: Pubkey,
     pub mint: Pubkey,
+    pub token_symbol: String,
     pub rate_per_second: u64,
     pub authorized_max_rate: u64,
     pub max_streamed: Option<u64>,
@@ -46,6 +47,8 @@ pub struct StreamCreated {
 pub struct StreamSettled {
     pub schema_version: u8,
     pub mandate: Pubkey,
+    pub mint: Pubkey,
+    pub token_symbol: String,
     pub amount: u64,
     pub total_streamed_after: u64,
     pub last_settled_ts: i64,
@@ -56,6 +59,8 @@ pub struct StreamSettled {
 pub struct StreamPaused {
     pub schema_version: u8,
     pub mandate: Pubkey,
+    pub mint: Pubkey,
+    pub token_symbol: String,
     pub paused_at: i64,
     pub signer: Pubkey,
     pub final_settle_amount: u64,
@@ -66,6 +71,8 @@ pub struct StreamPaused {
 pub struct StreamResumed {
     pub schema_version: u8,
     pub mandate: Pubkey,
+    pub mint: Pubkey,
+    pub token_symbol: String,
     pub resumed_at: i64,
     pub pause_duration_secs: u64,
     pub signer: Pubkey,
@@ -76,6 +83,8 @@ pub struct StreamResumed {
 pub struct StreamRateUpdated {
     pub schema_version: u8,
     pub mandate: Pubkey,
+    pub mint: Pubkey,
+    pub token_symbol: String,
     pub old_rate_per_second: u64,
     pub new_rate_per_second: u64,
     pub old_authorized_max_rate: u64,
@@ -89,6 +98,8 @@ pub struct StreamRateUpdated {
 pub struct StreamCancelled {
     pub schema_version: u8,
     pub mandate: Pubkey,
+    pub mint: Pubkey,
+    pub token_symbol: String,
     pub cancelled_at: i64,
     pub signer: Pubkey,
     pub final_settle_amount: u64,
@@ -130,8 +141,13 @@ pub struct MandateUpgradeCancelled {
     pub schema_version: u8,
     pub mandate: Pubkey,
     pub mint: Pubkey,
-    pub cancelled_plan: Pubkey,
+    pub token_symbol: String,
+    pub old_plan: Pubkey,
+    pub new_plan: Pubkey,
+    pub proration_amount: i64,
+    pub change_type: u8,
     pub signer: Pubkey,
+    pub applied_at: i64,
     pub timestamp: i64,
 }
 
@@ -140,6 +156,7 @@ pub struct MandateCreditAdded {
     pub schema_version: u8,
     pub mandate: Pubkey,
     pub mint: Pubkey,
+    pub token_symbol: String,
     pub old_plan: Pubkey,
     pub new_plan: Pubkey,
     pub credit_amount: u64,

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { BN } from "@coral-xyz/anchor";
 import { getAccount } from "@solana/spl-token";
-import { Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { Keypair, LAMPORTS_PER_SOL, SystemProgram } from "@solana/web3.js";
 import {
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
@@ -88,12 +88,14 @@ describe("execute_pull", () => {
         merchantWrappedAccount,
         wrappedUsdcMint: adminState.wrappedUsdcMint,
         pullApproval,
+        tokenConfig: adminState.tokenConfig,
         protocolConfig: adminState.config,
         wrappingVault: adminState.wrappingVault,
         hookProgram: TRANSFER_HOOK_PROGRAM_ID,
         extraAccountMetaList: adminState.extraAccountMetaList,
         protocolProgram: fixture.programId,
         token2022Program: TOKEN_2022_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
       })
       .rpc();
 

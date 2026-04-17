@@ -11,8 +11,8 @@ use spl_token_2022::state::Account as Token2022Account;
 use vela_protocol::{
     constants::MIN_FREQUENCY_SECONDS,
     state::{
-        BillingType, MandateStatus, MerchantState, PlanStatus, PricingTier, VelaMandate, VelaPlan,
-        UsagePlan, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION,
+        BillingType, MandateStatus, MerchantState, PlanStatus, PricingTier, UsagePlan, VelaMandate,
+        VelaPlan, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION,
     },
 };
 
@@ -42,13 +42,7 @@ fn setup_subscription_fixture() -> (
 
     let plan: VelaPlan = harness.fetch_anchor_account(&addresses.plan);
     let credential_mint = plan.credential_mint;
-    (
-        harness,
-        subscriber,
-        plan,
-        addresses.plan,
-        credential_mint,
-    )
+    (harness, subscriber, plan, addresses.plan, credential_mint)
 }
 
 fn seed_legacy_flat_plan(harness: &mut TestHarness, plan_id: u64) -> (Pubkey, Pubkey) {
@@ -73,8 +67,9 @@ fn seed_legacy_flat_plan(harness: &mut TestHarness, plan_id: u64) -> (Pubkey, Pu
         bump: merchant_state_bump,
         credential_mint: Pubkey::default(),
         mandate_counter: 0,
+        stream_mandate_counter: 0,
         version: CURRENT_ACCOUNT_VERSION,
-        _reserved: [0; ACCOUNT_RESERVED_BYTES],
+        _reserved: [0; ACCOUNT_RESERVED_BYTES - 8],
     };
     let mut merchant_state_data = Vec::new();
     merchant_state_record
@@ -125,11 +120,7 @@ fn seed_legacy_flat_plan(harness: &mut TestHarness, plan_id: u64) -> (Pubkey, Pu
         )
         .expect("legacy plan should be seeded");
 
-    harness.inject_token_2022_mint(
-        &plan_addresses.credential_mint,
-        &plan_addresses.plan,
-        0,
-    );
+    harness.inject_token_2022_mint(&plan_addresses.credential_mint, &plan_addresses.plan, 0);
 
     (plan_addresses.plan, plan_addresses.credential_mint)
 }
@@ -151,7 +142,10 @@ fn test_subscribe_success() {
         &plan_address,
     );
     let mandate: VelaMandate = harness.fetch_anchor_account(&mandate_address);
-    assert_eq!(mandate.subscriber, Pubkey::new_from_array(subscriber.pubkey().to_bytes()));
+    assert_eq!(
+        mandate.subscriber,
+        Pubkey::new_from_array(subscriber.pubkey().to_bytes())
+    );
     assert_eq!(mandate.plan, plan_address);
     assert_eq!(mandate.merchant, harness.merchant_pubkey());
     assert_eq!(mandate.amount, plan.amount);
@@ -171,7 +165,10 @@ fn test_subscribe_success() {
     let credential_account =
         Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata))
             .expect("credential account should unpack");
-    assert_eq!(credential_account.mint.to_string(), credential_mint.to_string());
+    assert_eq!(
+        credential_account.mint.to_string(),
+        credential_mint.to_string()
+    );
     assert_eq!(
         credential_account.owner.to_string(),
         Pubkey::new_from_array(subscriber.pubkey().to_bytes()).to_string()
@@ -292,7 +289,11 @@ fn test_subscribe_usage_plan_creates_usage_mandate() {
 
     let plan: UsagePlan = harness.fetch_anchor_account(&addresses.usage_plan);
     harness
-        .send_subscribe_to_plan(&subscriber, &addresses.usage_plan, &merchant_credential_mint)
+        .send_subscribe_to_plan(
+            &subscriber,
+            &addresses.usage_plan,
+            &merchant_credential_mint,
+        )
         .expect("usage plan subscribe should succeed");
 
     let subscriber_pubkey = Pubkey::new_from_array(subscriber.pubkey().to_bytes());
@@ -317,7 +318,8 @@ fn test_subscribe_usage_plan_creates_usage_mandate() {
     assert_eq!(plan.tier_count, tiers.len() as u8);
     assert_eq!(plan.credential_mint, merchant_credential_mint);
 
-    let credential_ata = harness.derive_credential_ata(&subscriber_pubkey, &merchant_credential_mint);
+    let credential_ata =
+        harness.derive_credential_ata(&subscriber_pubkey, &merchant_credential_mint);
     let credential_account =
         Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata))
             .expect("credential account should unpack");
@@ -325,7 +327,10 @@ fn test_subscribe_usage_plan_creates_usage_mandate() {
         credential_account.mint.to_string(),
         merchant_credential_mint.to_string()
     );
-    assert_eq!(credential_account.owner.to_string(), subscriber_pubkey.to_string());
+    assert_eq!(
+        credential_account.owner.to_string(),
+        subscriber_pubkey.to_string()
+    );
     assert_eq!(credential_account.amount, 1);
 }
 
@@ -364,7 +369,8 @@ fn test_subscribe_mints_from_merchant_credential() {
         .expect("subscribe should succeed with merchant credential");
 
     // Verify credential was minted from the merchant credential mint
-    let credential_ata = harness.derive_credential_ata(&subscriber_pubkey, &merchant_credential_mint);
+    let credential_ata =
+        harness.derive_credential_ata(&subscriber_pubkey, &merchant_credential_mint);
     let credential_account =
         Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata))
             .expect("credential account should unpack");
@@ -397,10 +403,7 @@ fn test_subscribe_legacy_plan_fallback() {
         .expect("subscribe should succeed with legacy plan credential fallback");
 
     // Verify credential was minted from the plan-scoped credential mint
-    let credential_ata = harness.derive_credential_ata(
-        &subscriber_pubkey,
-        &legacy_credential_mint,
-    );
+    let credential_ata = harness.derive_credential_ata(&subscriber_pubkey, &legacy_credential_mint);
     let credential_account =
         Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata))
             .expect("credential account should unpack");
@@ -453,7 +456,8 @@ fn test_subscribe_credential_persists_across_plan_changes() {
         .expect("subscribe to plan B should succeed");
 
     // Both subscriptions should create credentials from the same merchant mint
-    let credential_ata_a = harness.derive_credential_ata(&subscriber_pubkey, &merchant_credential_mint);
+    let credential_ata_a =
+        harness.derive_credential_ata(&subscriber_pubkey, &merchant_credential_mint);
     let credential_account =
         Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata_a))
             .expect("credential account should unpack");
@@ -507,7 +511,8 @@ fn test_subscribe_uses_merchant_mandate_counter_for_reseeded_pda() {
     assert_eq!(merchant_state_after_b.mandate_counter, 2);
 
     let first_mandate = harness.derive_mandate_address_by_index(&subscriber_a_pubkey, &merchant, 0);
-    let second_mandate = harness.derive_mandate_address_by_index(&subscriber_b_pubkey, &merchant, 1);
+    let second_mandate =
+        harness.derive_mandate_address_by_index(&subscriber_b_pubkey, &merchant, 1);
     assert_ne!(first_mandate, second_mandate);
 
     let first_record: VelaMandate = harness.fetch_anchor_account(&first_mandate);
@@ -530,7 +535,8 @@ fn test_subscribe_uses_merchant_index_mandate_seed() {
         &harness.merchant_pubkey(),
         merchant_state_before.mandate_counter,
     );
-    let legacy_plan_seeded_mandate = harness.derive_mandate_address(&subscriber_pubkey, &plan_address);
+    let legacy_plan_seeded_mandate =
+        harness.derive_mandate_address(&subscriber_pubkey, &plan_address);
 
     harness
         .send_subscribe(&subscriber, plan.plan_id)
@@ -547,14 +553,18 @@ fn test_subscribe_uses_merchant_index_mandate_seed() {
     assert!(
         harness
             .svm
-            .get_account(&solana_address::Address::from(expected_v2_mandate.to_bytes()))
+            .get_account(&solana_address::Address::from(
+                expected_v2_mandate.to_bytes()
+            ))
             .is_some(),
         "subscribe must create a mandate at the merchant/index-seeded address",
     );
     assert!(
         harness
             .svm
-            .get_account(&solana_address::Address::from(legacy_plan_seeded_mandate.to_bytes()))
+            .get_account(&solana_address::Address::from(
+                legacy_plan_seeded_mandate.to_bytes()
+            ))
             .is_none(),
         "new mandates must not use plan-seeded mandate PDA",
     );

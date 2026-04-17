@@ -20,20 +20,20 @@ use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_message::{Message, VersionedMessage};
 use solana_program_pack::Pack;
-use solana_signer::Signer;
 use solana_sdk::hash;
+use solana_signer::Signer;
 use solana_transaction::versioned::VersionedTransaction;
 use spl_associated_token_account::get_associated_token_address_with_program_id;
 use spl_token::state::{Account as SplTokenAccount, Mint as SplMint};
 use vela_protocol::{
     constants::{EXTRA_ACCOUNT_METAS_SEED, MINT_AUTHORITY_SEED},
     instructions::arcium_accounts::derive_cluster_pubkey,
-     state::{
-         AgentMandate, BillingEvent, BillingRail, ClusterType, KeeperConfig, KeeperMode,
-         MerchantState, PricingTier, ProtocolConfig, PullApproval, StreamMandate, TokenConfig,
-         UsagePlan, VelaMandate,
-     },
- };
+    state::{
+        AgentMandate, BillingEvent, BillingRail, ClusterType, KeeperConfig, KeeperMode,
+        MerchantState, PricingTier, ProtocolConfig, PullApproval, StreamMandate, TokenConfig,
+        UsagePlan, VelaMandate,
+    },
+};
 
 pub const AIRDROP_LAMPORTS: u64 = 10_000_000_000;
 // TODO(phase-40/41): import these legacy/test-harness-only seed prefixes from program state once
@@ -198,19 +198,13 @@ impl TestHarness {
         }
     }
 
-     pub fn derive_mandate_address_by_index(
-         &self,
-         subscriber: &Pubkey,
-         merchant: &Pubkey,
+    pub fn derive_mandate_address_by_index(
+        &self,
+        subscriber: &Pubkey,
+        merchant: &Pubkey,
         mandate_index: u64,
     ) -> Pubkey {
-        derive_mandate_v2_pda(
-            subscriber,
-            merchant,
-            mandate_index,
-            &vela_protocol::ID,
-        )
-        .0
+        derive_mandate_v2_pda(subscriber, merchant, mandate_index, &vela_protocol::ID).0
     }
 
     pub fn derive_mandate_address_v2(
@@ -219,8 +213,8 @@ impl TestHarness {
         merchant: &Pubkey,
         mandate_index: u64,
     ) -> Pubkey {
-         self.derive_mandate_address_by_index(subscriber, merchant, mandate_index)
-     }
+        self.derive_mandate_address_by_index(subscriber, merchant, mandate_index)
+    }
 
     pub fn derive_stream_mandate_address_by_index(
         &self,

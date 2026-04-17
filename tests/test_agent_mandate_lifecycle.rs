@@ -84,9 +84,12 @@ fn send_agent_pull(
         service_wrapped_account: *service_wrapped_account,
         pull_approval,
         wrapped_usdc_mint: fixture.wrapped_usdc_mint,
+        token_config: fixture.token_config,
         protocol_config: config,
         wrapping_vault: fixture.wrapping_vault,
-        hook_program: anchor_lang::prelude::Pubkey::new_from_array(vela_transfer_hook::ID.to_bytes()),
+        hook_program: anchor_lang::prelude::Pubkey::new_from_array(
+            vela_transfer_hook::ID.to_bytes(),
+        ),
         extra_account_meta_list: fixture.extra_account_meta_list,
         protocol_program: vela_protocol::ID,
         token_2022_program: helpers::to_anchor_pubkey(helpers::token_2022_address()),
@@ -272,10 +275,19 @@ fn setup_fixture() -> (
     let fixture = harness.setup_agent_mandate_fixture(&admin, 8_000_000);
     let service = harness.create_wallet();
     let service_pubkey = to_anchor_pubkey(service.pubkey());
-    let service_wrapped_account =
-        harness.create_token_2022_ata(&fixture.authority, &service_pubkey, &fixture.wrapped_usdc_mint);
+    let service_wrapped_account = harness.create_token_2022_ata(
+        &fixture.authority,
+        &service_pubkey,
+        &fixture.wrapped_usdc_mint,
+    );
     send_create_agent_mandate(&mut harness, &fixture, service_pubkey, 3_000_000);
-    (harness, admin, fixture, service_pubkey, service_wrapped_account)
+    (
+        harness,
+        admin,
+        fixture,
+        service_pubkey,
+        service_wrapped_account,
+    )
 }
 
 #[test]
@@ -577,7 +589,10 @@ fn test_adjust_agent_mandate_rejects_limits_below_recorded_spend() {
     assert_eq!(mandate.services[0].daily_limit, 4_000_000);
     assert_eq!(mandate.services[0].service, service);
     assert!(matches!(mandate.status, AgentMandateStatus::Active));
-    assert_eq!(mandate.authority, to_anchor_pubkey(fixture.authority.pubkey()));
+    assert_eq!(
+        mandate.authority,
+        to_anchor_pubkey(fixture.authority.pubkey())
+    );
 }
 
 #[test]

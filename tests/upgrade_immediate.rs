@@ -35,7 +35,13 @@ fn test_update_mandate_plan_charges_prorated_upgrade_and_rebinds_plan() {
         )
         .expect("update_mandate_plan should succeed");
 
-    assert_upgrade_events(&metadata, fixture.mandate, fixture.plan_a, fixture.plan_b, 5_000_000);
+    assert_upgrade_events(
+        &metadata,
+        fixture.mandate,
+        fixture.plan_a,
+        fixture.plan_b,
+        5_000_000,
+    );
 
     let mandate_after = fetch_mandate(&fixture.harness, &fixture.mandate);
     assert_eq!(mandate_after.plan, fixture.plan_b);

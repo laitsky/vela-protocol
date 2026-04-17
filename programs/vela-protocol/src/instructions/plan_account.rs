@@ -2,7 +2,7 @@ use anchor_lang::{prelude::*, AccountDeserialize, AccountSerialize, Discriminato
 
 use crate::{
     errors::VelaError,
-    state::{BillingType, PlanStatus, VelaPlan, UsagePlan, PricingTier, CURRENT_ACCOUNT_VERSION},
+    state::{BillingType, PlanStatus, PricingTier, UsagePlan, VelaPlan, CURRENT_ACCOUNT_VERSION},
 };
 
 /// Legacy V1 flat plan layout (no version/_reserved fields).
@@ -165,12 +165,8 @@ impl LoadedPlanAccount {
                 };
                 Self::add_delay(start_timestamp, delay)
             }
-            Self::Usage(plan) => {
-                Self::add_delay(start_timestamp, plan.settlement_frequency)
-            }
-            Self::LegacyUsage(plan) => {
-                Self::add_delay(start_timestamp, plan.settlement_frequency)
-            }
+            Self::Usage(plan) => Self::add_delay(start_timestamp, plan.settlement_frequency),
+            Self::LegacyUsage(plan) => Self::add_delay(start_timestamp, plan.settlement_frequency),
         }
     }
 
@@ -191,8 +187,7 @@ impl LoadedPlanAccount {
                     .ok_or(VelaError::Overflow)?,
             )
             .ok_or(VelaError::Overflow)?;
-        let total_duration =
-            i64::try_from(total_duration).map_err(|_| VelaError::Overflow)?;
+        let total_duration = i64::try_from(total_duration).map_err(|_| VelaError::Overflow)?;
         start_timestamp
             .checked_add(total_duration)
             .ok_or(VelaError::Overflow.into())
@@ -210,9 +205,7 @@ pub fn load_plan_account(plan_info: &AccountInfo<'_>) -> Result<LoadedPlanAccoun
     require_keys_eq!(*plan_info.owner, crate::ID, VelaError::BillingTypeMismatch);
 
     let data = plan_info.try_borrow_data()?;
-    if data.len() < VelaPlan::DISCRIMINATOR.len()
-        || !data.starts_with(&VelaPlan::DISCRIMINATOR)
-    {
+    if data.len() < VelaPlan::DISCRIMINATOR.len() || !data.starts_with(&VelaPlan::DISCRIMINATOR) {
         // Try UsagePlan discriminator
         if data.len() >= UsagePlan::DISCRIMINATOR.len()
             && data.starts_with(&UsagePlan::DISCRIMINATOR)
@@ -292,11 +285,11 @@ fn load_usage_plan_inner<'info>(
     Err(VelaError::BillingTypeMismatch.into())
 }
 
-pub fn require_plan_billing_type(
-    plan: &LoadedPlanAccount,
-    expected: &BillingType,
-) -> Result<()> {
-    require!(plan.billing_type() == *expected, VelaError::BillingTypeMismatch);
+pub fn require_plan_billing_type(plan: &LoadedPlanAccount, expected: &BillingType) -> Result<()> {
+    require!(
+        plan.billing_type() == *expected,
+        VelaError::BillingTypeMismatch
+    );
     Ok(())
 }
 

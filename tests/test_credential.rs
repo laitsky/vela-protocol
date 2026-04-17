@@ -20,7 +20,8 @@ fn test_credential_is_non_transferable() {
     let recipient = harness.create_wallet();
     let recipient_pubkey = Pubkey::new_from_array(recipient.pubkey().to_bytes());
     let source_ata = harness.derive_credential_ata(&subscriber, &fixture.credential_mint);
-    let destination_ata = harness.derive_credential_ata(&recipient_pubkey, &fixture.credential_mint);
+    let destination_ata =
+        harness.derive_credential_ata(&recipient_pubkey, &fixture.credential_mint);
 
     let create_destination_ata =
         spl_associated_token_account::instruction::create_associated_token_account_idempotent(
@@ -190,8 +191,8 @@ fn test_init_merchant_credential_creates_mint() {
     // Mint authority should be set (non-default)
     use solana_program_pack::Pack;
     use spl_token::state::Mint as SplMint;
-    let raw_mint = SplMint::unpack_from_slice(&mint_data)
-        .expect("mint should unpack as base SPL mint");
+    let raw_mint =
+        SplMint::unpack_from_slice(&mint_data).expect("mint should unpack as base SPL mint");
     assert!(
         raw_mint.mint_authority != spl_token::solana_program::program_option::COption::None,
         "merchant credential mint should have a mint authority set"
@@ -303,9 +304,8 @@ fn test_credential_burned_on_cancel() {
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
     let credential_ata = harness.derive_credential_ata(&subscriber, &fixture.credential_mint);
 
-    let before =
-        Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata))
-            .expect("credential should exist before cancel");
+    let before = Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata))
+        .expect("credential should exist before cancel");
     assert_eq!(before.amount, 1);
 
     harness
@@ -318,9 +318,8 @@ fn test_credential_burned_on_cancel() {
         )
         .expect("cancel should succeed");
 
-    let after =
-        Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata))
-            .expect("credential account should still exist after cancel");
+    let after = Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata))
+        .expect("credential account should still exist after cancel");
     assert_eq!(after.amount, 0);
 }
 
@@ -341,7 +340,13 @@ fn test_merchant_credential_resolves_for_subscribe() {
 
     // Create plan (should use merchant credential)
     harness
-        .send_create_plan(25_000_000, vela_protocol::constants::MIN_FREQUENCY_SECONDS, 0, 4, 0)
+        .send_create_plan(
+            25_000_000,
+            vela_protocol::constants::MIN_FREQUENCY_SECONDS,
+            0,
+            4,
+            0,
+        )
         .expect("create_plan should succeed");
 
     // Subscribe
@@ -350,7 +355,8 @@ fn test_merchant_credential_resolves_for_subscribe() {
         .expect("subscribe should succeed");
 
     // Verify the credential ATA is against the merchant mint, not a plan-scoped mint
-    let credential_ata = harness.derive_credential_ata(&subscriber_pubkey, &merchant_credential_mint);
+    let credential_ata =
+        harness.derive_credential_ata(&subscriber_pubkey, &merchant_credential_mint);
     let credential_account =
         Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata))
             .expect("credential account should unpack");
@@ -378,7 +384,13 @@ fn test_credential_stays_merchant_scoped_after_plan_update() {
 
     // Create plan and subscribe
     harness
-        .send_create_plan(25_000_000, vela_protocol::constants::MIN_FREQUENCY_SECONDS, 0, 4, 0)
+        .send_create_plan(
+            25_000_000,
+            vela_protocol::constants::MIN_FREQUENCY_SECONDS,
+            0,
+            4,
+            0,
+        )
         .expect("create_plan should succeed");
 
     harness
@@ -391,7 +403,8 @@ fn test_credential_stays_merchant_scoped_after_plan_update() {
         .expect("update_plan should succeed");
 
     // Verify credential still exists and is unchanged
-    let credential_ata = harness.derive_credential_ata(&subscriber_pubkey, &merchant_credential_mint);
+    let credential_ata =
+        harness.derive_credential_ata(&subscriber_pubkey, &merchant_credential_mint);
     let credential_account =
         Token2022Account::unpack_from_slice(&harness.fetch_account_data(&credential_ata))
             .expect("credential account should still exist after plan update");
@@ -400,5 +413,8 @@ fn test_credential_stays_merchant_scoped_after_plan_update() {
         merchant_credential_mint.to_string(),
         "credential must remain merchant-scoped after plan update (CRED-04)"
     );
-    assert_eq!(credential_account.amount, 1, "credential amount must be unchanged");
+    assert_eq!(
+        credential_account.amount, 1,
+        "credential amount must be unchanged"
+    );
 }

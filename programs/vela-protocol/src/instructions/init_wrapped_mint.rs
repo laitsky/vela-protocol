@@ -15,9 +15,7 @@ use solana_program_error::ProgramError as SplProgramError;
 use solana_pubkey::Pubkey as SplPubkey;
 use spl_pod::optional_keys::OptionalNonZeroPubkey;
 use spl_token_2022::{
-    extension::ExtensionType,
-    instruction::initialize_mint2,
-    state::Mint as Token2022Mint,
+    extension::ExtensionType, instruction::initialize_mint2, state::Mint as Token2022Mint,
 };
 use spl_token_metadata_interface::state::TokenMetadata;
 
@@ -261,7 +259,9 @@ fn anchor_pubkey(key: SplPubkey) -> Pubkey {
     Pubkey::new_from_array(key.to_bytes())
 }
 
-fn convert_instruction(ix: SplInstruction) -> anchor_lang::solana_program::instruction::Instruction {
+fn convert_instruction(
+    ix: SplInstruction,
+) -> anchor_lang::solana_program::instruction::Instruction {
     anchor_lang::solana_program::instruction::Instruction {
         program_id: anchor_pubkey(ix.program_id),
         accounts: ix

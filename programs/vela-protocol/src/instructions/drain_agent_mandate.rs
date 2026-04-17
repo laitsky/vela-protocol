@@ -113,8 +113,7 @@ pub fn handler(ctx: Context<DrainAgentMandate>) -> Result<()> {
         burn(burn_ctx, amount)?;
 
         let mint_authority_bump = ctx.bumps.mint_authority;
-        let mint_authority_signer_seeds: &[&[u8]] =
-            &[MINT_AUTHORITY_SEED, &[mint_authority_bump]];
+        let mint_authority_signer_seeds: &[&[u8]] = &[MINT_AUTHORITY_SEED, &[mint_authority_bump]];
         let mint_authority_signer_seed_groups = [mint_authority_signer_seeds];
         let transfer_ctx = CpiContext::new_with_signer(
             ctx.accounts.spl_token_program.to_account_info(),

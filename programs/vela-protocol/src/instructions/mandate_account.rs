@@ -1,8 +1,6 @@
 use anchor_lang::{prelude::*, AccountDeserialize, AccountSerialize, Discriminator};
 
-use crate::state::{
-    BillingType, MandateStatus, VelaMandate, CURRENT_ACCOUNT_VERSION,
-};
+use crate::state::{BillingType, MandateStatus, VelaMandate, CURRENT_ACCOUNT_VERSION};
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct VelaMandateV1 {

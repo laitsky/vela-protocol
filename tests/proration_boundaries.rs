@@ -26,13 +26,8 @@ fn period_start_charges_full_new_amount_for_fresh_period() {
 
 #[test]
 fn period_end_leaves_no_remaining_charge() {
-    let amount = compute_proration(
-        0,
-        10_000_000,
-        30 * DAY_SECONDS,
-        30 * DAY_SECONDS,
-    )
-    .expect("period end");
+    let amount =
+        compute_proration(0, 10_000_000, 30 * DAY_SECONDS, 30 * DAY_SECONDS).expect("period end");
 
     assert_eq!(amount, 0);
 }

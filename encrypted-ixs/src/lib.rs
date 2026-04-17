@@ -113,35 +113,95 @@ mod circuits {
         let mut remaining_units = units;
 
         // Tier 0
-        let units_in_tier0 = if remaining_units > boundaries[0] { boundaries[0] } else { remaining_units };
-        let tier_charge0 = if tier0_active { units_in_tier0 * rates[0] } else { 0u64 };
+        let units_in_tier0 = if remaining_units > boundaries[0] {
+            boundaries[0]
+        } else {
+            remaining_units
+        };
+        let tier_charge0 = if tier0_active {
+            units_in_tier0 * rates[0]
+        } else {
+            0u64
+        };
         total_charge = total_charge + tier_charge0;
-        remaining_units = if remaining_units > boundaries[0] { remaining_units - boundaries[0] } else { 0u64 };
+        remaining_units = if remaining_units > boundaries[0] {
+            remaining_units - boundaries[0]
+        } else {
+            0u64
+        };
 
         // Tier 1
-        let units_in_tier1 = if remaining_units > boundaries[1] { boundaries[1] } else { remaining_units };
-        let tier_charge1 = if tier1_active { units_in_tier1 * rates[1] } else { 0u64 };
+        let units_in_tier1 = if remaining_units > boundaries[1] {
+            boundaries[1]
+        } else {
+            remaining_units
+        };
+        let tier_charge1 = if tier1_active {
+            units_in_tier1 * rates[1]
+        } else {
+            0u64
+        };
         total_charge = total_charge + tier_charge1;
-        remaining_units = if remaining_units > boundaries[1] { remaining_units - boundaries[1] } else { 0u64 };
+        remaining_units = if remaining_units > boundaries[1] {
+            remaining_units - boundaries[1]
+        } else {
+            0u64
+        };
 
         // Tier 2
-        let units_in_tier2 = if remaining_units > boundaries[2] { boundaries[2] } else { remaining_units };
-        let tier_charge2 = if tier2_active { units_in_tier2 * rates[2] } else { 0u64 };
+        let units_in_tier2 = if remaining_units > boundaries[2] {
+            boundaries[2]
+        } else {
+            remaining_units
+        };
+        let tier_charge2 = if tier2_active {
+            units_in_tier2 * rates[2]
+        } else {
+            0u64
+        };
         total_charge = total_charge + tier_charge2;
-        remaining_units = if remaining_units > boundaries[2] { remaining_units - boundaries[2] } else { 0u64 };
+        remaining_units = if remaining_units > boundaries[2] {
+            remaining_units - boundaries[2]
+        } else {
+            0u64
+        };
 
         // Tier 3
-        let units_in_tier3 = if remaining_units > boundaries[3] { boundaries[3] } else { remaining_units };
-        let tier_charge3 = if tier3_active { units_in_tier3 * rates[3] } else { 0u64 };
+        let units_in_tier3 = if remaining_units > boundaries[3] {
+            boundaries[3]
+        } else {
+            remaining_units
+        };
+        let tier_charge3 = if tier3_active {
+            units_in_tier3 * rates[3]
+        } else {
+            0u64
+        };
         total_charge = total_charge + tier_charge3;
-        remaining_units = if remaining_units > boundaries[3] { remaining_units - boundaries[3] } else { 0u64 };
+        remaining_units = if remaining_units > boundaries[3] {
+            remaining_units - boundaries[3]
+        } else {
+            0u64
+        };
 
         // Tier 4
-        let units_in_tier4 = if remaining_units > boundaries[4] { boundaries[4] } else { remaining_units };
-        let tier_charge4 = if tier4_active { units_in_tier4 * rates[4] } else { 0u64 };
+        let units_in_tier4 = if remaining_units > boundaries[4] {
+            boundaries[4]
+        } else {
+            remaining_units
+        };
+        let tier_charge4 = if tier4_active {
+            units_in_tier4 * rates[4]
+        } else {
+            0u64
+        };
         total_charge = total_charge + tier_charge4;
 
-        let capped = if total_charge > cap { cap } else { total_charge };
+        let capped = if total_charge > cap {
+            cap
+        } else {
+            total_charge
+        };
         capped.reveal()
     }
 }

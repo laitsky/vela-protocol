@@ -153,7 +153,10 @@ fn test_create_agent_mandate_success() {
     .expect("create_agent_mandate should succeed");
 
     let mandate: AgentMandate = harness.fetch_anchor_account(&fixture.agent_mandate);
-    assert_eq!(mandate.authority, to_anchor_pubkey(fixture.authority.pubkey()));
+    assert_eq!(
+        mandate.authority,
+        to_anchor_pubkey(fixture.authority.pubkey())
+    );
     assert_eq!(mandate.agent, to_anchor_pubkey(fixture.agent.pubkey()));
     assert_eq!(mandate.daily_limit, 3_000_000);
     assert_eq!(mandate.lifetime_cap, 10_000_000);
@@ -164,7 +167,10 @@ fn test_create_agent_mandate_success() {
     assert_eq!(mandate.last_pull_at, 0);
     assert!(matches!(mandate.status, AgentMandateStatus::Active));
     assert_eq!(mandate.services.len(), 1);
-    assert_eq!(mandate.services[0].service, to_anchor_pubkey(service.pubkey()));
+    assert_eq!(
+        mandate.services[0].service,
+        to_anchor_pubkey(service.pubkey())
+    );
     assert_eq!(mandate.services[0].daily_limit, 2_000_000);
     assert_eq!(mandate.services[0].daily_spent, 0);
     assert_eq!(mandate.services[0].last_reset, mandate.daily_last_reset);
@@ -326,8 +332,9 @@ fn test_non_authority_create_agent_mandate_fails() {
 
     match attempt {
         Ok(result) => {
-            let error =
-                result.expect_err("non-authority signer should not be able to create mandate for authority");
+            let error = result.expect_err(
+                "non-authority signer should not be able to create mandate for authority",
+            );
             let err = format!("{:?}", error.err);
             assert!(
                 err.contains("MissingRequiredSignature") || err.contains("Custom("),

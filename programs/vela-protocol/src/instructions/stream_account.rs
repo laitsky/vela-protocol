@@ -4,7 +4,10 @@ use anchor_lang::{prelude::*, Discriminator};
 
 use crate::{
     errors::VelaError,
-    state::{stream_mandate::{StreamMandate, StreamStatus}, CURRENT_ACCOUNT_VERSION},
+    state::{
+        stream_mandate::{StreamMandate, StreamStatus},
+        CURRENT_ACCOUNT_VERSION,
+    },
 };
 
 pub fn load_stream_mandate(info: &AccountInfo<'_>) -> Result<StreamMandate> {
@@ -114,7 +117,12 @@ mod tests {
             status: StreamStatus::Active,
             mandate_index: 0,
             bump: 255,
-            _reserved: [0u8; 56],
+            pending_new_rate_per_second: 0,
+            pending_new_authorized_max_rate: 0,
+            pending_effective_at: 0,
+            pending_change_type: 0,
+            pending_nonce_short: [0; 8],
+            _reserved_v2: [0u8; 23],
         }
     }
 

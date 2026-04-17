@@ -24,10 +24,21 @@ pub fn handler(ctx: Context<CloseMandate>) -> Result<()> {
     validate_loaded_mandate_address(&ctx.accounts.mandate.key(), &mandate)?;
 
     let subscriber_key = mandate.subscriber();
-    require_keys_eq!(ctx.accounts.authority.key(), subscriber_key, VelaError::UnauthorizedCancel);
-    require_keys_eq!(ctx.accounts.subscriber.key(), subscriber_key, VelaError::UnauthorizedCancel);
+    require_keys_eq!(
+        ctx.accounts.authority.key(),
+        subscriber_key,
+        VelaError::UnauthorizedCancel
+    );
+    require_keys_eq!(
+        ctx.accounts.subscriber.key(),
+        subscriber_key,
+        VelaError::UnauthorizedCancel
+    );
     require!(
-        matches!(mandate.status(), MandateStatus::Cancelled | MandateStatus::Expired),
+        matches!(
+            mandate.status(),
+            MandateStatus::Cancelled | MandateStatus::Expired
+        ),
         VelaError::MigrationPreconditionFailed
     );
 

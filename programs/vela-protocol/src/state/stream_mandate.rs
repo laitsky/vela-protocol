@@ -18,7 +18,12 @@ pub struct StreamMandate {
     pub status: StreamStatus,
     pub mandate_index: u64,
     pub bump: u8,
-    pub _reserved: [u8; 56], // D-12: shrunk from 64 to accommodate the new rate ceiling field
+    pub pending_new_rate_per_second: u64,
+    pub pending_new_authorized_max_rate: u64,
+    pub pending_effective_at: i64,
+    pub pending_change_type: u8,
+    pub pending_nonce_short: [u8; 8],
+    pub _reserved_v2: [u8; 23],
 }
 
 impl StreamMandate {
@@ -27,6 +32,19 @@ impl StreamMandate {
 
     pub fn current_version() -> u8 {
         CURRENT_ACCOUNT_VERSION
+    }
+
+    pub fn has_pending_rate_change(&self) -> bool {
+        self.pending_change_type != 0
+    }
+
+    pub fn clear_pending_rate_change(&mut self) {
+        self.pending_new_rate_per_second = 0;
+        self.pending_new_authorized_max_rate = 0;
+        self.pending_effective_at = 0;
+        self.pending_change_type = 0;
+        self.pending_nonce_short = [0; 8];
+        self._reserved_v2 = [0; 23];
     }
 }
 

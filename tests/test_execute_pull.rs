@@ -1,6 +1,7 @@
 #[path = "helpers/mod.rs"]
 mod helpers;
 
+use anchor_lang::prelude::Pubkey;
 use helpers::{SubscriptionFixture, TestHarness};
 use solana_keypair::Keypair;
 use solana_program_pack::Pack;
@@ -10,11 +11,18 @@ use vela_protocol::{
     constants::MIN_FREQUENCY_SECONDS,
     state::{BillingEvent, MandateStatus, PullApproval, UsageReport, VelaMandate, VelaPlan},
 };
-use anchor_lang::prelude::Pubkey;
 
 /// Set up a full fixture with Token-2022 wrapped USDC accounts injected.
 /// The mandate PDA owns the subscriber billing account, matching the production flow.
-fn setup_fixture() -> (TestHarness, SubscriptionFixture, VelaPlan, VelaMandate, Pubkey, Pubkey, Pubkey) {
+fn setup_fixture() -> (
+    TestHarness,
+    SubscriptionFixture,
+    VelaPlan,
+    VelaMandate,
+    Pubkey,
+    Pubkey,
+    Pubkey,
+) {
     let mut harness = TestHarness::new();
     let fixture = harness.subscribe_fixture(25_000_000, MIN_FREQUENCY_SECONDS, 0, 2);
     let plan: VelaPlan = harness.fetch_anchor_account(&fixture.plan);
@@ -30,7 +38,8 @@ fn setup_fixture() -> (TestHarness, SubscriptionFixture, VelaPlan, VelaMandate, 
     harness.init_extra_account_meta_list(&admin, &wrapped_mint_pubkey, &wrapping_vault);
 
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
-    let subscriber_usdc = harness.create_spl_token_account(&fixture.subscriber, &spl_usdc_mint, &subscriber);
+    let subscriber_usdc =
+        harness.create_spl_token_account(&fixture.subscriber, &spl_usdc_mint, &subscriber);
     harness.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, plan.amount * 10);
 
     let subscriber_wrapped_pubkey =
@@ -51,12 +60,21 @@ fn setup_fixture() -> (TestHarness, SubscriptionFixture, VelaPlan, VelaMandate, 
     let merchant_wrapped_pubkey =
         harness.create_token_2022_ata(&admin, &harness.merchant_pubkey(), &wrapped_mint_pubkey);
 
-    (harness, fixture, plan, mandate, subscriber_wrapped_pubkey, merchant_wrapped_pubkey, wrapped_mint_pubkey)
+    (
+        harness,
+        fixture,
+        plan,
+        mandate,
+        subscriber_wrapped_pubkey,
+        merchant_wrapped_pubkey,
+        wrapped_mint_pubkey,
+    )
 }
 
 #[test]
 fn test_execute_pull_success() {
-    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) = setup_fixture();
+    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) =
+        setup_fixture();
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
     harness.set_clock_timestamp(mandate_before.next_payment_due);
@@ -91,7 +109,8 @@ fn test_execute_pull_success() {
 
 #[test]
 fn test_execute_pull_permissionless() {
-    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) = setup_fixture();
+    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) =
+        setup_fixture();
     let payer = harness.create_wallet();
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
@@ -120,7 +139,8 @@ fn test_execute_pull_permissionless() {
 
 #[test]
 fn test_execute_pull_too_early() {
-    let (mut harness, fixture, plan, _mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) = setup_fixture();
+    let (mut harness, fixture, plan, _mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) =
+        setup_fixture();
     let mandate: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
     harness.create_pull_approval_with_amount(
@@ -150,7 +170,8 @@ fn test_execute_pull_too_early() {
 
 #[test]
 fn test_execute_pull_cu_budget() {
-    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) = setup_fixture();
+    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) =
+        setup_fixture();
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
     harness.set_clock_timestamp(mandate_before.next_payment_due);
@@ -181,7 +202,8 @@ fn test_execute_pull_cu_budget() {
 
 #[test]
 fn test_next_pull_requires_billing_record_finalization() {
-    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) = setup_fixture();
+    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) =
+        setup_fixture();
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
     harness.set_clock_timestamp(mandate_before.next_payment_due);
@@ -232,8 +254,15 @@ fn test_next_pull_requires_billing_record_finalization() {
 
 #[test]
 fn test_execute_pull_uses_mandate_values_after_plan_update() {
-    let (mut harness, fixture, plan_before, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) =
-        setup_fixture();
+    let (
+        mut harness,
+        fixture,
+        plan_before,
+        mandate_before,
+        sub_wrapped,
+        merch_wrapped,
+        wrapped_mint,
+    ) = setup_fixture();
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
     // plan update: mutate flat-plan amount/frequency after subscription.
@@ -276,18 +305,13 @@ fn test_execute_pull_uses_mandate_values_after_plan_update() {
 
 #[test]
 fn test_execute_pull_uses_mandate_amount_after_plan_update() {
-    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) = setup_fixture();
+    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) =
+        setup_fixture();
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
     let updated_plan_amount = plan.amount * 2;
 
     harness
-        .send_update_plan(
-            plan.plan_id,
-            Some(updated_plan_amount),
-            None,
-            None,
-            None,
-        )
+        .send_update_plan(plan.plan_id, Some(updated_plan_amount), None, None, None)
         .expect("update_plan should succeed");
 
     harness.set_clock_timestamp(mandate_before.next_payment_due);
@@ -328,7 +352,11 @@ fn test_execute_pull_namespace_references_use_active_mandate_key() {
     )
     .0;
     let billing = Pubkey::find_program_address(
-        &[BillingEvent::SEED_PREFIX, fixture.mandate.as_ref(), 1u64.to_le_bytes().as_ref()],
+        &[
+            BillingEvent::SEED_PREFIX,
+            fixture.mandate.as_ref(),
+            1u64.to_le_bytes().as_ref(),
+        ],
         &vela_protocol::ID,
     )
     .0;

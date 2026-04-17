@@ -9,8 +9,8 @@ use solana_signer::Signer;
 use vela_protocol::{
     constants::MIN_FREQUENCY_SECONDS,
     state::{
-        BillingEvent, BillingType, CURRENT_ACCOUNT_VERSION, MandateStatus, MerchantState,
-        PullApproval, UsageReport, VelaMandate,
+        BillingEvent, BillingType, MandateStatus, MerchantState, PullApproval, UsageReport,
+        VelaMandate, CURRENT_ACCOUNT_VERSION,
     },
 };
 
@@ -125,7 +125,10 @@ fn setup_fixture(
         .expect("legacy mandate should be created");
 
     let (merchant_state, _) = Pubkey::find_program_address(
-        &[vela_protocol::state::MerchantState::SEED_PREFIX, merchant.as_ref()],
+        &[
+            vela_protocol::state::MerchantState::SEED_PREFIX,
+            merchant.as_ref(),
+        ],
         &vela_protocol::ID,
     );
     let merchant_state_data: MerchantState = harness.fetch_anchor_account(&merchant_state);
@@ -243,7 +246,11 @@ fn test_migrated_mandate_keys_validation_billing_usage_namespaces() {
     )
     .0;
     let billing_event = Pubkey::find_program_address(
-        &[BillingEvent::SEED_PREFIX, migrated_mandate.as_ref(), 1u64.to_le_bytes().as_ref()],
+        &[
+            BillingEvent::SEED_PREFIX,
+            migrated_mandate.as_ref(),
+            1u64.to_le_bytes().as_ref(),
+        ],
         &vela_protocol::ID,
     )
     .0;
@@ -269,7 +276,11 @@ fn test_migrated_mandate_keys_validation_billing_usage_namespaces() {
     assert_ne!(
         billing_event,
         Pubkey::find_program_address(
-            &[BillingEvent::SEED_PREFIX, legacy_mandate.as_ref(), 1u64.to_le_bytes().as_ref()],
+            &[
+                BillingEvent::SEED_PREFIX,
+                legacy_mandate.as_ref(),
+                1u64.to_le_bytes().as_ref()
+            ],
             &vela_protocol::ID
         )
         .0,
@@ -376,8 +387,7 @@ fn test_migrated_mandate_downstream_namespaces_are_consistent_across_flows() {
 fn test_legacy_mandate_downstream_namespaces_remain_valid_pre_migration() {
     // Before migration, downstream flows should still use the legacy mandate address.
     // This proves D-03 compatibility: legacy behavior remains until migration occurs.
-    let (harness, _subscriber, _plan, legacy_mandate, _migrated_mandate, _index) =
-        setup_fixture(0);
+    let (harness, _subscriber, _plan, legacy_mandate, _migrated_mandate, _index) = setup_fixture(0);
 
     // Legacy mandate still exists
     assert!(

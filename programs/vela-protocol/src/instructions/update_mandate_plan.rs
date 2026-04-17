@@ -5,11 +5,11 @@ use crate::{
     constants::{EXTRA_ACCOUNT_METAS_SEED, WRAPPED_USDC_SYMBOL},
     errors::VelaError,
     instructions::{
+        compute_proration,
         execute_stream::invoke_stream_transfer,
         mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
         plan_account::load_plan_account,
         protocol_config_account::load_protocol_config,
-        compute_proration,
     },
     state::{
         MandateCreditAdded, MandateStatus, MandateUpgradeFinalized, MandateUpgradeInitiated,
@@ -99,7 +99,10 @@ pub fn handler(ctx: Context<UpdateMandatePlan>) -> Result<()> {
     );
 
     let (expected_token_config, _) = Pubkey::find_program_address(
-        &[TokenConfig::SEED_PREFIX, ctx.accounts.wrapped_usdc_mint.key().as_ref()],
+        &[
+            TokenConfig::SEED_PREFIX,
+            ctx.accounts.wrapped_usdc_mint.key().as_ref(),
+        ],
         &crate::ID,
     );
     require_keys_eq!(
@@ -109,7 +112,10 @@ pub fn handler(ctx: Context<UpdateMandatePlan>) -> Result<()> {
     );
 
     let loaded_mandate = load_mandate_account(&ctx.accounts.mandate.to_account_info())?;
-    require!(!loaded_mandate.is_legacy(), VelaError::MandateVersionUnsupported);
+    require!(
+        !loaded_mandate.is_legacy(),
+        VelaError::MandateVersionUnsupported
+    );
     validate_loaded_mandate_address(&ctx.accounts.mandate.key(), &loaded_mandate)?;
     let mut mandate = loaded_mandate.into_current();
     require!(
@@ -131,10 +137,7 @@ pub fn handler(ctx: Context<UpdateMandatePlan>) -> Result<()> {
     let authority = ctx.accounts.authority.key();
     let is_subscriber = authority == mandate.subscriber;
     let is_merchant = authority == mandate.merchant;
-    require!(
-        is_subscriber || is_merchant,
-        VelaError::UnauthorizedUpgrade
-    );
+    require!(is_subscriber || is_merchant, VelaError::UnauthorizedUpgrade);
 
     let new_amount = new_plan.mandate_amount();
     if new_amount > mandate.amount {
@@ -148,8 +151,14 @@ pub fn handler(ctx: Context<UpdateMandatePlan>) -> Result<()> {
 
     let clock_now = Clock::get()?.unix_timestamp;
     let elapsed_seconds = elapsed_in_period(&mandate, clock_now)?;
-    let signed_delta = compute_proration(mandate.amount, new_amount, elapsed_seconds, mandate.frequency)?;
-    let event_proration_amount = i64::try_from(signed_delta).map_err(|_| error!(VelaError::MathOverflow))?;
+    let signed_delta = compute_proration(
+        mandate.amount,
+        new_amount,
+        elapsed_seconds,
+        mandate.frequency,
+    )?;
+    let event_proration_amount =
+        i64::try_from(signed_delta).map_err(|_| error!(VelaError::MathOverflow))?;
 
     let old_plan = mandate.plan;
     emit!(MandateUpgradeInitiated {
@@ -167,7 +176,8 @@ pub fn handler(ctx: Context<UpdateMandatePlan>) -> Result<()> {
     });
 
     if signed_delta > 0 {
-        let charge_amount = u64::try_from(signed_delta).map_err(|_| error!(VelaError::MathOverflow))?;
+        let charge_amount =
+            u64::try_from(signed_delta).map_err(|_| error!(VelaError::MathOverflow))?;
         validate_pull_approval(&ctx, charge_amount, clock_now)?;
 
         let mandate_index_bytes = mandate.mandate_index.to_le_bytes();
@@ -207,6 +217,7 @@ pub fn handler(ctx: Context<UpdateMandatePlan>) -> Result<()> {
             schema_version: 1,
             mandate: ctx.accounts.mandate.key(),
             mint: protocol_config.wrapped_usdc_mint(),
+            token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
             old_plan,
             new_plan: new_plan_key,
             credit_amount,
@@ -265,7 +276,10 @@ fn validate_pull_approval(
     clock_now: i64,
 ) -> Result<()> {
     let (expected_approval, _) = Pubkey::find_program_address(
-        &[PullApproval::SEED_PREFIX, ctx.accounts.mandate.key().as_ref()],
+        &[
+            PullApproval::SEED_PREFIX,
+            ctx.accounts.mandate.key().as_ref(),
+        ],
         &crate::ID,
     );
     require_keys_eq!(
@@ -274,7 +288,8 @@ fn validate_pull_approval(
         VelaError::ApprovalNotGranted
     );
 
-    if ctx.accounts.pull_approval.owner != &crate::ID || ctx.accounts.pull_approval.data_is_empty() {
+    if ctx.accounts.pull_approval.owner != &crate::ID || ctx.accounts.pull_approval.data_is_empty()
+    {
         return Err(VelaError::ApprovalNotGranted.into());
     }
 
@@ -286,7 +301,10 @@ fn validate_pull_approval(
     };
 
     require!(approval.approved, VelaError::ApprovalNotGranted);
-    require!(clock_now <= approval.valid_until, VelaError::ApprovalExpired);
+    require!(
+        clock_now <= approval.valid_until,
+        VelaError::ApprovalExpired
+    );
     require!(
         charge_amount <= approval.approved_amount,
         VelaError::AmountExceedsPlanAmount

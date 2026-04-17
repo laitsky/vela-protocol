@@ -2,13 +2,18 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_2022::Token2022;
 
 use crate::{
-    constants::EXTRA_ACCOUNT_METAS_SEED,
+    constants::{EXTRA_ACCOUNT_METAS_SEED, WRAPPED_USDC_SYMBOL},
     errors::VelaError,
     instructions::{
         execute_stream::{invoke_stream_transfer, validate_stream_transfer_accounts},
-        stream_account::{load_stream_mandate, validate_stream_mandate_address, write_stream_mandate},
+        stream_account::{
+            load_stream_mandate, validate_stream_mandate_address, write_stream_mandate,
+        },
     },
-    state::{ProtocolConfig, StreamMandate, StreamRateUpdated, StreamStatus},
+    state::{
+        MandateUpgradeFinalized, MandateUpgradeInitiated, ProtocolConfig, StreamMandate,
+        StreamRateUpdated, StreamStatus,
+    },
 };
 
 #[derive(Accounts)]
@@ -85,7 +90,10 @@ pub fn handler(
         mandate.mint,
         VelaError::UsdcMintMismatch
     );
-    require!(mandate.status == StreamStatus::Active, VelaError::StreamNotActive);
+    require!(
+        mandate.status == StreamStatus::Active,
+        VelaError::StreamNotActive
+    );
 
     let authority = ctx.accounts.authority.key();
     let is_subscriber = authority == mandate.subscriber;
@@ -99,9 +107,8 @@ pub fn handler(
         VelaError::NoUpdateProvided
     );
 
-    let subscriber_required =
-        new_authorized_max_rate.is_some()
-            || matches!(new_rate, Some(next_rate) if next_rate > mandate.authorized_max_rate);
+    let subscriber_required = new_authorized_max_rate.is_some()
+        || matches!(new_rate, Some(next_rate) if next_rate > mandate.authorized_max_rate);
     if subscriber_required {
         require!(is_subscriber, VelaError::UnauthorizedStreamSigner);
     }
@@ -155,15 +162,46 @@ pub fn handler(
     );
     write_stream_mandate(&ctx.accounts.mandate.to_account_info(), &mandate)?;
 
+    let proration_amount = i64::try_from(settle_amount).map_err(|_| VelaError::Overflow)?;
+
+    emit!(MandateUpgradeInitiated {
+        schema_version: 1,
+        mandate: ctx.accounts.mandate.key(),
+        mint: mandate.mint,
+        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
+        old_plan: Pubkey::default(),
+        new_plan: Pubkey::default(),
+        proration_amount,
+        change_type: 1,
+        signer: authority,
+        applied_at: clock_now,
+        timestamp: clock_now,
+    });
+
     emit!(StreamRateUpdated {
         schema_version: 1,
         mandate: ctx.accounts.mandate.key(),
+        mint: mandate.mint,
+        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
         old_rate_per_second: old_rate,
         new_rate_per_second: mandate.rate_per_second,
         old_authorized_max_rate,
         new_authorized_max_rate: mandate.authorized_max_rate,
         signer: authority,
         final_settle_amount: settle_amount,
+        timestamp: clock_now,
+    });
+
+    emit!(MandateUpgradeFinalized {
+        schema_version: 1,
+        mandate: ctx.accounts.mandate.key(),
+        mint: mandate.mint,
+        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
+        old_plan: Pubkey::default(),
+        new_plan: Pubkey::default(),
+        proration_amount,
+        change_type: 1,
+        applied_at: clock_now,
         timestamp: clock_now,
     });
 

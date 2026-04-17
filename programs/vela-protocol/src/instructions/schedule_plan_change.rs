@@ -34,7 +34,10 @@ pub fn handler(ctx: Context<SchedulePlanChange>) -> Result<()> {
     require!(!protocol_config.paused(), VelaError::ProtocolPaused);
 
     let loaded_mandate = load_mandate_account(&ctx.accounts.mandate.to_account_info())?;
-    require!(!loaded_mandate.is_legacy(), VelaError::MandateVersionUnsupported);
+    require!(
+        !loaded_mandate.is_legacy(),
+        VelaError::MandateVersionUnsupported
+    );
     validate_loaded_mandate_address(&ctx.accounts.mandate.key(), &loaded_mandate)?;
     let mut mandate = loaded_mandate.into_current();
     require!(
@@ -56,10 +59,7 @@ pub fn handler(ctx: Context<SchedulePlanChange>) -> Result<()> {
     let authority = ctx.accounts.authority.key();
     let is_subscriber = authority == mandate.subscriber;
     let is_merchant = authority == mandate.merchant;
-    require!(
-        is_subscriber || is_merchant,
-        VelaError::UnauthorizedUpgrade
-    );
+    require!(is_subscriber || is_merchant, VelaError::UnauthorizedUpgrade);
     if new_plan.mandate_amount() > mandate.amount {
         require!(is_subscriber, VelaError::UnauthorizedUpgrade);
     }
@@ -69,7 +69,11 @@ pub fn handler(ctx: Context<SchedulePlanChange>) -> Result<()> {
         return Ok(());
     }
 
-    let nonce = compute_nonce(&ctx.accounts.mandate.key(), &new_plan_key, Clock::get()?.slot);
+    let nonce = compute_nonce(
+        &ctx.accounts.mandate.key(),
+        &new_plan_key,
+        Clock::get()?.slot,
+    );
     if mandate.pending_change_type == 2
         && mandate.pending_new_plan == new_plan_key
         && mandate.pending_nonce_short == nonce

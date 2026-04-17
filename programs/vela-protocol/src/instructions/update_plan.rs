@@ -40,10 +40,7 @@ pub fn handler(
     max_pulls: Option<u64>,
 ) -> Result<()> {
     require!(
-        amount.is_some()
-            || frequency.is_some()
-            || trial_period.is_some()
-            || max_pulls.is_some(),
+        amount.is_some() || frequency.is_some() || trial_period.is_some() || max_pulls.is_some(),
         VelaError::NoUpdateProvided,
     );
 

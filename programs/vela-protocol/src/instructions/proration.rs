@@ -54,7 +54,10 @@ pub(crate) fn compute_proration(
     period_total_seconds: u64,
 ) -> Result<i128> {
     require!(period_total_seconds > 0, VelaError::MathDivByZero);
-    require!(elapsed_seconds <= period_total_seconds, VelaError::InvalidElapsed);
+    require!(
+        elapsed_seconds <= period_total_seconds,
+        VelaError::InvalidElapsed
+    );
 
     let old = precise(plan_amount_old as u128)?;
     let new_amount = precise(plan_amount_new as u128)?;

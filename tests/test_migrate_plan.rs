@@ -2,12 +2,12 @@
 mod helpers;
 
 use anchor_lang::prelude::Pubkey;
-use helpers::{TestHarness, to_address};
+use helpers::{to_address, TestHarness};
 use vela_protocol::{
     constants::MIN_FREQUENCY_SECONDS,
     state::{
-        PlanStatus, PricingTier, UsagePlan, VelaPlan,
-        ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION,
+        PlanStatus, PricingTier, UsagePlan, VelaPlan, ACCOUNT_RESERVED_BYTES,
+        CURRENT_ACCOUNT_VERSION,
     },
 };
 
@@ -77,23 +77,33 @@ fn inject_legacy_flat_plan(
 ) {
     use anchor_lang::Discriminator;
     let body = build_v1_flat_plan_bytes(
-        merchant, plan_id, amount, frequency, trial_period, max_pulls,
-        &PlanStatus::Active, credential_mint, bump,
+        merchant,
+        plan_id,
+        amount,
+        frequency,
+        trial_period,
+        max_pulls,
+        &PlanStatus::Active,
+        credential_mint,
+        bump,
     );
     let mut full_data = Vec::new();
     full_data.extend_from_slice(&VelaPlan::DISCRIMINATOR);
     full_data.extend_from_slice(&body);
 
-    harness.svm.set_account(
-        to_address(*plan_key),
-        solana_account::Account {
-            lamports: 1_500_000,
-            data: full_data,
-            owner: harness.program_id,
-            executable: false,
-            rent_epoch: 0,
-        },
-    ).expect("legacy plan account should be created");
+    harness
+        .svm
+        .set_account(
+            to_address(*plan_key),
+            solana_account::Account {
+                lamports: 1_500_000,
+                data: full_data,
+                owner: harness.program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
+        )
+        .expect("legacy plan account should be created");
 }
 
 fn inject_legacy_usage_plan(
@@ -111,24 +121,34 @@ fn inject_legacy_usage_plan(
 ) {
     use anchor_lang::Discriminator;
     let body = build_v1_usage_plan_bytes(
-        merchant, plan_id, unit_name, tiers, tier_count,
-        max_charge_per_period, settlement_frequency, credential_mint,
-        &PlanStatus::Active, bump,
+        merchant,
+        plan_id,
+        unit_name,
+        tiers,
+        tier_count,
+        max_charge_per_period,
+        settlement_frequency,
+        credential_mint,
+        &PlanStatus::Active,
+        bump,
     );
     let mut full_data = Vec::new();
     full_data.extend_from_slice(&UsagePlan::DISCRIMINATOR);
     full_data.extend_from_slice(&body);
 
-    harness.svm.set_account(
-        to_address(*plan_key),
-        solana_account::Account {
-            lamports: 1_500_000,
-            data: full_data,
-            owner: harness.program_id,
-            executable: false,
-            rent_epoch: 0,
-        },
-    ).expect("legacy usage plan account should be created");
+    harness
+        .svm
+        .set_account(
+            to_address(*plan_key),
+            solana_account::Account {
+                lamports: 1_500_000,
+                data: full_data,
+                owner: harness.program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
+        )
+        .expect("legacy usage plan account should be created");
 }
 
 /// Test: Fresh V2 flat plan created via create_plan has version=CURRENT_ACCOUNT_VERSION.
@@ -142,14 +162,22 @@ fn test_fresh_flat_plan_is_v2() {
     let max_pulls = 12u64;
     let addresses = harness.derive_plan_addresses(0);
 
-    harness.send_init_merchant_credential()
+    harness
+        .send_init_merchant_credential()
         .expect("init_merchant_credential should succeed");
-    harness.send_create_plan(amount, frequency, trial_period, max_pulls, 0)
+    harness
+        .send_create_plan(amount, frequency, trial_period, max_pulls, 0)
         .expect("create_plan should succeed");
 
     let plan: VelaPlan = harness.fetch_anchor_account(&addresses.plan);
-    assert_eq!(plan.version, CURRENT_ACCOUNT_VERSION, "Fresh plan must be V2");
-    assert_eq!(plan._reserved, [0u8; ACCOUNT_RESERVED_BYTES], "Reserved must be zero-filled");
+    assert_eq!(
+        plan.version, CURRENT_ACCOUNT_VERSION,
+        "Fresh plan must be V2"
+    );
+    assert_eq!(
+        plan._reserved, [0u8; ACCOUNT_RESERVED_BYTES],
+        "Reserved must be zero-filled"
+    );
 
     // Business fields preserved
     assert_eq!(plan.amount, amount);
@@ -178,13 +206,18 @@ fn test_fresh_usage_plan_is_v2() {
 
     let addresses = harness.derive_usage_plan_addresses(plan_id);
 
-    harness.send_init_merchant_credential()
+    harness
+        .send_init_merchant_credential()
         .expect("init_merchant_credential should succeed");
-    harness.send_create_usage_plan(plan_id, unit_name, tiers, max_charge, settlement_freq)
+    harness
+        .send_create_usage_plan(plan_id, unit_name, tiers, max_charge, settlement_freq)
         .expect("create_usage_plan should succeed");
 
     let plan: UsagePlan = harness.fetch_anchor_account(&addresses.usage_plan);
-    assert_eq!(plan.version, CURRENT_ACCOUNT_VERSION, "Fresh usage plan must be V2");
+    assert_eq!(
+        plan.version, CURRENT_ACCOUNT_VERSION,
+        "Fresh usage plan must be V2"
+    );
     assert_eq!(plan._reserved, [0u8; ACCOUNT_RESERVED_BYTES]);
     assert_eq!(plan.merchant, harness.merchant_pubkey());
     assert_eq!(plan.plan_id, plan_id);
@@ -236,15 +269,23 @@ fn test_migrate_flat_plan_preserves_business_fields() {
     // Verify V1 plan exists and has legacy size
     let plan_data = harness.fetch_account_data(&addresses.plan);
     let v1_expected_size = 8 + 32 + 8 + 8 + 8 + 8 + 8 + 1 + 32 + 1; // 114 (discriminator + V1 fields)
-    assert_eq!(plan_data.len(), v1_expected_size, "V1 plan should have legacy size");
+    assert_eq!(
+        plan_data.len(),
+        v1_expected_size,
+        "V1 plan should have legacy size"
+    );
 
     // Migrate the plan
-    harness.send_migrate_plan(&addresses.plan)
+    harness
+        .send_migrate_plan(&addresses.plan)
         .expect("migrate_plan should succeed");
 
     // Verify V2 plan data
     let plan: VelaPlan = harness.fetch_anchor_account(&addresses.plan);
-    assert_eq!(plan.version, CURRENT_ACCOUNT_VERSION, "Migrated plan must be V2");
+    assert_eq!(
+        plan.version, CURRENT_ACCOUNT_VERSION,
+        "Migrated plan must be V2"
+    );
     assert_eq!(plan._reserved, [0u8; ACCOUNT_RESERVED_BYTES]);
 
     // All business fields preserved
@@ -305,11 +346,15 @@ fn test_migrate_usage_plan_preserves_business_fields() {
     );
 
     // Migrate the plan
-    harness.send_migrate_plan(&addresses.usage_plan)
+    harness
+        .send_migrate_plan(&addresses.usage_plan)
         .expect("migrate_plan should succeed for usage plans");
 
     let plan: UsagePlan = harness.fetch_anchor_account(&addresses.usage_plan);
-    assert_eq!(plan.version, CURRENT_ACCOUNT_VERSION, "Migrated usage plan must be V2");
+    assert_eq!(
+        plan.version, CURRENT_ACCOUNT_VERSION,
+        "Migrated usage plan must be V2"
+    );
     assert_eq!(plan._reserved, [0u8; ACCOUNT_RESERVED_BYTES]);
 
     // All business fields preserved
@@ -328,16 +373,19 @@ fn test_migrate_plan_idempotent_on_v2() {
     let mut harness = TestHarness::new();
 
     let addresses = harness.derive_plan_addresses(0);
-    harness.send_init_merchant_credential()
+    harness
+        .send_init_merchant_credential()
         .expect("init_merchant_credential should succeed");
-    harness.send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
+    harness
+        .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
         .expect("create_plan should succeed");
 
     let before: VelaPlan = harness.fetch_anchor_account(&addresses.plan);
     assert_eq!(before.version, CURRENT_ACCOUNT_VERSION);
 
     // Migrating an already-V2 plan should succeed without errors
-    harness.send_migrate_plan(&addresses.plan)
+    harness
+        .send_migrate_plan(&addresses.plan)
         .expect("migrate_plan should be idempotent on V2 plans");
 
     let after: VelaPlan = harness.fetch_anchor_account(&addresses.plan);

@@ -36,16 +36,27 @@ pub fn validate_protocol_config(config: &ProtocolConfig) -> Result<()> {
 }
 
 pub fn derive_cluster_pubkey(cluster_id: u32) -> Pubkey {
-    Pubkey::find_program_address(&[CLUSTER_PDA_SEED, &cluster_id.to_le_bytes()], &ARCIUM_PROG_ID).0
+    Pubkey::find_program_address(
+        &[CLUSTER_PDA_SEED, &cluster_id.to_le_bytes()],
+        &ARCIUM_PROG_ID,
+    )
+    .0
 }
 
 pub fn derive_mempool_pubkey(cluster_id: u32) -> Pubkey {
-    Pubkey::find_program_address(&[MEMPOOL_PDA_SEED, &cluster_id.to_le_bytes()], &ARCIUM_PROG_ID).0
+    Pubkey::find_program_address(
+        &[MEMPOOL_PDA_SEED, &cluster_id.to_le_bytes()],
+        &ARCIUM_PROG_ID,
+    )
+    .0
 }
 
 pub fn derive_execpool_pubkey(cluster_id: u32) -> Pubkey {
-    Pubkey::find_program_address(&[EXECPOOL_PDA_SEED, &cluster_id.to_le_bytes()], &ARCIUM_PROG_ID)
-        .0
+    Pubkey::find_program_address(
+        &[EXECPOOL_PDA_SEED, &cluster_id.to_le_bytes()],
+        &ARCIUM_PROG_ID,
+    )
+    .0
 }
 
 pub fn derive_computation_pubkey(cluster_id: u32, computation_offset: u64) -> Pubkey {
@@ -83,10 +94,7 @@ pub fn derive_billing_computation_offset(
     derive_request_offset(
         b"record_billing_event",
         mandate,
-        &[
-            &pulls_executed.to_le_bytes(),
-            &request_nonce.to_le_bytes(),
-        ],
+        &[&pulls_executed.to_le_bytes(), &request_nonce.to_le_bytes()],
     )
 }
 
@@ -98,10 +106,7 @@ pub fn derive_usage_computation_offset(
     derive_request_offset(
         b"usage",
         mandate,
-        &[
-            &period_start.to_le_bytes(),
-            &request_nonce.to_le_bytes(),
-        ],
+        &[&period_start.to_le_bytes(), &request_nonce.to_le_bytes()],
     )
 }
 
@@ -274,9 +279,8 @@ pub fn build_callback_instruction(
 #[cfg(test)]
 mod tests {
     use super::{
-        derive_billing_computation_offset, derive_cluster_pubkey,
-        derive_usage_computation_offset, derive_validation_computation_offset,
-        validate_cluster_configuration,
+        derive_billing_computation_offset, derive_cluster_pubkey, derive_usage_computation_offset,
+        derive_validation_computation_offset, validate_cluster_configuration,
     };
     use anchor_lang::prelude::Pubkey;
 

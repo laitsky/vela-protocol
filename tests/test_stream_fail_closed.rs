@@ -161,7 +161,9 @@ fn assert_anchor_error_code(failure: &FailedTransactionMetadata, code: u32) {
 #[test]
 fn test_insufficient_balance_errors() {
     let mut fixture = setup_stream_fixture(10, 10, None, 60, 100);
-    fixture.harness.set_clock_timestamp(fixture.created_at + 100);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 100);
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
     let err = fixture
@@ -203,7 +205,9 @@ fn test_min_settle_interval_violation() {
 #[test]
 fn test_cap_clamp_before_hook() {
     let mut fixture = setup_stream_fixture(10, 10, Some(1), 60, 5_000);
-    fixture.harness.set_clock_timestamp(fixture.created_at + 100);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 100);
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
     fixture
@@ -218,7 +222,9 @@ fn test_cap_clamp_before_hook() {
         )
         .expect("execute_stream should clamp to the remaining cap before the hook");
 
-    let mandate: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let mandate: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
     let merchant_wrapped = fixture
         .harness
         .fetch_spl_token_account(&fixture.merchant_wrapped);
@@ -230,7 +236,9 @@ fn test_cap_clamp_before_hook() {
 #[test]
 fn test_hook_rejects_after_clamp_bypass() {
     let mut fixture = setup_stream_fixture(10, 10, Some(5), 60, 5_000);
-    fixture.harness.set_clock_timestamp(fixture.created_at + 100);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 100);
     let config = fixture.harness.derive_config();
     let config_account = fixture
         .harness

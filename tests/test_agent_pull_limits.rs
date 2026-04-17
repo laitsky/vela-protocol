@@ -6,10 +6,7 @@ use helpers::{to_anchor_pubkey, AgentMandateFixture, TestHarness};
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
 use solana_signer::Signer;
-use vela_protocol::{
-    instructions::ServiceLimitInput,
-    state::AgentMandate,
-};
+use vela_protocol::{instructions::ServiceLimitInput, state::AgentMandate};
 
 fn send_create_agent_mandate(
     harness: &mut TestHarness,
@@ -85,9 +82,12 @@ fn send_agent_pull(
         service_wrapped_account: *service_wrapped_account,
         pull_approval,
         wrapped_usdc_mint: fixture.wrapped_usdc_mint,
+        token_config: fixture.token_config,
         protocol_config: config,
         wrapping_vault: fixture.wrapping_vault,
-        hook_program: anchor_lang::prelude::Pubkey::new_from_array(vela_transfer_hook::ID.to_bytes()),
+        hook_program: anchor_lang::prelude::Pubkey::new_from_array(
+            vela_transfer_hook::ID.to_bytes(),
+        ),
         extra_account_meta_list: fixture.extra_account_meta_list,
         protocol_program: vela_protocol::ID,
         token_2022_program: helpers::to_anchor_pubkey(helpers::token_2022_address()),
@@ -127,8 +127,11 @@ fn setup_single_service_fixture(
     let fixture = harness.setup_agent_mandate_fixture(&admin, 10_000_000);
     let service = harness.create_wallet();
     let service_pubkey = to_anchor_pubkey(service.pubkey());
-    let service_wrapped_account =
-        harness.create_token_2022_ata(&fixture.authority, &service_pubkey, &fixture.wrapped_usdc_mint);
+    let service_wrapped_account = harness.create_token_2022_ata(
+        &fixture.authority,
+        &service_pubkey,
+        &fixture.wrapped_usdc_mint,
+    );
 
     send_create_agent_mandate(
         &mut harness,
@@ -162,10 +165,16 @@ fn setup_two_service_fixture() -> (
     let service_two = harness.create_wallet();
     let service_one_pubkey = to_anchor_pubkey(service_one.pubkey());
     let service_two_pubkey = to_anchor_pubkey(service_two.pubkey());
-    let service_one_wrapped =
-        harness.create_token_2022_ata(&fixture.authority, &service_one_pubkey, &fixture.wrapped_usdc_mint);
-    let service_two_wrapped =
-        harness.create_token_2022_ata(&fixture.authority, &service_two_pubkey, &fixture.wrapped_usdc_mint);
+    let service_one_wrapped = harness.create_token_2022_ata(
+        &fixture.authority,
+        &service_one_pubkey,
+        &fixture.wrapped_usdc_mint,
+    );
+    let service_two_wrapped = harness.create_token_2022_ata(
+        &fixture.authority,
+        &service_two_pubkey,
+        &fixture.wrapped_usdc_mint,
+    );
 
     send_create_agent_mandate(
         &mut harness,
@@ -212,14 +221,8 @@ fn test_agent_pull_within_daily_limit_and_exceed_fail() {
     )
     .expect("pull at exact daily limit should succeed");
 
-    let error = send_agent_pull(
-        &mut harness,
-        &fixture,
-        &payer,
-        &service_wrapped_account,
-        1,
-    )
-    .expect_err("pull above daily limit should fail");
+    let error = send_agent_pull(&mut harness, &fixture, &payer, &service_wrapped_account, 1)
+        .expect_err("pull above daily limit should fail");
     assert!(
         format!("{:?}", error.err).contains("Custom("),
         "expected custom daily-limit error, got {:?}",
@@ -259,14 +262,8 @@ fn test_agent_pull_within_lifetime_cap_and_exceed_fail() {
 
 #[test]
 fn test_agent_pull_per_service_limits_are_independent() {
-    let (
-        mut harness,
-        fixture,
-        service_one,
-        service_one_wrapped,
-        service_two,
-        service_two_wrapped,
-    ) = setup_two_service_fixture();
+    let (mut harness, fixture, service_one, service_one_wrapped, service_two, service_two_wrapped) =
+        setup_two_service_fixture();
     let payer = harness.create_wallet();
 
     send_agent_pull(
@@ -384,8 +381,9 @@ fn test_agent_pull_rejects_unauthorized_service() {
 
 #[test]
 fn test_agent_pull_enforces_min_amount_and_cooldown() {
-    let (mut harness, fixture, _service, service_wrapped_account) =
-        setup_single_service_fixture(5_000_000, 5_000_000, 20_000_000, 500_000, 1_000_000, 4_000_000);
+    let (mut harness, fixture, _service, service_wrapped_account) = setup_single_service_fixture(
+        5_000_000, 5_000_000, 20_000_000, 500_000, 1_000_000, 4_000_000,
+    );
     let payer = harness.create_wallet();
     harness.set_clock_timestamp(1_000_000);
 

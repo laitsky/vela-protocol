@@ -37,9 +37,7 @@ pub fn handler(
     settlement_frequency: Option<u64>,
 ) -> Result<()> {
     require!(
-        tiers.is_some()
-            || max_charge_per_period.is_some()
-            || settlement_frequency.is_some(),
+        tiers.is_some() || max_charge_per_period.is_some() || settlement_frequency.is_some(),
         VelaError::NoUpdateProvided,
     );
 

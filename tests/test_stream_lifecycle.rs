@@ -75,7 +75,8 @@ fn setup_stream_fixture(
         u64::MAX,
     );
 
-    let subscriber_usdc = harness.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);
+    let subscriber_usdc =
+        harness.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);
     harness.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, wrapped_amount);
     let subscriber_wrapped =
         harness.create_token_2022_ata(&admin, &stream_mandate, &wrapped_mint_pubkey);
@@ -144,11 +145,7 @@ fn call_transfer_hook_directly(
 
 fn error_has(failure: &FailedTransactionMetadata, needle: &str) -> bool {
     format!("{:?}", failure.err).contains(needle)
-        || failure
-            .meta
-            .logs
-            .iter()
-            .any(|log| log.contains(needle))
+        || failure.meta.logs.iter().any(|log| log.contains(needle))
 }
 
 #[test]
@@ -160,7 +157,9 @@ fn test_create_stream_mandate() {
         &vela_protocol::ID,
     );
     let merchant_state_after: MerchantState = fixture.harness.fetch_anchor_account(&merchant_state);
-    let stream: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let stream: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
 
     assert_eq!(merchant_state_after.stream_mandate_counter, 1);
     assert_eq!(stream.rate_per_second, 10);
@@ -176,7 +175,8 @@ fn test_create_stream_mandate() {
     let spl_usdc_mint = invalid_interval.create_spl_mint(&admin, 6);
     invalid_interval.init_protocol_config(&admin);
     let wrapped_mint = Keypair::new();
-    let (wrapped_mint_pubkey, _) = invalid_interval.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
+    let (wrapped_mint_pubkey, _) =
+        invalid_interval.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
     invalid_interval
         .send_init_merchant_credential()
         .expect("merchant credential bootstrap should succeed");
@@ -205,30 +205,52 @@ fn test_execute_stream_clamped() {
     let merchant_before = fixture
         .harness
         .fetch_spl_token_account(&fixture.merchant_wrapped);
-    let stream_before: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let stream_before: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
     let (expected_stream, expected_bump) = Pubkey::find_program_address(
         &[
             StreamMandate::SEED_PREFIX,
-            Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes())
-                .as_ref(),
+            Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes()).as_ref(),
             fixture.harness.merchant_pubkey().as_ref(),
             stream_before.mandate_index.to_le_bytes().as_ref(),
         ],
         &vela_protocol::ID,
     );
-    assert_eq!(source_before.owner, helpers::to_address(fixture.stream_mandate));
-    assert_eq!(source_before.mint, helpers::to_address(fixture.wrapped_mint));
-    assert_eq!(merchant_before.mint, helpers::to_address(fixture.wrapped_mint));
+    assert_eq!(
+        source_before.owner,
+        helpers::to_address(fixture.stream_mandate)
+    );
+    assert_eq!(
+        source_before.mint,
+        helpers::to_address(fixture.wrapped_mint)
+    );
+    assert_eq!(
+        merchant_before.mint,
+        helpers::to_address(fixture.wrapped_mint)
+    );
     assert!(
-        fixture.harness.fetch_account_data(&fixture.subscriber_wrapped).len() > 165,
+        fixture
+            .harness
+            .fetch_account_data(&fixture.subscriber_wrapped)
+            .len()
+            > 165,
         "source wrapped account should include transfer-hook extensions"
     );
     assert!(
-        fixture.harness.fetch_account_data(&fixture.merchant_wrapped).len() > 165,
+        fixture
+            .harness
+            .fetch_account_data(&fixture.merchant_wrapped)
+            .len()
+            > 165,
         "destination wrapped account should include transfer-hook extensions"
     );
-    let source_data = fixture.harness.fetch_account_data(&fixture.subscriber_wrapped);
-    let destination_data = fixture.harness.fetch_account_data(&fixture.merchant_wrapped);
+    let source_data = fixture
+        .harness
+        .fetch_account_data(&fixture.subscriber_wrapped);
+    let destination_data = fixture
+        .harness
+        .fetch_account_data(&fixture.merchant_wrapped);
     let source_ext = StateWithExtensions::<spl_token_2022::state::Account>::unpack(&source_data)
         .expect("source wrapped account should unpack with extensions");
     let destination_ext =
@@ -242,7 +264,9 @@ fn test_execute_stream_clamped() {
         .expect("destination wrapped account should carry transfer-hook extension");
     assert_eq!(expected_stream, fixture.stream_mandate);
     assert_eq!(stream_before.bump, expected_bump);
-    fixture.harness.set_clock_timestamp(fixture.created_at + 100);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 100);
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
     fixture
@@ -257,7 +281,9 @@ fn test_execute_stream_clamped() {
         )
         .expect("execute_stream should settle 100 seconds of accrual");
 
-    let mandate: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let mandate: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
     let merchant_wrapped = fixture
         .harness
         .fetch_spl_token_account(&fixture.merchant_wrapped);
@@ -269,7 +295,9 @@ fn test_execute_stream_clamped() {
 #[test]
 fn test_execute_stream_cap_clamp() {
     let mut fixture = setup_stream_fixture(10, 10, Some(500), 60, 5_000);
-    fixture.harness.set_clock_timestamp(fixture.created_at + 100);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 100);
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
     fixture
@@ -284,7 +312,9 @@ fn test_execute_stream_cap_clamp() {
         )
         .expect("execute_stream should clamp to the remaining cap");
 
-    let mandate: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let mandate: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
     let merchant_wrapped = fixture
         .harness
         .fetch_spl_token_account(&fixture.merchant_wrapped);
@@ -296,19 +326,27 @@ fn test_execute_stream_cap_clamp() {
 #[test]
 fn test_hook_misroute_wrong_account_type() {
     let mut harness = TestHarness::new();
-    let fixture = harness.subscribe_fixture(25_000_000, vela_protocol::constants::MIN_FREQUENCY_SECONDS, 0, 2);
+    let fixture = harness.subscribe_fixture(
+        25_000_000,
+        vela_protocol::constants::MIN_FREQUENCY_SECONDS,
+        0,
+        2,
+    );
     let mandate: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
     let admin = harness.merchant.insecure_clone();
     let spl_usdc_mint = harness.create_spl_mint(&admin, 6);
     harness.init_protocol_config(&admin);
     let wrapped_mint = Keypair::new();
-    let (wrapped_mint_pubkey, wrapping_vault) = harness.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
+    let (wrapped_mint_pubkey, wrapping_vault) =
+        harness.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
     let config = harness.derive_config();
     let token_config = harness.derive_token_config_address(&wrapped_mint_pubkey);
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
-    let subscriber_usdc = harness.create_spl_token_account(&fixture.subscriber, &spl_usdc_mint, &subscriber);
+    let subscriber_usdc =
+        harness.create_spl_token_account(&fixture.subscriber, &spl_usdc_mint, &subscriber);
     harness.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, mandate.amount);
-    let subscriber_wrapped = harness.create_token_2022_ata(&admin, &fixture.mandate, &wrapped_mint_pubkey);
+    let subscriber_wrapped =
+        harness.create_token_2022_ata(&admin, &fixture.mandate, &wrapped_mint_pubkey);
     harness
         .send_wrap(
             &fixture.subscriber,
@@ -360,7 +398,9 @@ fn test_hook_misroute_wrong_account_type() {
 #[test]
 fn test_pause_requires_active() {
     let mut fixture = setup_stream_fixture(10, 10, None, 60, 5_000);
-    fixture.harness.set_clock_timestamp(fixture.created_at + 100);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 100);
 
     fixture
         .harness
@@ -455,7 +495,9 @@ fn test_pause_resume_no_back_accrual() {
     let mut fixture = setup_stream_fixture(10, 10, None, 60, 50_000);
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
-    fixture.harness.set_clock_timestamp(fixture.created_at + 100);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 100);
     fixture
         .harness
         .send_pause_stream(
@@ -467,13 +509,17 @@ fn test_pause_resume_no_back_accrual() {
         )
         .expect("pause should settle the first 100 seconds");
 
-    fixture.harness.set_clock_timestamp(fixture.created_at + 3_700);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 3_700);
     fixture
         .harness
         .send_resume_stream(&fixture.subscriber, &fixture.stream_mandate)
         .expect("resume should reopen the mandate without back-accrual");
 
-    fixture.harness.set_clock_timestamp(fixture.created_at + 3_760);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 3_760);
     fixture
         .harness
         .send_execute_stream(
@@ -486,7 +532,9 @@ fn test_pause_resume_no_back_accrual() {
         )
         .expect("execute_stream should only accrue post-resume time");
 
-    let mandate: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let mandate: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
     let merchant_wrapped = fixture
         .harness
         .fetch_spl_token_account(&fixture.merchant_wrapped);
@@ -511,7 +559,9 @@ fn test_cancel_stream_prorata() {
         )
         .expect("cancel should settle accrued amount before finalizing");
 
-    let mandate: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let mandate: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
     let merchant_wrapped = fixture
         .harness
         .fetch_spl_token_account(&fixture.merchant_wrapped);
@@ -579,7 +629,9 @@ fn test_update_rate_settles_first() {
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
     let merchant = fixture.harness.merchant.insecure_clone();
 
-    fixture.harness.set_clock_timestamp(fixture.created_at + 100);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 100);
     fixture
         .harness
         .send_update_stream_rate(
@@ -593,11 +645,15 @@ fn test_update_rate_settles_first() {
         )
         .expect("merchant should be able to raise within the existing ceiling");
 
-    let after_update: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let after_update: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
     assert_eq!(after_update.total_streamed, 1_000);
     assert_eq!(after_update.rate_per_second, 20);
 
-    fixture.harness.set_clock_timestamp(fixture.created_at + 160);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 160);
     fixture
         .harness
         .send_execute_stream(
@@ -610,7 +666,9 @@ fn test_update_rate_settles_first() {
         )
         .expect("post-update settlement should accrue at the new rate");
 
-    let after_execute: StreamMandate = fixture.harness.fetch_anchor_account(&fixture.stream_mandate);
+    let after_execute: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
     let merchant_wrapped = fixture
         .harness
         .fetch_spl_token_account(&fixture.merchant_wrapped);

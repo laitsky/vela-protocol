@@ -40,11 +40,13 @@ const CONFIG_SEED = Buffer.from("config");
 const KEEPER_CONFIG_SEED = Buffer.from("keeper-config");
 const MINT_AUTHORITY_SEED = Buffer.from("mint-authority");
 const EXTRA_ACCOUNT_METAS_SEED = Buffer.from("extra-account-metas");
+const TOKEN_CONFIG_SEED = Buffer.from("token_config");
 const APPROVAL_SEED = Buffer.from("approval");
 const EMPTY_PUBKEY = new PublicKey(new Uint8Array(32));
 const PROTOCOL_CONFIG_SIZE = 220;
 const KEEPER_CONFIG_SIZE = 268;
 const PULL_APPROVAL_SIZE = 66;
+const TOKEN_CONFIG_SIZE = 213;
 
 export type VelaProgram = Program<any>;
 
@@ -82,19 +84,28 @@ function discriminator(namespace: "global" | "account", name: string): Buffer {
     .subarray(0, 8);
 }
 
-function serializeProtocolConfig(admin: PublicKey, bump: number): Uint8Array {
+function serializeProtocolConfig(
+  admin: PublicKey,
+  bump: number,
+  args: {
+    wrappedUsdcMint?: PublicKey;
+    wrappingVault?: PublicKey;
+    transferHookProgramId?: PublicKey;
+  } = {},
+): Uint8Array {
   const data = Buffer.alloc(PROTOCOL_CONFIG_SIZE);
   discriminator("account", "ProtocolConfig").copy(data, 0);
   admin.toBuffer().copy(data, 8);
   EMPTY_PUBKEY.toBuffer().copy(data, 40);
   data.writeUInt8(0, 72);
   data.writeBigUInt64LE(0n, 73);
-  EMPTY_PUBKEY.toBuffer().copy(data, 81);
-  EMPTY_PUBKEY.toBuffer().copy(data, 113);
+  (args.wrappedUsdcMint ?? EMPTY_PUBKEY).toBuffer().copy(data, 81);
+  (args.wrappingVault ?? EMPTY_PUBKEY).toBuffer().copy(data, 113);
   data.writeUInt8(0, 145);
   data.writeBigInt64LE(0n, 146);
-  data.writeUInt8(bump, 154);
-  data.writeUInt8(1, 155);
+  (args.transferHookProgramId ?? EMPTY_PUBKEY).toBuffer().copy(data, 154);
+  data.writeUInt8(bump, 186);
+  data.writeUInt8(1, 187);
   return data;
 }
 
@@ -111,6 +122,28 @@ function serializeKeeperConfig(
   keeperAuthority.toBuffer().copy(data, 170);
   data.writeUInt8(bump, 202);
   data.writeUInt8(1, 203);
+  return data;
+}
+
+function serializeTokenConfig(args: {
+  mint: PublicKey;
+  tokenProgram: PublicKey;
+  decimals: number;
+  admin: PublicKey;
+  bump: number;
+}): Uint8Array {
+  const data = Buffer.alloc(TOKEN_CONFIG_SIZE);
+  discriminator("account", "TokenConfig").copy(data, 0);
+  args.mint.toBuffer().copy(data, 8);
+  args.tokenProgram.toBuffer().copy(data, 40);
+  data.writeUInt8(0, 72);
+  data.writeUInt8(args.decimals, 73);
+  data.writeUInt8(1, 74);
+  EMPTY_PUBKEY.toBuffer().copy(data, 75);
+  args.admin.toBuffer().copy(data, 107);
+  data.writeBigInt64LE(0n, 139);
+  data.writeUInt8(args.bump, 147);
+  data.writeUInt8(1, 148);
   return data;
 }
 
@@ -279,6 +312,13 @@ export function deriveExtraAccountMetaListAddress(
   );
 }
 
+export function deriveTokenConfigAddress(
+  mint: PublicKey,
+  programId = PROGRAM_ID,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([TOKEN_CONFIG_SEED, mint.toBuffer()], programId);
+}
+
 export function derivePullApprovalAddress(
   mandate: PublicKey,
   programId = PROGRAM_ID,
@@ -322,6 +362,7 @@ export async function installPhase7AdminState(args: {
   wrappedUsdcMint: PublicKey;
   wrappingVault: PublicKey;
   extraAccountMetaList: PublicKey;
+  tokenConfig: PublicKey;
 }> {
   const { provider, svm, admin, splUsdcMint } = args;
   const [config, configBump] = deriveConfigAddress();
@@ -365,6 +406,17 @@ export async function installPhase7AdminState(args: {
     ],
     [wrappedUsdcMint],
   );
+  svm.setAccount(config, {
+    lamports: Number(svm.minimumBalanceForRentExemption(BigInt(PROTOCOL_CONFIG_SIZE))),
+    data: serializeProtocolConfig(admin.publicKey, configBump, {
+      wrappedUsdcMint: wrappedUsdcMint.publicKey,
+      wrappingVault,
+      transferHookProgramId: TRANSFER_HOOK_PROGRAM_ID,
+    }),
+    owner: PROGRAM_ID,
+    executable: false,
+    rentEpoch: 0,
+  });
 
   const [extraAccountMetaList] = deriveExtraAccountMetaListAddress(
     wrappedUsdcMint.publicKey,
@@ -378,6 +430,22 @@ export async function installPhase7AdminState(args: {
       wrappingVault,
     }),
   ]);
+  const [tokenConfig, tokenConfigBump] = deriveTokenConfigAddress(
+    wrappedUsdcMint.publicKey,
+  );
+  svm.setAccount(tokenConfig, {
+    lamports: Number(svm.minimumBalanceForRentExemption(BigInt(TOKEN_CONFIG_SIZE))),
+    data: serializeTokenConfig({
+      mint: wrappedUsdcMint.publicKey,
+      tokenProgram: TOKEN_2022_PROGRAM_ID,
+      decimals: DECIMALS,
+      admin: admin.publicKey,
+      bump: tokenConfigBump,
+    }),
+    owner: PROGRAM_ID,
+    executable: false,
+    rentEpoch: 0,
+  });
 
   return {
     config,
@@ -386,6 +454,7 @@ export async function installPhase7AdminState(args: {
     wrappedUsdcMint: wrappedUsdcMint.publicKey,
     wrappingVault,
     extraAccountMetaList,
+    tokenConfig,
   };
 }
 
