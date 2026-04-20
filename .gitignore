@@ -7,6 +7,7 @@ target/
 
 # Arcium compiled circuits (repo source of truth is `encrypted-ixs/`)
 /build/
+/artifacts/
 
 # Historical duplicate output path from local tooling; not consumed by the repo
 /programs/vela-protocol/build/

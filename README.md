@@ -8,8 +8,8 @@ vela-protocol is a dual-program Anchor workspace:
 
 | Program | ID | Purpose |
 |---|---|---|
-| `vela-protocol` | `BhgXzh4E6e9xsgNrsPf9q1JqXKxETxjc9LBqx3D8cAKC` | Core billing logic — plans, mandates, Arcium callbacks |
-| `vela-transfer-hook` | `93q91TJ6M9yGoehAeeCttgEc1SThFGXaw4rZS2ysr3uX` | Token-2022 transfer hook — enforces PullApproval on every transfer |
+| `vela-protocol` | `CVM6UqbwKgHckZzm8R2qbN3BWhCTdk1PsSeEQLchkwKT` | Core billing logic — plans, mandates, Arcium callbacks |
+| `vela-transfer-hook` | `3agVoFp4NZFuKbVqCV8HbjSZn1xW4Utk4U1Wir3TKjZ9` | Token-2022 transfer hook — enforces PullApproval on every transfer |
 
 Billing logic runs on ciphertexts via four Arcium MPC circuits (`encrypted-ixs/`). The programs never see sensitive billing values in plaintext — Arcium returns only the approval flag and the charge amount.
 
@@ -148,6 +148,24 @@ bun install
 ### Build
 
 ```sh
+# Everyday local build for anyone cloning this repo:
+# validates repo-local program ids, then runs Arcium + Anchor
+bun run build:local
+
+# One-time setup: save the current devnet program keypairs somewhere persistent
+#
+# Default location:
+#   ~/.config/velapay/keys/devnet/
+#
+# This prevents future `anchor build` runs from silently generating new
+# keypairs if `target/` gets deleted.
+# Keep these files private and outside git.
+bun run keys:backup:devnet
+
+# Safe daily build for the real devnet program ids:
+# restores the saved keypairs into target/deploy, then runs Arcium + Anchor
+bun run build:devnet-safe
+
 # Compile Arcium circuits to build/ (required before `anchor build` on a fresh clone)
 arcium build
 
@@ -160,6 +178,14 @@ bun run build:programs
 # Type-check TypeScript
 bun run typecheck
 ```
+
+If your saved keypairs live somewhere else, override the default location:
+
+```sh
+VELA_PROGRAM_KEY_DIR=/secure/path/to/devnet-keys bun run build:devnet-safe
+```
+
+Use `bun run build:local` for normal standalone repo builds. Use `bun run build:devnet-safe` only when you want to preserve the real devnet program identities with the saved keypairs.
 
 ### Test
 
@@ -177,12 +203,14 @@ bun run ci:protocol
 ### Deploy
 
 ```sh
-# Deploy to devnet
-anchor deploy --provider.cluster devnet
+# Safe devnet upgrade flow for the real deployed program
+bun run deploy:devnet
 
 # Initialize protocol config after deploy
 # (see ts-tests/setup.ts for account initialization order)
 ```
+
+Avoid raw `anchor deploy` for devnet. Use the guarded script path so the deployed program ids and upgrade flow stay aligned with `config/program-ids.json`.
 
 ## Program Architecture Notes
 

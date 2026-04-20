@@ -25,10 +25,11 @@ import { LiteSVM } from "anchor-litesvm/node_modules/litesvm";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import idl from "../target/idl/vela_protocol.json";
+import transferHookIdl from "../target/idl/vela_transfer_hook.json";
 
 const PROGRAM_ID = new PublicKey(idl.address);
 const PROGRAM_SO_PATH = join(process.cwd(), "target", "deploy", "vela_protocol.so");
-const TRANSFER_HOOK_PROGRAM_ID = new PublicKey("93q91TJ6M9yGoehAeeCttgEc1SThFGXaw4rZS2ysr3uX");
+const TRANSFER_HOOK_PROGRAM_ID = new PublicKey(transferHookIdl.address);
 const TRANSFER_HOOK_SO_PATH = join(
   process.cwd(),
   "target",

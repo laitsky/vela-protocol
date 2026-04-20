@@ -7,7 +7,12 @@ set -euo pipefail
 # again — it would deploy to whatever keypair is in target/deploy/, which is no
 # longer the real program id.
 
-PROGRAM_ID="BhgXzh4E6e9xsgNrsPf9q1JqXKxETxjc9LBqx3D8cAKC"
+PROGRAM_ID=$(python3 - <<'PY'
+import json
+from pathlib import Path
+print(json.loads(Path("config/program-ids.json").read_text())["devnet"]["velaProtocol"])
+PY
+)
 SO_PATH="target/deploy/vela_protocol.so"
 IDL_PATH="target/idl/vela_protocol.json"
 CLUSTER="${CLUSTER:-devnet}"
