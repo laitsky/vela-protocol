@@ -221,7 +221,7 @@ mod __client_accounts_update_usage_plan {
     pub use crate::instructions::__client_accounts_update_usage_plan::*;
 }
 
-declare_id!("BhgXzh4E6e9xsgNrsPf9q1JqXKxETxjc9LBqx3D8cAKC");
+declare_id!("CVM6UqbwKgHckZzm8R2qbN3BWhCTdk1PsSeEQLchkwKT");
 
 #[arcium_program]
 pub mod vela_protocol {

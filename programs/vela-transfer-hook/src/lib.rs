@@ -12,7 +12,7 @@ use vela_protocol::{
     state::{BillingRail, ProtocolConfig, PullApproval, StreamMandate, StreamStatus, TokenConfig},
 };
 
-declare_id!("93q91TJ6M9yGoehAeeCttgEc1SThFGXaw4rZS2ysr3uX");
+declare_id!("3agVoFp4NZFuKbVqCV8HbjSZn1xW4Utk4U1Wir3TKjZ9");
 
 #[program]
 pub mod vela_transfer_hook {
