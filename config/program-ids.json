@@ -1,0 +1,11 @@
+{
+  "defaultCluster": "devnet",
+  "devnet": {
+    "velaProtocol": "CVM6UqbwKgHckZzm8R2qbN3BWhCTdk1PsSeEQLchkwKT",
+    "velaTransferHook": "3agVoFp4NZFuKbVqCV8HbjSZn1xW4Utk4U1Wir3TKjZ9"
+  },
+  "localnet": {
+    "velaProtocol": "BhgXzh4E6e9xsgNrsPf9q1JqXKxETxjc9LBqx3D8cAKC",
+    "velaTransferHook": "93q91TJ6M9yGoehAeeCttgEc1SThFGXaw4rZS2ysr3uX"
+  }
+}
