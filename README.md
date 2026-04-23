@@ -1,6 +1,6 @@
 # vela-protocol
 
-Encrypted recurring billing primitive on Solana. Flat-rate subscriptions and usage-based pricing, with mandate validation and charge computation running on encrypted data via Arcium MPC.
+Private, programmable payment authority on Solana. Subscriptions, per-second streams, usage metering, and agent budgets — all on one authorization primitive, with mandate validation and charge computation running on encrypted data via Arcium MPC.
 
 ## Overview
 
