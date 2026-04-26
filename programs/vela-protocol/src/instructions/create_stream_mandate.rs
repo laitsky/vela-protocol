@@ -5,7 +5,6 @@ use anchor_lang::{
 use anchor_spl::token_interface::Mint;
 
 use crate::{
-    constants::WRAPPED_USDC_SYMBOL,
     errors::VelaError,
     instructions::{
         merchant_account::validate_merchant_state_address, stream_account::write_stream_mandate,
@@ -152,7 +151,7 @@ pub fn handler(
         subscriber: mandate.subscriber,
         merchant: mandate.merchant,
         mint: mandate.mint,
-        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
+        token_symbol: String::new(),
         rate_per_second: mandate.rate_per_second,
         authorized_max_rate: mandate.authorized_max_rate,
         max_streamed: mandate.max_streamed,

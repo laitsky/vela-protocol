@@ -5,7 +5,9 @@ use crate::{
     instructions::plan_account::{
         load_plan_account, write_plan, write_usage_plan, LoadedPlanAccount,
     },
-    state::{UsagePlan, VelaPlan, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION},
+    state::{
+        UsagePlan, VelaPlan, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION, PLAN_RESERVED_BYTES,
+    },
 };
 
 #[derive(Accounts)]
@@ -50,9 +52,10 @@ pub fn handler(ctx: Context<MigratePlan>) -> Result<()> {
                 max_pulls: legacy.max_pulls,
                 status: legacy.status.clone(),
                 credential_mint: legacy.credential_mint,
+                billing_mint: Pubkey::default(),
                 bump: legacy.bump,
                 version: CURRENT_ACCOUNT_VERSION,
-                _reserved: [0; ACCOUNT_RESERVED_BYTES],
+                _reserved: [0; PLAN_RESERVED_BYTES],
             };
 
             // Realloc account to V2 size

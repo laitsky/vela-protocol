@@ -167,7 +167,7 @@ fn test_create_stream_mandate_emits_stream_created() {
     );
     assert_eq!(event.merchant, merchant);
     assert_eq!(event.mint, fixture.wrapped_mint);
-    assert_eq!(event.token_symbol, WRAPPED_USDC_SYMBOL);
+    assert_eq!(event.token_symbol, "");
     assert_eq!(event.rate_per_second, 20);
     assert_eq!(event.authorized_max_rate, 25);
     assert_eq!(event.max_streamed, Some(10_000));
@@ -263,7 +263,7 @@ fn test_resume_stream_emits_stream_resumed() {
     assert_eq!(event.schema_version, 1);
     assert_eq!(event.mandate, fixture.stream_mandate);
     assert_eq!(event.mint, fixture.wrapped_mint);
-    assert_eq!(event.token_symbol, WRAPPED_USDC_SYMBOL);
+    assert_eq!(event.token_symbol, "");
     assert_eq!(event.resumed_at, fixture.created_at + 420);
     assert_eq!(event.pause_duration_secs, 300);
     assert_eq!(

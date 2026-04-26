@@ -10,7 +10,6 @@ import {
   createToken2022Ata,
   createSubscriptionFixture,
   derivePullApprovalAddress,
-  installPhase7AdminState,
   insertPullApproval,
   deriveMintAuthorityAddress,
   TRANSFER_HOOK_PROGRAM_ID,
@@ -19,23 +18,17 @@ import {
 describe("execute_pull", () => {
   test("executes the recurring transfer through anchor-litesvm", async () => {
     const fixture = await createSubscriptionFixture();
-    const adminState = await installPhase7AdminState({
-      provider: fixture.provider,
-      svm: fixture.svm,
-      admin: fixture.merchant,
-      splUsdcMint: fixture.usdcMint,
-    });
     const [mintAuthority] = deriveMintAuthorityAddress();
     const [pullApproval] = derivePullApprovalAddress(fixture.mandate);
     const subscriberWrappedAccount = await createToken2022Ata(
       fixture.provider,
       fixture.mandate,
-      adminState.wrappedUsdcMint,
+      fixture.wrappedUsdcMint,
     );
     const merchantWrappedAccount = await createToken2022Ata(
       fixture.provider,
       fixture.merchant.publicKey,
-      adminState.wrappedUsdcMint,
+      fixture.wrappedUsdcMint,
     );
 
     fixture.svm.expireBlockhash();
@@ -43,13 +36,13 @@ describe("execute_pull", () => {
       .wrap(new BN((fixture.amount * fixture.maxPulls).toString()))
       .accounts({
         subscriber: fixture.subscriber.publicKey,
-        config: adminState.config,
+        config: fixture.config,
         splUsdcMint: fixture.usdcMint,
-        wrappedUsdcMint: adminState.wrappedUsdcMint,
+        wrappedUsdcMint: fixture.wrappedUsdcMint,
         subscriberUsdcAccount: fixture.subscriberTokenAccount,
         destinationWrappedAccount: subscriberWrappedAccount,
         destinationAuthority: fixture.mandate,
-        wrappingVault: adminState.wrappingVault,
+        wrappingVault: fixture.wrappingVault,
         mintAuthority,
         splTokenProgram: TOKEN_PROGRAM_ID,
         token2022Program: TOKEN_2022_PROGRAM_ID,
@@ -81,18 +74,18 @@ describe("execute_pull", () => {
         payer: fixture.merchant.publicKey,
         subscriber: fixture.subscriber.publicKey,
         merchant: fixture.merchant.publicKey,
-        keeperConfig: adminState.keeperConfig,
+        keeperConfig: fixture.keeperConfig,
         plan: fixture.planAddresses.plan,
         mandate: fixture.mandate,
         subscriberWrappedAccount,
         merchantWrappedAccount,
-        wrappedUsdcMint: adminState.wrappedUsdcMint,
+        wrappedUsdcMint: fixture.wrappedUsdcMint,
         pullApproval,
-        tokenConfig: adminState.tokenConfig,
-        protocolConfig: adminState.config,
-        wrappingVault: adminState.wrappingVault,
+        tokenConfig: fixture.tokenConfig,
+        protocolConfig: fixture.config,
+        wrappingVault: fixture.wrappingVault,
         hookProgram: TRANSFER_HOOK_PROGRAM_ID,
-        extraAccountMetaList: adminState.extraAccountMetaList,
+        extraAccountMetaList: fixture.extraAccountMetaList,
         protocolProgram: fixture.programId,
         token2022Program: TOKEN_2022_PROGRAM_ID,
         systemProgram: SystemProgram.programId,

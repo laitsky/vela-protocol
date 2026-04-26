@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_2022::Token2022;
 
 use crate::{
-    constants::{EXTRA_ACCOUNT_METAS_SEED, WRAPPED_USDC_SYMBOL},
+    constants::{event_token_symbol, EXTRA_ACCOUNT_METAS_SEED},
     errors::VelaError,
     instructions::{
         compute_proration,
@@ -36,7 +36,7 @@ pub struct UpdateMandatePlan<'info> {
     #[account(mut)]
     pub merchant_wrapped_account: UncheckedAccount<'info>,
 
-    /// CHECK: Wrapped mint validated against protocol config.
+    /// CHECK: Billing mint validated against the new plan.
     #[account(mut)]
     pub wrapped_usdc_mint: UncheckedAccount<'info>,
 
@@ -44,8 +44,11 @@ pub struct UpdateMandatePlan<'info> {
     /// CHECK: Pull approval PDA validated manually when a positive proration requires a charge.
     pub pull_approval: UncheckedAccount<'info>,
 
-    /// CHECK: TokenConfig PDA validated against the wrapped mint.
-    pub token_config: UncheckedAccount<'info>,
+    #[account(
+        seeds = [TokenConfig::SEED_PREFIX, wrapped_usdc_mint.key().as_ref()],
+        bump = token_config.bump,
+    )]
+    pub token_config: Account<'info, TokenConfig>,
 
     #[account(
         seeds = [ProtocolConfig::SEED_PREFIX],
@@ -92,25 +95,6 @@ pub fn handler(ctx: Context<UpdateMandatePlan>) -> Result<()> {
         protocol_config.wrapping_vault(),
         VelaError::VaultMismatch
     );
-    require_keys_eq!(
-        ctx.accounts.wrapped_usdc_mint.key(),
-        protocol_config.wrapped_usdc_mint(),
-        VelaError::TokenChangeNotSupported
-    );
-
-    let (expected_token_config, _) = Pubkey::find_program_address(
-        &[
-            TokenConfig::SEED_PREFIX,
-            ctx.accounts.wrapped_usdc_mint.key().as_ref(),
-        ],
-        &crate::ID,
-    );
-    require_keys_eq!(
-        ctx.accounts.token_config.key(),
-        expected_token_config,
-        VelaError::TokenChangeNotSupported
-    );
-
     let loaded_mandate = load_mandate_account(&ctx.accounts.mandate.to_account_info())?;
     require!(
         !loaded_mandate.is_legacy(),
@@ -132,6 +116,20 @@ pub fn handler(ctx: Context<UpdateMandatePlan>) -> Result<()> {
     require!(
         matches!(new_plan.status(), crate::state::PlanStatus::Active),
         VelaError::PlanNotActive
+    );
+    let new_plan_billing_mint = new_plan.billing_mint();
+    if new_plan_billing_mint != Pubkey::default() {
+        require_keys_eq!(
+            ctx.accounts.wrapped_usdc_mint.key(),
+            new_plan_billing_mint,
+            VelaError::TokenChangeNotSupported
+        );
+    }
+    require!(ctx.accounts.token_config.enabled, VelaError::TokenDisabled);
+    require_keys_eq!(
+        ctx.accounts.token_config.mint,
+        ctx.accounts.wrapped_usdc_mint.key(),
+        VelaError::TokenNotRegistered
     );
 
     let authority = ctx.accounts.authority.key();
@@ -164,8 +162,11 @@ pub fn handler(ctx: Context<UpdateMandatePlan>) -> Result<()> {
     emit!(MandateUpgradeInitiated {
         schema_version: 1,
         mandate: ctx.accounts.mandate.key(),
-        mint: protocol_config.wrapped_usdc_mint(),
-        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
+        mint: ctx.accounts.wrapped_usdc_mint.key(),
+        token_symbol: event_token_symbol(
+            ctx.accounts.wrapped_usdc_mint.key(),
+            protocol_config.wrapped_usdc_mint(),
+        ),
         old_plan,
         new_plan: new_plan_key,
         proration_amount: event_proration_amount,
@@ -216,8 +217,11 @@ pub fn handler(ctx: Context<UpdateMandatePlan>) -> Result<()> {
         emit!(MandateCreditAdded {
             schema_version: 1,
             mandate: ctx.accounts.mandate.key(),
-            mint: protocol_config.wrapped_usdc_mint(),
-            token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
+            mint: ctx.accounts.wrapped_usdc_mint.key(),
+            token_symbol: event_token_symbol(
+                ctx.accounts.wrapped_usdc_mint.key(),
+                protocol_config.wrapped_usdc_mint(),
+            ),
             old_plan,
             new_plan: new_plan_key,
             credit_amount,
@@ -239,8 +243,11 @@ pub fn handler(ctx: Context<UpdateMandatePlan>) -> Result<()> {
     emit!(MandateUpgradeFinalized {
         schema_version: 1,
         mandate: ctx.accounts.mandate.key(),
-        mint: protocol_config.wrapped_usdc_mint(),
-        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
+        mint: ctx.accounts.wrapped_usdc_mint.key(),
+        token_symbol: event_token_symbol(
+            ctx.accounts.wrapped_usdc_mint.key(),
+            protocol_config.wrapped_usdc_mint(),
+        ),
         old_plan,
         new_plan: new_plan_key,
         proration_amount: event_proration_amount,

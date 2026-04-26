@@ -28,7 +28,12 @@ import idl from "../target/idl/vela_protocol.json";
 import transferHookIdl from "../target/idl/vela_transfer_hook.json";
 
 const PROGRAM_ID = new PublicKey(idl.address);
-const PROGRAM_SO_PATH = join(process.cwd(), "target", "deploy", "vela_protocol.so");
+const PROGRAM_SO_PATH = join(
+  process.cwd(),
+  "target",
+  "deploy",
+  "vela_protocol.so",
+);
 const TRANSFER_HOOK_PROGRAM_ID = new PublicKey(transferHookIdl.address);
 const TRANSFER_HOOK_SO_PATH = join(
   process.cwd(),
@@ -49,15 +54,15 @@ const KEEPER_CONFIG_SIZE = 268;
 const PULL_APPROVAL_SIZE = 66;
 const TOKEN_CONFIG_SIZE = 213;
 
-export type VelaProgram = Program<any>;
+type VelaProgram = Program<any>;
 
-export type PlanAddresses = {
+type PlanAddresses = {
   merchantState: PublicKey;
   plan: PublicKey;
   credentialMint: PublicKey;
 };
 
-export type TestContext = {
+type TestContext = {
   svm: LiteSVM;
   provider: LiteSVMProvider;
   program: VelaProgram;
@@ -65,12 +70,18 @@ export type TestContext = {
   merchant: Keypair;
 };
 
-export type SubscriptionFixture = TestContext & {
+type SubscriptionFixture = TestContext & {
   subscriber: Keypair;
   planAddresses: PlanAddresses;
   mandate: PublicKey;
   credentialAta: PublicKey;
   usdcMint: PublicKey;
+  config: PublicKey;
+  keeperConfig: PublicKey;
+  wrappedUsdcMint: PublicKey;
+  wrappingVault: PublicKey;
+  extraAccountMetaList: PublicKey;
+  tokenConfig: PublicKey;
   subscriberTokenAccount: PublicKey;
   merchantTokenAccount: PublicKey;
   amount: bigint;
@@ -186,7 +197,11 @@ function buildInitWrappedMintInstruction(args: {
       { pubkey: args.wrappingVault, isSigner: false, isWritable: true },
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-      { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      {
+        pubkey: ASSOCIATED_TOKEN_PROGRAM_ID,
+        isSigner: false,
+        isWritable: false,
+      },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
     ],
@@ -257,7 +272,10 @@ export function derivePlanAddresses(
   return { merchantState, plan, credentialMint };
 }
 
-export async function fetchMerchantState(context: TestContext, address: PublicKey) {
+export async function fetchMerchantState(
+  context: TestContext,
+  address: PublicKey,
+) {
   const account = await context.provider.connection.getAccountInfo(address);
   if (!account) {
     throw new Error("merchant state account not found");
@@ -279,32 +297,45 @@ export async function fetchMerchantState(context: TestContext, address: PublicKe
   };
 }
 
-export function deriveMandateAddress(
+function deriveMandateAddress(
   subscriber: PublicKey,
   merchant: PublicKey,
   mandateIndex: bigint,
   programId = PROGRAM_ID,
 ): PublicKey {
-  const indexSeed = new BN(mandateIndex.toString()).toArrayLike(Buffer, "le", 8);
+  const indexSeed = new BN(mandateIndex.toString()).toArrayLike(
+    Buffer,
+    "le",
+    8,
+  );
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("mandate"), subscriber.toBuffer(), merchant.toBuffer(), indexSeed],
+    [
+      Buffer.from("mandate"),
+      subscriber.toBuffer(),
+      merchant.toBuffer(),
+      indexSeed,
+    ],
     programId,
   )[0];
 }
 
-export function deriveConfigAddress(programId = PROGRAM_ID): [PublicKey, number] {
+function deriveConfigAddress(programId = PROGRAM_ID): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([CONFIG_SEED], programId);
 }
 
-export function deriveKeeperConfigAddress(programId = PROGRAM_ID): [PublicKey, number] {
+function deriveKeeperConfigAddress(
+  programId = PROGRAM_ID,
+): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([KEEPER_CONFIG_SEED], programId);
 }
 
-export function deriveMintAuthorityAddress(programId = PROGRAM_ID): [PublicKey, number] {
+export function deriveMintAuthorityAddress(
+  programId = PROGRAM_ID,
+): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([MINT_AUTHORITY_SEED], programId);
 }
 
-export function deriveExtraAccountMetaListAddress(
+function deriveExtraAccountMetaListAddress(
   wrappedUsdcMint: PublicKey,
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
@@ -313,18 +344,24 @@ export function deriveExtraAccountMetaListAddress(
   );
 }
 
-export function deriveTokenConfigAddress(
+function deriveTokenConfigAddress(
   mint: PublicKey,
   programId = PROGRAM_ID,
 ): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync([TOKEN_CONFIG_SEED, mint.toBuffer()], programId);
+  return PublicKey.findProgramAddressSync(
+    [TOKEN_CONFIG_SEED, mint.toBuffer()],
+    programId,
+  );
 }
 
 export function derivePullApprovalAddress(
   mandate: PublicKey,
   programId = PROGRAM_ID,
 ): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync([APPROVAL_SEED, mandate.toBuffer()], programId);
+  return PublicKey.findProgramAddressSync(
+    [APPROVAL_SEED, mandate.toBuffer()],
+    programId,
+  );
 }
 
 export function airdropSol(
@@ -341,7 +378,7 @@ export function advanceClock(svm: LiteSVM, unixTimestamp: bigint): void {
   svm.setClock(clock);
 }
 
-export async function sendInstructions(
+async function sendInstructions(
   provider: LiteSVMProvider,
   instructions: Parameters<Transaction["add"]>,
   signers: Keypair[] = [],
@@ -377,7 +414,9 @@ export async function installPhase7AdminState(args: {
   );
 
   svm.setAccount(config, {
-    lamports: Number(svm.minimumBalanceForRentExemption(BigInt(PROTOCOL_CONFIG_SIZE))),
+    lamports: Number(
+      svm.minimumBalanceForRentExemption(BigInt(PROTOCOL_CONFIG_SIZE)),
+    ),
     data: serializeProtocolConfig(admin.publicKey, configBump),
     owner: PROGRAM_ID,
     executable: false,
@@ -385,8 +424,14 @@ export async function installPhase7AdminState(args: {
   });
 
   svm.setAccount(keeperConfig, {
-    lamports: Number(svm.minimumBalanceForRentExemption(BigInt(KEEPER_CONFIG_SIZE))),
-    data: serializeKeeperConfig(admin.publicKey, admin.publicKey, keeperConfigBump),
+    lamports: Number(
+      svm.minimumBalanceForRentExemption(BigInt(KEEPER_CONFIG_SIZE)),
+    ),
+    data: serializeKeeperConfig(
+      admin.publicKey,
+      admin.publicKey,
+      keeperConfigBump,
+    ),
     owner: PROGRAM_ID,
     executable: false,
     rentEpoch: 0,
@@ -408,7 +453,9 @@ export async function installPhase7AdminState(args: {
     [wrappedUsdcMint],
   );
   svm.setAccount(config, {
-    lamports: Number(svm.minimumBalanceForRentExemption(BigInt(PROTOCOL_CONFIG_SIZE))),
+    lamports: Number(
+      svm.minimumBalanceForRentExemption(BigInt(PROTOCOL_CONFIG_SIZE)),
+    ),
     data: serializeProtocolConfig(admin.publicKey, configBump, {
       wrappedUsdcMint: wrappedUsdcMint.publicKey,
       wrappingVault,
@@ -435,7 +482,9 @@ export async function installPhase7AdminState(args: {
     wrappedUsdcMint.publicKey,
   );
   svm.setAccount(tokenConfig, {
-    lamports: Number(svm.minimumBalanceForRentExemption(BigInt(TOKEN_CONFIG_SIZE))),
+    lamports: Number(
+      svm.minimumBalanceForRentExemption(BigInt(TOKEN_CONFIG_SIZE)),
+    ),
     data: serializeTokenConfig({
       mint: wrappedUsdcMint.publicKey,
       tokenProgram: TOKEN_2022_PROGRAM_ID,
@@ -471,7 +520,9 @@ export function insertPullApproval(args: {
   const createdAt = args.createdAt ?? validUntil;
   const [approval, bump] = derivePullApprovalAddress(mandate);
   svm.setAccount(approval, {
-    lamports: Number(svm.minimumBalanceForRentExemption(BigInt(PULL_APPROVAL_SIZE))),
+    lamports: Number(
+      svm.minimumBalanceForRentExemption(BigInt(PULL_APPROVAL_SIZE)),
+    ),
     data: serializePullApproval({
       mandate,
       validUntil,
@@ -542,12 +593,17 @@ export async function createUsdcMint(
   return mint.publicKey;
 }
 
-export async function createSplTokenAccount(
+async function createSplTokenAccount(
   provider: LiteSVMProvider,
   owner: PublicKey,
   mint: PublicKey,
 ): Promise<PublicKey> {
-  const ata = getAssociatedTokenAddressSync(mint, owner, false, TOKEN_PROGRAM_ID);
+  const ata = getAssociatedTokenAddressSync(
+    mint,
+    owner,
+    false,
+    TOKEN_PROGRAM_ID,
+  );
   await sendInstructions(provider, [
     createAssociatedTokenAccountIdempotentInstruction(
       provider.wallet.publicKey,
@@ -560,7 +616,7 @@ export async function createSplTokenAccount(
   return ata;
 }
 
-export async function mintUsdc(
+async function mintUsdc(
   provider: LiteSVMProvider,
   mint: PublicKey,
   destination: PublicKey,
@@ -621,8 +677,24 @@ export async function createPlan(
   trialPeriod: bigint,
   maxPulls: bigint,
   planId = 0n,
+  billingMint?: PublicKey,
 ): Promise<PlanAddresses> {
-  const addresses = derivePlanAddresses(context.merchant.publicKey, planId, context.programId);
+  const addresses = derivePlanAddresses(
+    context.merchant.publicKey,
+    planId,
+    context.programId,
+  );
+  const resolvedBillingMint =
+    billingMint ??
+    (
+      await (context.program.account as any).protocolConfig.fetch(
+        deriveConfigAddress(context.programId)[0],
+      )
+    ).wrappedUsdcMint;
+  const [tokenConfig] = deriveTokenConfigAddress(
+    resolvedBillingMint,
+    context.programId,
+  );
   context.svm.expireBlockhash();
   await (context.program as any).methods
     .createPlan(
@@ -636,6 +708,8 @@ export async function createPlan(
       merchantState: addresses.merchantState,
       plan: addresses.plan,
       credentialMint: addresses.credentialMint,
+      billingMint: resolvedBillingMint,
+      tokenConfig,
       systemProgram: SystemProgram.programId,
       token2022Program: TOKEN_2022_PROGRAM_ID,
       rent: SYSVAR_RENT_PUBKEY,
@@ -662,6 +736,13 @@ export async function createSubscriptionFixture(options?: {
   const subscriber = Keypair.generate();
   airdropSol(context.svm, subscriber.publicKey, 5n * BigInt(LAMPORTS_PER_SOL));
 
+  const usdcMint = await createUsdcMint(context.provider);
+  const adminState = await installPhase7AdminState({
+    provider: context.provider,
+    svm: context.svm,
+    admin: context.merchant,
+    splUsdcMint: usdcMint,
+  });
   await initMerchantCredential(context);
 
   const planAddresses = await createPlan(
@@ -671,8 +752,8 @@ export async function createSubscriptionFixture(options?: {
     trialPeriod,
     maxPulls,
     planId,
+    adminState.wrappedUsdcMint,
   );
-  const usdcMint = await createUsdcMint(context.provider);
   const subscriberTokenAccount = await createSplTokenAccount(
     context.provider,
     subscriber.publicKey,
@@ -691,7 +772,12 @@ export async function createSubscriptionFixture(options?: {
   );
 
   // mandate_counter is 0 for the first subscription in a fresh merchant state
-  const mandate = deriveMandateAddress(subscriber.publicKey, context.merchant.publicKey, 0n, context.programId);
+  const mandate = deriveMandateAddress(
+    subscriber.publicKey,
+    context.merchant.publicKey,
+    0n,
+    context.programId,
+  );
   const [merchantCredentialMint] = deriveMerchantCredentialMint(
     context.merchant.publicKey,
     context.programId,
@@ -713,6 +799,8 @@ export async function createSubscriptionFixture(options?: {
       plan: planAddresses.plan,
       mandate,
       credentialMint: merchantCredentialMint,
+      billingMint: adminState.wrappedUsdcMint,
+      tokenConfig: adminState.tokenConfig,
       subscriberCredentialAccount: credentialAta,
       tokenProgram: TOKEN_PROGRAM_ID,
       token2022Program: TOKEN_2022_PROGRAM_ID,
@@ -730,6 +818,12 @@ export async function createSubscriptionFixture(options?: {
     mandate,
     credentialAta,
     usdcMint,
+    config: adminState.config,
+    keeperConfig: adminState.keeperConfig,
+    wrappedUsdcMint: adminState.wrappedUsdcMint,
+    wrappingVault: adminState.wrappingVault,
+    extraAccountMetaList: adminState.extraAccountMetaList,
+    tokenConfig: adminState.tokenConfig,
     subscriberTokenAccount,
     merchantTokenAccount,
     amount,
@@ -738,11 +832,4 @@ export async function createSubscriptionFixture(options?: {
   };
 }
 
-export {
-  ACCOUNT_SIZE,
-  DECIMALS,
-  PROGRAM_ID,
-  TOKEN_2022_PROGRAM_ID,
-  TOKEN_PROGRAM_ID,
-  TRANSFER_HOOK_PROGRAM_ID,
-};
+export { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, TRANSFER_HOOK_PROGRAM_ID };

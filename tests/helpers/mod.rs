@@ -420,6 +420,7 @@ impl TestHarness {
         max_pulls: u64,
         expected_plan_id: u64,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        self.ensure_default_billing_rail();
         let (instruction, _) = self.create_plan_instruction(
             amount,
             frequency,
@@ -435,6 +436,25 @@ impl TestHarness {
                 .expect("transaction should sign");
 
         self.svm.send_transaction(tx)
+    }
+
+    fn ensure_default_billing_rail(&mut self) {
+        let admin = self.merchant.insecure_clone();
+        let config = self.derive_config();
+        if self.svm.get_account(&to_address(config)).is_none() {
+            self.init_protocol_config(&admin);
+        }
+
+        let config_account: ProtocolConfig = self.fetch_anchor_account(&config);
+        if config_account.wrapped_usdc_mint != Pubkey::default() {
+            return;
+        }
+
+        let spl_usdc_mint = self.create_spl_mint(&admin, 6);
+        let wrapped_mint = Keypair::new();
+        let (wrapped_usdc_mint, wrapping_vault) =
+            self.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
+        self.init_extra_account_meta_list(&admin, &wrapped_usdc_mint, &wrapping_vault);
     }
 
     pub fn create_spl_mint(&mut self, authority: &Keypair, decimals: u8) -> Pubkey {
@@ -495,6 +515,9 @@ impl TestHarness {
         use vela_protocol::instructions::init_config::InitConfigIx;
 
         let config = self.derive_config();
+        if self.svm.get_account(&to_address(config)).is_some() {
+            return config;
+        }
         let accounts = vela_protocol::accounts::InitConfig {
             admin: to_anchor_pubkey(admin.pubkey()),
             config,
@@ -528,6 +551,15 @@ impl TestHarness {
         spl_usdc_mint: &Pubkey,
     ) -> (Pubkey, Pubkey) {
         let config = self.derive_config();
+        if self.svm.get_account(&to_address(config)).is_some() {
+            let protocol_config: ProtocolConfig = self.fetch_anchor_account(&config);
+            if protocol_config.wrapped_usdc_mint != Pubkey::default() {
+                return (
+                    protocol_config.wrapped_usdc_mint,
+                    protocol_config.wrapping_vault,
+                );
+            }
+        }
         let (mint_authority, _) = self.derive_mint_authority();
         let wrapped_usdc_mint = to_anchor_pubkey(wrapped_mint.pubkey());
         let wrapping_vault = self.derive_spl_ata(&mint_authority, spl_usdc_mint);
@@ -679,6 +711,13 @@ impl TestHarness {
     ) -> Pubkey {
         let config = self.derive_config();
         let (extra_account_meta_list, _) = self.derive_extra_account_meta_list(wrapped_usdc_mint);
+        if self
+            .svm
+            .get_account(&to_address(extra_account_meta_list))
+            .is_some()
+        {
+            return extra_account_meta_list;
+        }
 
         let accounts = vela_transfer_hook::accounts::InitExtraAccountMetaList {
             admin: to_anchor_pubkey(admin.pubkey()),
@@ -854,6 +893,13 @@ impl TestHarness {
             state.mandate_counter,
         );
         let credential_ata = self.derive_credential_ata(&subscriber_pubkey, credential_mint);
+        let plan_account: vela_protocol::state::VelaPlan = self.fetch_anchor_account(plan);
+        let billing_mint = if plan_account.billing_mint == Pubkey::default() {
+            let config: ProtocolConfig = self.fetch_anchor_account(&self.derive_config());
+            config.wrapped_usdc_mint
+        } else {
+            plan_account.billing_mint
+        };
 
         let accounts = vela_protocol::accounts::Subscribe {
             subscriber: to_anchor_pubkey(subscriber.pubkey()),
@@ -862,6 +908,8 @@ impl TestHarness {
             plan: *plan,
             mandate,
             credential_mint: *credential_mint,
+            billing_mint,
+            token_config: self.derive_token_config_address(&billing_mint),
             subscriber_credential_account: credential_ata,
             token_program: Pubkey::new_from_array(spl_token::id().to_bytes()),
             token_2022_program: token_2022_anchor_id(),
@@ -1532,14 +1580,22 @@ impl TestHarness {
     ) -> SubscriptionFixture {
         let subscriber = self.create_wallet();
         let subscriber_pubkey = to_anchor_pubkey(subscriber.pubkey());
+        let admin = self.merchant.insecure_clone();
+        let usdc_mint = self.create_spl_mint(&admin, 6);
+        let config = self.derive_config();
+        if self.svm.get_account(&to_address(config)).is_none() {
+            self.init_protocol_config(&admin);
+        }
+        let wrapped_mint = Keypair::new();
+        let (wrapped_usdc_mint, wrapping_vault) =
+            self.init_wrapped_mint(&admin, &wrapped_mint, &usdc_mint);
+        self.init_extra_account_meta_list(&admin, &wrapped_usdc_mint, &wrapping_vault);
         self.send_init_merchant_credential()
             .expect("init_merchant_credential should succeed");
         self.send_create_plan(amount, frequency, trial_period, max_pulls, 0)
             .expect("create_plan should succeed");
         let (merchant_credential_mint, _) = self.derive_merchant_credential_mint();
 
-        // Create a mock SPL USDC mint (used for the wrapping vault backing)
-        let usdc_mint = self.create_spl_mint(&subscriber, 6);
         let merchant_pubkey = self.merchant_pubkey();
 
         // For tests that use the fixture: create SPL token accounts for bookkeeping
@@ -1560,6 +1616,8 @@ impl TestHarness {
             mandate,
             credential_mint: merchant_credential_mint,
             usdc_mint,
+            wrapped_usdc_mint,
+            wrapping_vault,
             subscriber_token_account,
             merchant_token_account,
         }
@@ -2337,11 +2395,15 @@ impl TestHarness {
         expected_plan_id: u64,
     ) -> (Instruction, PlanAddresses) {
         let addresses = self.derive_plan_addresses(expected_plan_id);
+        let config: ProtocolConfig = self.fetch_anchor_account(&self.derive_config());
+        let billing_mint = config.wrapped_usdc_mint;
         let accounts = vela_protocol::accounts::CreatePlan {
             merchant: self.merchant_pubkey(),
             merchant_state: addresses.merchant_state,
             plan: addresses.plan,
             credential_mint: addresses.credential_mint,
+            billing_mint,
+            token_config: self.derive_token_config_address(&billing_mint),
             system_program: anchor_lang::system_program::ID,
             token_2022_program: token_2022_anchor_id(),
             rent: anchor_lang::solana_program::sysvar::rent::ID,
@@ -2392,6 +2454,8 @@ pub struct SubscriptionFixture {
     pub mandate: Pubkey,
     pub credential_mint: Pubkey,
     pub usdc_mint: Pubkey,
+    pub wrapped_usdc_mint: Pubkey,
+    pub wrapping_vault: Pubkey,
     pub subscriber_token_account: Pubkey,
     pub merchant_token_account: Pubkey,
 }

@@ -98,9 +98,10 @@ fn seed_legacy_flat_plan(harness: &mut TestHarness, plan_id: u64) -> (Pubkey, Pu
         max_pulls: 4,
         status: PlanStatus::Active,
         credential_mint: plan_addresses.credential_mint,
+        billing_mint: Pubkey::default(),
         bump: plan_bump,
         version: CURRENT_ACCOUNT_VERSION,
-        _reserved: [0; ACCOUNT_RESERVED_BYTES],
+        _reserved: [0; vela_protocol::state::PLAN_RESERVED_BYTES],
     };
     let mut plan_data = Vec::new();
     plan_record

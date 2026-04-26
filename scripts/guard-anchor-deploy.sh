@@ -18,8 +18,9 @@ REFUSING to allow 'anchor deploy' for vela_protocol.
   declare_id!()              = $declared
   target/deploy/*-keypair    = $keypair_pub
 
-The original program keypair is LOST. Running 'anchor deploy' will deploy a
-NEW program at the keypair address, not upgrade the real one.
+The keypair in target/deploy does not match the declared program id. Running
+'anchor deploy' would deploy a different program than the one this source is
+declared to represent.
 
 Use scripts/deploy-devnet.sh (buffer upload + upgrade) instead.
 EOF

@@ -13,16 +13,12 @@ fn setup_wrapped_pull_accounts(
     subscriber_signer: &Keypair,
     subscriber_pubkey: &Pubkey,
     mandate: &Pubkey,
+    spl_usdc_mint: &Pubkey,
+    wrapped_mint_pubkey: &Pubkey,
+    wrapping_vault: &Pubkey,
     amount: u64,
-) -> (Pubkey, Pubkey, Pubkey) {
+) -> (Pubkey, Pubkey) {
     let admin = harness.merchant.insecure_clone();
-    let spl_usdc_mint = harness.create_spl_mint(&admin, 6);
-    harness.init_protocol_config(&admin);
-
-    let wrapped_mint = Keypair::new();
-    let (wrapped_mint_pubkey, wrapping_vault) =
-        harness.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
-    harness.init_extra_account_meta_list(&admin, &wrapped_mint_pubkey, &wrapping_vault);
 
     let subscriber_usdc =
         harness.create_spl_token_account(subscriber_signer, &spl_usdc_mint, subscriber_pubkey);
@@ -46,11 +42,7 @@ fn setup_wrapped_pull_accounts(
     let merchant_wrapped_pubkey =
         harness.create_token_2022_ata(&admin, &harness.merchant_pubkey(), &wrapped_mint_pubkey);
 
-    (
-        subscriber_wrapped_pubkey,
-        merchant_wrapped_pubkey,
-        wrapped_mint_pubkey,
-    )
+    (subscriber_wrapped_pubkey, merchant_wrapped_pubkey)
 }
 
 #[test]
@@ -101,12 +93,15 @@ fn test_cu_execute_pull() {
     let fixture = harness.subscribe_fixture(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4);
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
-    let (subscriber_wrapped_pubkey, merchant_wrapped_pubkey, wrapped_mint_pubkey) =
+    let (subscriber_wrapped_pubkey, merchant_wrapped_pubkey) =
         setup_wrapped_pull_accounts(
             &mut harness,
             &fixture.subscriber,
             &subscriber,
             &fixture.mandate,
+            &fixture.usdc_mint,
+            &fixture.wrapped_usdc_mint,
+            &fixture.wrapping_vault,
             25_000_000,
         );
 
@@ -126,7 +121,7 @@ fn test_cu_execute_pull() {
             0,
             &subscriber_wrapped_pubkey,
             &merchant_wrapped_pubkey,
-            &wrapped_mint_pubkey,
+            &fixture.wrapped_usdc_mint,
         )
         .expect("execute_pull should succeed");
 
@@ -167,6 +162,13 @@ fn test_cu_full_lifecycle() {
     let mut harness = TestHarness::new();
     let subscriber = harness.create_wallet();
     let subscriber_pubkey = Pubkey::new_from_array(subscriber.pubkey().to_bytes());
+    let admin = harness.merchant.insecure_clone();
+    let spl_usdc_mint = harness.create_spl_mint(&admin, 6);
+    harness.init_protocol_config(&admin);
+    let wrapped_mint = Keypair::new();
+    let (wrapped_usdc_mint, wrapping_vault) =
+        harness.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
+    harness.init_extra_account_meta_list(&admin, &wrapped_usdc_mint, &wrapping_vault);
 
     harness
         .send_init_merchant_credential()
@@ -183,12 +185,15 @@ fn test_cu_full_lifecycle() {
     let mandate = harness.derive_mandate_address(&subscriber_pubkey, &addresses.plan);
     let mandate_account: VelaMandate = harness.fetch_anchor_account(&mandate);
 
-    let (subscriber_wrapped_pubkey, merchant_wrapped_pubkey, wrapped_mint_pubkey) =
+    let (subscriber_wrapped_pubkey, merchant_wrapped_pubkey) =
         setup_wrapped_pull_accounts(
             &mut harness,
             &subscriber,
             &subscriber_pubkey,
             &mandate,
+            &spl_usdc_mint,
+            &wrapped_usdc_mint,
+            &wrapping_vault,
             25_000_000,
         );
 
@@ -207,7 +212,7 @@ fn test_cu_full_lifecycle() {
             0,
             &subscriber_wrapped_pubkey,
             &merchant_wrapped_pubkey,
-            &wrapped_mint_pubkey,
+            &wrapped_usdc_mint,
         )
         .expect("execute_pull should succeed");
 

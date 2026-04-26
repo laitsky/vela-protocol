@@ -5,7 +5,7 @@ use solana_program_error::ProgramError as SplProgramError;
 use solana_pubkey::Pubkey as SplPubkey;
 
 use crate::{
-    constants::{EXTRA_ACCOUNT_METAS_SEED, USDC_DECIMALS, WRAPPED_USDC_SYMBOL},
+    constants::{event_token_symbol, EXTRA_ACCOUNT_METAS_SEED},
     errors::VelaError,
     instructions::{
         keeper_config_account::load_keeper_config,
@@ -14,7 +14,7 @@ use crate::{
             load_stream_mandate, validate_stream_mandate_address, write_stream_mandate,
         },
     },
-    state::{KeeperConfig, ProtocolConfig, PullApproval, StreamMandate, StreamSettled},
+    state::{KeeperConfig, ProtocolConfig, PullApproval, StreamMandate, StreamSettled, TokenConfig},
 };
 
 #[derive(Accounts)]
@@ -96,6 +96,7 @@ pub fn handler<'a, 'b, 'c, 'info>(
     )?;
 
     let mut stream = load_stream_mandate(&ctx.accounts.stream_mandate.to_account_info())?;
+    let protocol_config = load_protocol_config(&ctx.accounts.protocol_config.to_account_info())?;
     validate_stream_mandate_address(&ctx.accounts.stream_mandate.key(), &stream)?;
     require_keys_eq!(ctx.accounts.subscriber.key(), stream.subscriber);
     require_keys_eq!(ctx.accounts.merchant.key(), stream.merchant);
@@ -172,7 +173,7 @@ pub fn handler<'a, 'b, 'c, 'info>(
         schema_version: 1,
         mandate: ctx.accounts.stream_mandate.key(),
         mint: stream.mint,
-        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
+        token_symbol: event_token_symbol(stream.mint, protocol_config.wrapped_usdc_mint()),
         amount: settle_amount,
         total_streamed_after: stream.total_streamed,
         last_settled_ts: stream.last_settled_ts,
@@ -219,7 +220,7 @@ fn convert_instruction(
 pub(crate) fn validate_stream_transfer_accounts(
     protocol_config_info: &AccountInfo<'_>,
     hook_program_info: &AccountInfo<'_>,
-    wrapped_usdc_mint_info: &AccountInfo<'_>,
+    _wrapped_usdc_mint_info: &AccountInfo<'_>,
     wrapping_vault_info: &AccountInfo<'_>,
 ) -> Result<()> {
     let protocol_config = load_protocol_config(protocol_config_info)?;
@@ -233,11 +234,6 @@ pub(crate) fn validate_stream_transfer_accounts(
         hook_program_info.key(),
         hook_program_id,
         VelaError::InvalidProtocolConfig
-    );
-    require_keys_eq!(
-        wrapped_usdc_mint_info.key(),
-        protocol_config.wrapped_usdc_mint(),
-        VelaError::UsdcMintMismatch
     );
     require_keys_eq!(
         wrapping_vault_info.key(),
@@ -264,6 +260,13 @@ pub(crate) fn invoke_stream_transfer<'info>(
     amount: u64,
     signer_seed_groups: &[&[&[u8]]],
 ) -> Result<()> {
+    let decimals = {
+        let data = token_config_info.try_borrow_data()?;
+        let mut slice: &[u8] = &data;
+        TokenConfig::try_deserialize(&mut slice)
+            .map_err(|_| VelaError::TokenNotRegistered)?
+            .decimals
+    };
     let mut transfer_ix = spl_token_2022::instruction::transfer_checked(
         &spl_pubkey(token_2022_program_info.key),
         &spl_pubkey(source_info.key),
@@ -272,7 +275,7 @@ pub(crate) fn invoke_stream_transfer<'info>(
         &spl_pubkey(authority_info.key),
         &[],
         amount,
-        USDC_DECIMALS,
+        decimals,
     )
     .map_err(map_spl_error)?;
     transfer_ix.accounts.extend_from_slice(&[

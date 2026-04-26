@@ -13,9 +13,13 @@
     "keys:prepare": "bash scripts/prepare-program-keys.sh",
     "build:local": "bash scripts/build-local.sh",
     "build:devnet-safe": "bash scripts/build-devnet-safe.sh",
-    "build:programs": "arcium build && anchor build",
+    "build:programs": "bash scripts/build-devnet-safe.sh",
+    "compat:quick": "bash scripts/verify-rollout.sh",
     "ci:protocol": "bun run build:programs && cargo test -p vela-protocol -- --nocapture && bun test ts-tests/",
-    "deploy:devnet": "bash scripts/deploy-devnet.sh",
+    "deploy:devnet": "bash scripts/upgrade-devnet-safe.sh",
+    "upgrade:devnet": "bash scripts/upgrade-devnet-safe.sh",
+    "verify:deployed": "bash scripts/assert-deployed-hash.sh",
+    "verify:rollout": "bash scripts/verify-rollout.sh",
     "guard:deploy": "bash scripts/guard-anchor-deploy.sh"
   },
   "dependencies": {
@@ -24,7 +28,7 @@
   "devDependencies": {
     "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1",
-    "@types/bn.js": "^5.2.0",
+    "@types/bun": "^1.3.13",
     "@types/node": "^25.5.0",
     "anchor-litesvm": "0.2.1",
     "litesvm": "0.6.0",

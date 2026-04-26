@@ -1,20 +1,9 @@
 #[path = "helpers/mod.rs"]
 mod helpers;
 
-use anchor_lang::{
-    prelude::{borsh, Pubkey},
-    AnchorDeserialize, AnchorSerialize, Discriminator,
-};
-use helpers::{to_address, TestHarness};
-use solana_account::Account;
+use anchor_lang::prelude::Pubkey;
+use helpers::TestHarness;
 use vela_protocol::state::{MerchantState, PricingTier};
-
-#[derive(AnchorSerialize, AnchorDeserialize)]
-struct LegacyMerchantState {
-    merchant: Pubkey,
-    plan_count: u64,
-    bump: u8,
-}
 
 fn merchant_state_address(merchant: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
@@ -24,38 +13,6 @@ fn merchant_state_address(merchant: &Pubkey) -> (Pubkey, u8) {
         ],
         &vela_protocol::ID,
     )
-}
-
-fn write_legacy_merchant_state(
-    harness: &mut TestHarness,
-    merchant_state: Pubkey,
-    merchant: Pubkey,
-    plan_count: u64,
-    bump: u8,
-) {
-    let legacy = LegacyMerchantState {
-        merchant,
-        plan_count,
-        bump,
-    };
-    let mut data = MerchantState::DISCRIMINATOR.to_vec();
-    legacy
-        .serialize(&mut data)
-        .expect("legacy merchant state should serialize");
-
-    harness
-        .svm
-        .set_account(
-            to_address(merchant_state),
-            Account {
-                lamports: 10_000_000,
-                data,
-                owner: to_address(vela_protocol::ID),
-                executable: false,
-                rent_epoch: 0,
-            },
-        )
-        .expect("legacy merchant state should write");
 }
 
 #[test]

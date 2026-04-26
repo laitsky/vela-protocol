@@ -29,38 +29,31 @@ fn setup_fixture(
     let fixture = harness.subscribe_fixture(amount, frequency, trial_period, max_pulls);
     let plan: VelaPlan = harness.fetch_anchor_account(&fixture.plan);
     let mandate: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
+    let wrapped_usdc_mint = fixture.wrapped_usdc_mint;
 
     let admin = harness.merchant.insecure_clone();
-    let spl_usdc_mint = harness.create_spl_mint(&admin, 6);
-    harness.init_protocol_config(&admin);
-
-    let wrapped_mint = Keypair::new();
-    let (wrapped_mint_pubkey, wrapping_vault) =
-        harness.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
-    harness.init_extra_account_meta_list(&admin, &wrapped_mint_pubkey, &wrapping_vault);
-
     let subscriber = subscriber_pubkey(&fixture);
     let subscriber_usdc =
-        harness.create_spl_token_account(&fixture.subscriber, &spl_usdc_mint, &subscriber);
-    harness.mint_spl_tokens(&admin, &spl_usdc_mint, &subscriber_usdc, amount * 10);
+        harness.create_spl_token_account(&fixture.subscriber, &fixture.usdc_mint, &subscriber);
+    harness.mint_spl_tokens(&admin, &fixture.usdc_mint, &subscriber_usdc, amount * 10);
 
     let subscriber_wrapped_pubkey =
-        harness.create_token_2022_ata(&admin, &fixture.mandate, &wrapped_mint_pubkey);
+        harness.create_token_2022_ata(&admin, &fixture.mandate, &fixture.wrapped_usdc_mint);
     harness
         .send_wrap(
             &fixture.subscriber,
-            &spl_usdc_mint,
-            &wrapped_mint_pubkey,
+            &fixture.usdc_mint,
+            &fixture.wrapped_usdc_mint,
             &subscriber_usdc,
             &subscriber_wrapped_pubkey,
             &fixture.mandate,
-            &wrapping_vault,
+            &fixture.wrapping_vault,
             amount * 10,
         )
         .expect("wrap into mandate billing account should succeed");
 
     let merchant_wrapped_pubkey =
-        harness.create_token_2022_ata(&admin, &harness.merchant_pubkey(), &wrapped_mint_pubkey);
+        harness.create_token_2022_ata(&admin, &harness.merchant_pubkey(), &fixture.wrapped_usdc_mint);
 
     (
         harness,
@@ -69,7 +62,7 @@ fn setup_fixture(
         mandate,
         subscriber_wrapped_pubkey,
         merchant_wrapped_pubkey,
-        wrapped_mint_pubkey,
+        wrapped_usdc_mint,
     )
 }
 

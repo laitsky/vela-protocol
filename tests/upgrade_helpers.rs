@@ -40,6 +40,14 @@ pub fn setup_periodic_upgrade_fixture(amount_a: u64, amount_b: u64) -> PeriodicU
     let subscriber = harness.create_wallet();
     let subscriber_pubkey =
         anchor_lang::prelude::Pubkey::new_from_array(subscriber.pubkey().to_bytes());
+    let admin = harness.merchant.insecure_clone();
+    let spl_usdc_mint = harness.create_spl_mint(&admin, 6);
+    harness.init_protocol_config(&admin);
+
+    let wrapped_mint = Keypair::new();
+    let (wrapped_mint_pubkey, wrapping_vault) =
+        harness.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
+    harness.init_extra_account_meta_list(&admin, &wrapped_mint_pubkey, &wrapping_vault);
 
     harness
         .send_init_merchant_credential()
@@ -59,15 +67,6 @@ pub fn setup_periodic_upgrade_fixture(amount_a: u64, amount_b: u64) -> PeriodicU
     let mandate = harness.derive_mandate_address(&subscriber_pubkey, &plan_a);
     let plan_a_state: VelaPlan = harness.fetch_anchor_account(&plan_a);
     let plan_b_state: VelaPlan = harness.fetch_anchor_account(&plan_b);
-
-    let admin = harness.merchant.insecure_clone();
-    let spl_usdc_mint = harness.create_spl_mint(&admin, 6);
-    harness.init_protocol_config(&admin);
-
-    let wrapped_mint = Keypair::new();
-    let (wrapped_mint_pubkey, wrapping_vault) =
-        harness.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
-    harness.init_extra_account_meta_list(&admin, &wrapped_mint_pubkey, &wrapping_vault);
 
     let subscriber_usdc =
         harness.create_spl_token_account(&subscriber, &spl_usdc_mint, &subscriber_pubkey);

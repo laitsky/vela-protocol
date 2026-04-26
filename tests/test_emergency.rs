@@ -100,19 +100,18 @@ fn test_execute_pull_paused() {
     // Minimal setup: just init config and subscribe (don't need full wrapped USDC pipeline).
     // The paused guard fires before PullApproval checks, so we only need a valid protocol_config.
     let admin = harness.merchant.insecure_clone();
-    harness
-        .send_init_merchant_credential()
-        .expect("init_merchant_credential should succeed");
-    harness
-        .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 2, 0)
-        .expect("create_plan should succeed");
-
     let spl_usdc_mint = harness.create_spl_mint(&admin, 6);
     harness.init_protocol_config(&admin);
     let wrapped_mint = Keypair::new();
     let (wrapped_mint_pubkey, wrapping_vault) =
         harness.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
     harness.init_extra_account_meta_list(&admin, &wrapped_mint_pubkey, &wrapping_vault);
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+    harness
+        .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 2, 0)
+        .expect("create_plan should succeed");
 
     let subscriber = harness.create_wallet();
     let subscriber_pubkey = to_anchor_pubkey(subscriber.pubkey());
@@ -183,19 +182,18 @@ fn test_execute_pull_paused() {
 fn test_execute_pull_after_unpause() {
     let mut harness = TestHarness::new();
     let admin = harness.merchant.insecure_clone();
-    harness
-        .send_init_merchant_credential()
-        .expect("init_merchant_credential should succeed");
-    harness
-        .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 2, 0)
-        .expect("create_plan should succeed");
-
     let spl_usdc_mint = harness.create_spl_mint(&admin, 6);
     harness.init_protocol_config(&admin);
     let wrapped_mint = Keypair::new();
     let (wrapped_mint_pubkey, wrapping_vault) =
         harness.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
     harness.init_extra_account_meta_list(&admin, &wrapped_mint_pubkey, &wrapping_vault);
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+    harness
+        .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 2, 0)
+        .expect("create_plan should succeed");
 
     let subscriber = harness.create_wallet();
     let subscriber_pubkey = to_anchor_pubkey(subscriber.pubkey());

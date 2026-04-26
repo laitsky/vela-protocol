@@ -25,7 +25,8 @@ assertIncludes(
   `pub const TRANSFER_HOOK_PROGRAM_ID_BYTES: [u8; 32] = [${hookBytes}];`,
   "transfer hook bytes",
 );
-assertIncludes(resolve(protocolRoot, "scripts/deploy-devnet.sh"), '["devnet"]["velaProtocol"]', "deploy script manifest lookup");
+assertIncludes(resolve(protocolRoot, "scripts/deploy-devnet.sh"), 'ids["velaProtocol"]', "deploy script protocol manifest lookup");
+assertIncludes(resolve(protocolRoot, "scripts/deploy-devnet.sh"), 'ids["velaTransferHook"]', "deploy script transfer hook manifest lookup");
 assertIncludes(resolve(protocolRoot, "ts-tests/setup.ts"), "transferHookIdl.address", "ts test hook id");
 assertIncludes(resolve(protocolRoot, "README.md"), `| \`vela-protocol\` | \`${devnet.velaProtocol}\` |`, "README protocol id");
 assertIncludes(

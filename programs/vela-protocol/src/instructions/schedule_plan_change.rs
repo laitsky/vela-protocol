@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::{
-    constants::WRAPPED_USDC_SYMBOL,
+    constants::event_token_symbol,
     errors::VelaError,
     instructions::{
         mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
@@ -55,6 +55,11 @@ pub fn handler(ctx: Context<SchedulePlanChange>) -> Result<()> {
         matches!(new_plan.status(), crate::state::PlanStatus::Active),
         VelaError::PlanNotActive
     );
+    let event_mint = if new_plan.billing_mint() == Pubkey::default() {
+        protocol_config.wrapped_usdc_mint()
+    } else {
+        new_plan.billing_mint()
+    };
 
     let authority = ctx.accounts.authority.key();
     let is_subscriber = authority == mandate.subscriber;
@@ -93,8 +98,8 @@ pub fn handler(ctx: Context<SchedulePlanChange>) -> Result<()> {
     emit!(MandateUpgradeInitiated {
         schema_version: 1,
         mandate: ctx.accounts.mandate.key(),
-        mint: protocol_config.wrapped_usdc_mint(),
-        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
+        mint: event_mint,
+        token_symbol: event_token_symbol(event_mint, protocol_config.wrapped_usdc_mint()),
         old_plan: mandate.plan,
         new_plan: new_plan_key,
         proration_amount: 0,

@@ -2,10 +2,11 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_2022::Token2022;
 
 use crate::{
-    constants::{EXTRA_ACCOUNT_METAS_SEED, WRAPPED_USDC_SYMBOL},
+    constants::{event_token_symbol, EXTRA_ACCOUNT_METAS_SEED},
     errors::VelaError,
     instructions::{
         execute_stream::{invoke_stream_transfer, validate_stream_transfer_accounts},
+        protocol_config_account::load_protocol_config,
         stream_account::{
             load_stream_mandate, validate_stream_mandate_address, write_stream_mandate,
         },
@@ -82,6 +83,7 @@ pub fn handler(
         &ctx.accounts.wrapped_usdc_mint.to_account_info(),
         &ctx.accounts.wrapping_vault.to_account_info(),
     )?;
+    let protocol_config = load_protocol_config(&ctx.accounts.protocol_config.to_account_info())?;
 
     let mut mandate = load_stream_mandate(&ctx.accounts.mandate.to_account_info())?;
     validate_stream_mandate_address(&ctx.accounts.mandate.key(), &mandate)?;
@@ -168,7 +170,7 @@ pub fn handler(
         schema_version: 1,
         mandate: ctx.accounts.mandate.key(),
         mint: mandate.mint,
-        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
+        token_symbol: event_token_symbol(mandate.mint, protocol_config.wrapped_usdc_mint()),
         old_plan: Pubkey::default(),
         new_plan: Pubkey::default(),
         proration_amount,
@@ -182,7 +184,7 @@ pub fn handler(
         schema_version: 1,
         mandate: ctx.accounts.mandate.key(),
         mint: mandate.mint,
-        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
+        token_symbol: event_token_symbol(mandate.mint, protocol_config.wrapped_usdc_mint()),
         old_rate_per_second: old_rate,
         new_rate_per_second: mandate.rate_per_second,
         old_authorized_max_rate,
@@ -196,7 +198,7 @@ pub fn handler(
         schema_version: 1,
         mandate: ctx.accounts.mandate.key(),
         mint: mandate.mint,
-        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
+        token_symbol: event_token_symbol(mandate.mint, protocol_config.wrapped_usdc_mint()),
         old_plan: Pubkey::default(),
         new_plan: Pubkey::default(),
         proration_amount,

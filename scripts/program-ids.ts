@@ -1,21 +1,21 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-export type ClusterName = "devnet" | "localnet";
+type ClusterName = "devnet" | "localnet";
 
-export type ProgramIds = {
+type ProgramIds = {
   velaProtocol: string;
   velaTransferHook: string;
 };
 
-export type ProgramIdsManifest = {
+type ProgramIdsManifest = {
   defaultCluster: ClusterName;
   devnet: ProgramIds;
   localnet: ProgramIds;
 };
 
 export const protocolRoot = resolve(import.meta.dir, "..");
-export const manifestPath = resolve(protocolRoot, "config/program-ids.json");
+const manifestPath = resolve(protocolRoot, "config/program-ids.json");
 
 export function loadProgramIds(): ProgramIdsManifest {
   return JSON.parse(readFileSync(manifestPath, "utf8")) as ProgramIdsManifest;
@@ -23,7 +23,9 @@ export function loadProgramIds(): ProgramIdsManifest {
 
 export function bytesForBase58(pubkey: string): number[] {
   const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-  const alphabetMap = new Map(alphabet.split("").map((char, index) => [char, index]));
+  const alphabetMap = new Map(
+    alphabet.split("").map((char, index) => [char, index]),
+  );
 
   let value = 0n;
   for (const char of pubkey) {
@@ -51,7 +53,9 @@ export function bytesForBase58(pubkey: string): number[] {
 
   const fullBytes = [...new Array(leadingZeroCount).fill(0), ...bytes];
   if (fullBytes.length !== 32) {
-    throw new Error(`Expected 32 decoded bytes for ${pubkey}, got ${fullBytes.length}`);
+    throw new Error(
+      `Expected 32 decoded bytes for ${pubkey}, got ${fullBytes.length}`,
+    );
   }
 
   return fullBytes;

@@ -70,9 +70,10 @@ pub fn handler(
             max_pulls: legacy.max_pulls,
             status: legacy.status.clone(),
             credential_mint: legacy.credential_mint,
+            billing_mint: Pubkey::default(),
             bump: legacy.bump,
             version: crate::state::CURRENT_ACCOUNT_VERSION,
-            _reserved: [0; crate::state::ACCOUNT_RESERVED_BYTES],
+            _reserved: [0; crate::state::PLAN_RESERVED_BYTES],
         },
         _ => return Err(VelaError::BillingTypeMismatch.into()),
     };

@@ -2,6 +2,7 @@ use anchor_lang::{
     prelude::*,
     solana_program::{program::invoke_signed, program_error::ProgramError, system_instruction},
 };
+use anchor_spl::token_interface::Mint;
 use solana_pubkey::Pubkey as SplPubkey;
 
 use crate::{
@@ -11,7 +12,10 @@ use crate::{
         ensure_merchant_state, resolve_merchant_credential_mint, write_merchant_state,
     },
     instructions::plan_account::write_plan,
-    state::{MerchantState, PlanStatus, VelaPlan, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION},
+    state::{
+        BillingRail, MerchantState, PlanStatus, TokenConfig, VelaPlan, CURRENT_ACCOUNT_VERSION,
+        PLAN_RESERVED_BYTES,
+    },
 };
 
 #[derive(Accounts)]
@@ -28,6 +32,14 @@ pub struct CreatePlan<'info> {
     #[account(mut)]
     /// CHECK: PDA mint account is created via manual CPI and constrained by seeds.
     pub credential_mint: UncheckedAccount<'info>,
+
+    pub billing_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        seeds = [TokenConfig::SEED_PREFIX, billing_mint.key().as_ref()],
+        bump = token_config.bump,
+    )]
+    pub token_config: Account<'info, TokenConfig>,
 
     pub system_program: Program<'info, System>,
 
@@ -49,6 +61,16 @@ pub fn handler(
         VelaError::FrequencyTooLow
     );
     require!(max_pulls > 0, VelaError::MaxPullsTooLow);
+    require!(ctx.accounts.token_config.enabled, VelaError::TokenDisabled);
+    require!(
+        ctx.accounts.token_config.billing_rail == BillingRail::TransferHook,
+        VelaError::InvalidBillingRail
+    );
+    require_keys_eq!(
+        ctx.accounts.token_config.mint,
+        ctx.accounts.billing_mint.key(),
+        VelaError::TokenNotRegistered
+    );
 
     let token_2022_program_id = spl_token_2022::id();
     require_keys_eq!(
@@ -137,9 +159,10 @@ pub fn handler(
         max_pulls,
         status: PlanStatus::Active,
         credential_mint: resolved_credential_mint,
+        billing_mint: ctx.accounts.billing_mint.key(),
         bump: plan_bump,
         version: CURRENT_ACCOUNT_VERSION,
-        _reserved: [0; ACCOUNT_RESERVED_BYTES],
+        _reserved: [0; PLAN_RESERVED_BYTES],
     };
     write_plan(&ctx.accounts.plan.to_account_info(), &plan_state)?;
 

@@ -30,3 +30,11 @@ pub const AGENT_PULL_APPROVAL_TTL_SECONDS: i64 = 60;
 pub const AGENT_DAILY_RESET_WINDOW_SECONDS: i64 = 86_400;
 pub const TRANSFER_HOOK_PROGRAM_ID_BYTES: [u8; 32] = [38, 88, 51, 11, 174, 38, 240, 93, 61, 132, 135, 206, 83, 22, 195, 125, 84, 91, 232, 236, 203, 208, 129, 231, 241, 173, 56, 165, 156, 34, 54, 160];
 pub const TRANSFER_HOOK_PROGRAM_ID: Pubkey = Pubkey::new_from_array(TRANSFER_HOOK_PROGRAM_ID_BYTES);
+
+pub fn event_token_symbol(mint: Pubkey, wrapped_usdc_mint: Pubkey) -> String {
+    if mint == wrapped_usdc_mint {
+        WRAPPED_USDC_SYMBOL.to_string()
+    } else {
+        String::new()
+    }
+}

@@ -1,7 +1,6 @@
 use anchor_lang::prelude::*;
 
 use crate::{
-    constants::WRAPPED_USDC_SYMBOL,
     errors::VelaError,
     instructions::{
         mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
@@ -26,7 +25,7 @@ pub struct CancelPlanChange<'info> {
 }
 
 pub fn handler(ctx: Context<CancelPlanChange>) -> Result<()> {
-    let protocol_config = load_protocol_config(&ctx.accounts.protocol_config.to_account_info())?;
+    let _protocol_config = load_protocol_config(&ctx.accounts.protocol_config.to_account_info())?;
 
     let loaded_mandate = load_mandate_account(&ctx.accounts.mandate.to_account_info())?;
     require!(
@@ -58,8 +57,8 @@ pub fn handler(ctx: Context<CancelPlanChange>) -> Result<()> {
     emit!(MandateUpgradeCancelled {
         schema_version: 1,
         mandate: ctx.accounts.mandate.key(),
-        mint: protocol_config.wrapped_usdc_mint(),
-        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
+        mint: Pubkey::default(),
+        token_symbol: String::new(),
         old_plan,
         new_plan,
         proration_amount: 0,

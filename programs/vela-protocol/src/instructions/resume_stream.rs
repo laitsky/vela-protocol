@@ -1,7 +1,6 @@
 use anchor_lang::prelude::*;
 
 use crate::{
-    constants::WRAPPED_USDC_SYMBOL,
     errors::VelaError,
     instructions::stream_account::{
         load_stream_mandate, validate_stream_mandate_address, write_stream_mandate,
@@ -38,8 +37,9 @@ pub fn handler(ctx: Context<ResumeStream>) -> Result<()> {
         StreamStatus::Cancelled => return Err(VelaError::StreamAlreadyCancelled.into()),
     }
 
-    require!(mandate.paused_at.is_some(), VelaError::StreamNotActive);
-    let paused_at = mandate.paused_at.expect("checked above");
+    let Some(paused_at) = mandate.paused_at else {
+        return Err(VelaError::StreamNotActive.into());
+    };
     let clock_now = Clock::get()?.unix_timestamp;
     let pause_duration = clock_now
         .checked_sub(paused_at)
@@ -55,7 +55,7 @@ pub fn handler(ctx: Context<ResumeStream>) -> Result<()> {
         schema_version: 1,
         mandate: ctx.accounts.mandate.key(),
         mint: mandate.mint,
-        token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
+        token_symbol: String::new(),
         resumed_at: clock_now,
         pause_duration_secs: pause_duration as u64,
         signer: authority,

@@ -2,7 +2,9 @@ use anchor_lang::{prelude::*, AccountDeserialize, AccountSerialize, Discriminato
 
 use crate::{
     errors::VelaError,
-    state::{BillingType, PlanStatus, PricingTier, UsagePlan, VelaPlan, CURRENT_ACCOUNT_VERSION},
+    state::{
+        BillingType, PlanStatus, PricingTier, UsagePlan, VelaPlan, CURRENT_ACCOUNT_VERSION,
+    },
 };
 
 /// Legacy V1 flat plan layout (no version/_reserved fields).
@@ -64,6 +66,13 @@ impl LoadedPlanAccount {
             Self::Usage(plan) => plan.credential_mint,
             Self::LegacyFlat(plan) => plan.credential_mint,
             Self::LegacyUsage(plan) => plan.credential_mint,
+        }
+    }
+
+    pub fn billing_mint(&self) -> Pubkey {
+        match self {
+            Self::Flat(plan) => plan.billing_mint,
+            Self::Usage(_) | Self::LegacyFlat(_) | Self::LegacyUsage(_) => Pubkey::default(),
         }
     }
 

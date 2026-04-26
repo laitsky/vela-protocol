@@ -17,8 +17,8 @@ use crate::{
     instructions::merchant_account::resolve_merchant_credential_mint,
     instructions::plan_account::load_plan_account,
     state::{
-        MandateStatus, MerchantState, PlanStatus, UsagePlan, VelaMandate, VelaPlan,
-        CURRENT_ACCOUNT_VERSION,
+        BillingRail, MandateStatus, MerchantState, PlanStatus, TokenConfig, UsagePlan,
+        VelaMandate, VelaPlan, CURRENT_ACCOUNT_VERSION,
     },
 };
 
@@ -49,6 +49,15 @@ pub struct Subscribe<'info> {
     /// CHECK: Credential mint PDA ownership is validated in the handler.
     pub credential_mint: UncheckedAccount<'info>,
 
+    /// CHECK: Billing mint is validated against the plan and TokenConfig.
+    pub billing_mint: UncheckedAccount<'info>,
+
+    #[account(
+        seeds = [TokenConfig::SEED_PREFIX, billing_mint.key().as_ref()],
+        bump = token_config.bump,
+    )]
+    pub token_config: Account<'info, TokenConfig>,
+
     #[account(mut)]
     /// CHECK: ATA address is validated against subscriber + credential mint in the handler.
     pub subscriber_credential_account: UncheckedAccount<'info>,
@@ -71,6 +80,24 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
     );
     require_keys_eq!(ctx.accounts.merchant.key(), plan.merchant());
     let merchant_key = plan.merchant();
+    let plan_billing_mint = plan.billing_mint();
+    if plan_billing_mint != Pubkey::default() {
+        require_keys_eq!(
+            ctx.accounts.billing_mint.key(),
+            plan_billing_mint,
+            VelaError::TokenChangeNotSupported
+        );
+    }
+    require!(ctx.accounts.token_config.enabled, VelaError::TokenDisabled);
+    require!(
+        ctx.accounts.token_config.billing_rail == BillingRail::TransferHook,
+        VelaError::InvalidBillingRail
+    );
+    require_keys_eq!(
+        ctx.accounts.token_config.mint,
+        ctx.accounts.billing_mint.key(),
+        VelaError::TokenNotRegistered
+    );
     let mandate_index = ctx.accounts.merchant_state.mandate_counter;
     let mandate_index_bytes = mandate_index.to_le_bytes();
     let (expected_mandate, mandate_bump) = Pubkey::find_program_address(

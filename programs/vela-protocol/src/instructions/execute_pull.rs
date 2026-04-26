@@ -5,7 +5,7 @@ use solana_program_error::ProgramError as SplProgramError;
 use solana_pubkey::Pubkey as SplPubkey;
 
 use crate::{
-    constants::{EXTRA_ACCOUNT_METAS_SEED, USDC_DECIMALS, WRAPPED_USDC_SYMBOL},
+    constants::{event_token_symbol, EXTRA_ACCOUNT_METAS_SEED},
     errors::VelaError,
     instructions::{
         keeper_config_account::load_keeper_config,
@@ -15,7 +15,7 @@ use crate::{
     },
     state::{
         BillingType, KeeperConfig, MandateStatus, MandateUpgradeFinalized, PlanStatus,
-        ProtocolConfig, PullApproval, VelaMandate,
+        ProtocolConfig, PullApproval, TokenConfig, VelaMandate,
     },
 };
 
@@ -61,8 +61,11 @@ pub struct ExecutePull<'info> {
     #[account(mut)]
     pub pull_approval: UncheckedAccount<'info>,
 
-    /// CHECK: TokenConfig PDA for the wrapped mint. Validated by transfer hook.
-    pub token_config: UncheckedAccount<'info>,
+    #[account(
+        seeds = [TokenConfig::SEED_PREFIX, wrapped_usdc_mint.key().as_ref()],
+        bump = token_config.bump,
+    )]
+    pub token_config: Account<'info, TokenConfig>,
 
     #[account(
         seeds = [ProtocolConfig::SEED_PREFIX],
@@ -115,11 +118,6 @@ pub fn handler<'a, 'b, 'c, 'info>(
         VelaError::InvalidProtocolConfig
     );
     require_keys_eq!(
-        ctx.accounts.wrapped_usdc_mint.key(),
-        protocol_config.wrapped_usdc_mint(),
-        VelaError::UsdcMintMismatch
-    );
-    require_keys_eq!(
         ctx.accounts.wrapping_vault.key(),
         protocol_config.wrapping_vault(),
         VelaError::VaultMismatch
@@ -133,6 +131,26 @@ pub fn handler<'a, 'b, 'c, 'info>(
     require!(
         *current_plan.status() == PlanStatus::Active,
         VelaError::PlanNotActive
+    );
+    let billing_mint = current_plan.billing_mint();
+    if billing_mint != Pubkey::default() {
+        require_keys_eq!(
+            ctx.accounts.wrapped_usdc_mint.key(),
+            billing_mint,
+            VelaError::TokenChangeNotSupported
+        );
+    } else {
+        require_keys_eq!(
+            ctx.accounts.wrapped_usdc_mint.key(),
+            protocol_config.wrapped_usdc_mint(),
+            VelaError::UsdcMintMismatch
+        );
+    }
+    require!(ctx.accounts.token_config.enabled, VelaError::TokenDisabled);
+    require_keys_eq!(
+        ctx.accounts.token_config.mint,
+        ctx.accounts.wrapped_usdc_mint.key(),
+        VelaError::TokenNotRegistered
     );
     require!(
         matches!(mandate.status, MandateStatus::Active),
@@ -186,6 +204,15 @@ pub fn handler<'a, 'b, 'c, 'info>(
             VelaError::PlanNotActive
         );
         require_plan_billing_type(&pending_plan, &mandate.billing_type)?;
+        let active_billing_mint = active_plan.billing_mint();
+        let pending_billing_mint = pending_plan.billing_mint();
+        if active_billing_mint != Pubkey::default() && pending_billing_mint != Pubkey::default() {
+            require_keys_eq!(
+                pending_billing_mint,
+                active_billing_mint,
+                VelaError::TokenChangeNotSupported
+            );
+        }
 
         let old_plan = mandate.plan;
         let new_plan_key = mandate.pending_new_plan;
@@ -316,8 +343,11 @@ pub fn handler<'a, 'b, 'c, 'info>(
         emit!(MandateUpgradeFinalized {
             schema_version: 1,
             mandate: ctx.accounts.mandate.key(),
-            mint: protocol_config.wrapped_usdc_mint(),
-            token_symbol: WRAPPED_USDC_SYMBOL.to_string(),
+            mint: ctx.accounts.wrapped_usdc_mint.key(),
+            token_symbol: event_token_symbol(
+                ctx.accounts.wrapped_usdc_mint.key(),
+                protocol_config.wrapped_usdc_mint(),
+            ),
             old_plan,
             new_plan,
             proration_amount: 0,
@@ -397,7 +427,7 @@ fn invoke_billing_transfer<'a, 'b, 'c, 'info>(
         &spl_pubkey(authority_info.key),
         &[],
         charge_amount,
-        USDC_DECIMALS,
+        ctx.accounts.token_config.decimals,
     )
     .map_err(map_spl_error)?;
     transfer_ix.accounts.extend_from_slice(&[
