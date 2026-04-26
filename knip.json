@@ -1,0 +1,6 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["scripts/**/*.ts", "ts-tests/**/*.ts"],
+  "project": ["scripts/**/*.ts", "ts-tests/**/*.ts"],
+  "ignoreBinaries": ["anchor", "arcium"]
+}
