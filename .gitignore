@@ -36,3 +36,6 @@ Thumbs.db
 # Yarn (not used — project uses bun)
 .yarn/
 .pnp.*
+
+# Planning / debug scratch (private)
+.planning/
