@@ -1,3 +1,5 @@
+#![allow(clippy::assign_op_pattern, clippy::implicit_saturating_sub)]
+
 use arcis::*;
 
 #[encrypted]

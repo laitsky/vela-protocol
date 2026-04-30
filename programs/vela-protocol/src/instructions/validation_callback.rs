@@ -5,7 +5,7 @@ use crate::instructions::arcium_accounts::{
 use crate::{
     errors::VelaError,
     instructions::protocol_config_account::load_protocol_config,
-    state::{BillingType, ProtocolConfig, PullApproval, VelaMandate},
+    state::{BillingType, MandateStatus, ProtocolConfig, PullApproval, VelaMandate},
     validate_callback_ixs,
 };
 use anchor_lang::prelude::*;
@@ -55,6 +55,15 @@ pub fn validate_mandate_callback(
         Ok(ValidateMandateOutput { field_0 }) => field_0,
         Err(_) => return Err(VelaError::AbortedComputation.into()),
     };
+
+    require!(
+        ctx.accounts.mandate.status == MandateStatus::Active,
+        VelaError::MandateNotActive
+    );
+    require!(
+        ctx.accounts.mandate.billing_type == BillingType::Flat,
+        VelaError::BillingTypeMismatch
+    );
 
     let approval = &mut ctx.accounts.pull_approval;
     approval.mandate = ctx.accounts.mandate.key();

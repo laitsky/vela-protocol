@@ -60,6 +60,20 @@ pub fn usage_charge_callback(
         Err(_) => return Err(VelaError::AbortedComputation.into()),
     };
 
+    require_keys_eq!(
+        ctx.accounts.usage_report.mandate,
+        ctx.accounts.mandate.key(),
+        VelaError::BillingTypeMismatch
+    );
+    require!(
+        !ctx.accounts.usage_report.settled,
+        VelaError::UsageReportAlreadySettled
+    );
+    require!(
+        computed_charge <= ctx.accounts.mandate.amount,
+        VelaError::AmountExceedsPlanAmount
+    );
+
     // Write PullApproval with the Arcium-computed charge amount (not mandate.amount)
     let approval = &mut ctx.accounts.pull_approval;
     approval.mandate = ctx.accounts.mandate.key();
@@ -122,7 +136,15 @@ pub struct UsageComputationCallback<'info> {
 
     pub mandate: Account<'info, VelaMandate>,
 
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [
+            UsageReport::SEED_PREFIX,
+            mandate.key().as_ref(),
+            usage_report.period_start.to_le_bytes().as_ref(),
+        ],
+        bump = usage_report.bump,
+    )]
     pub usage_report: Account<'info, UsageReport>,
 }
 

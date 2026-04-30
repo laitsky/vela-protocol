@@ -50,7 +50,7 @@ pub fn load_merchant_state(
 
     let data = merchant_state_info.try_borrow_data()?;
     if data.len() < MerchantState::DISCRIMINATOR.len()
-        || !data.starts_with(&MerchantState::DISCRIMINATOR)
+        || !data.starts_with(MerchantState::DISCRIMINATOR)
     {
         return Err(ProgramError::InvalidAccountData.into());
     }

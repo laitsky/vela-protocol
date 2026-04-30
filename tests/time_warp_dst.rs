@@ -3,9 +3,10 @@ mod helpers;
 
 use anchor_lang::prelude::Pubkey;
 use helpers::{SubscriptionFixture, TestHarness};
-use solana_keypair::Keypair;
+use solana_program_pack::Pack;
 use solana_signer::Signer;
-use vela_protocol::{state::{VelaMandate, VelaPlan}};
+use spl_token::state::Account as SplTokenAccount;
+use vela_protocol::state::{VelaMandate, VelaPlan};
 
 const ONE_DAY_SECONDS: u64 = 86_400;
 
@@ -24,13 +25,12 @@ fn setup_fixture() -> (
     let mandate: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
 
     let admin = harness.merchant.insecure_clone();
-    let spl_usdc_mint = harness.create_spl_mint(&admin, 6);
-    harness.init_protocol_config(&admin);
-
-    let wrapped_mint = Keypair::new();
-    let (wrapped_mint_pubkey, wrapping_vault) =
-        harness.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
-    harness.init_extra_account_meta_list(&admin, &wrapped_mint_pubkey, &wrapping_vault);
+    let wrapped_mint_pubkey = fixture.wrapped_usdc_mint;
+    let wrapping_vault = fixture.wrapping_vault;
+    let vault_data = harness.fetch_account_data(&wrapping_vault);
+    let vault_account =
+        SplTokenAccount::unpack_from_slice(&vault_data).expect("wrapping vault should unpack");
+    let spl_usdc_mint = Pubkey::new_from_array(vault_account.mint.to_bytes());
 
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
     let subscriber_usdc =
@@ -82,12 +82,7 @@ fn execute_pull_at(
     harness.set_clock_timestamp(due_timestamp);
     assert_eq!(harness.current_timestamp(), due_timestamp);
 
-    harness.create_pull_approval_with_amount(
-        &fixture.mandate,
-        due_timestamp,
-        true,
-        plan.amount,
-    );
+    harness.create_pull_approval_with_amount(&fixture.mandate, due_timestamp, true, plan.amount);
 
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
     harness
@@ -106,15 +101,8 @@ fn execute_pull_at(
 
 #[test]
 fn dst_spring_forward_keeps_next_payment_due_on_utc_seconds() {
-    let (
-        mut harness,
-        fixture,
-        plan,
-        _mandate,
-        subscriber_wrapped,
-        merchant_wrapped,
-        wrapped_mint,
-    ) = setup_fixture();
+    let (mut harness, fixture, plan, _mandate, subscriber_wrapped, merchant_wrapped, wrapped_mint) =
+        setup_fixture();
 
     // 2026-03-08 06:59:00 UTC, one minute before the US spring-forward boundary at 07:00 UTC.
     let due_timestamp = 1_772_953_140_i64;
@@ -128,21 +116,17 @@ fn dst_spring_forward_keeps_next_payment_due_on_utc_seconds() {
         &wrapped_mint,
     );
 
-    assert_eq!(mandate_after.next_payment_due, due_timestamp + ONE_DAY_SECONDS as i64);
+    assert_eq!(
+        mandate_after.next_payment_due,
+        due_timestamp + ONE_DAY_SECONDS as i64
+    );
     assert_eq!(mandate_after.next_payment_due, 1_773_039_540_i64);
 }
 
 #[test]
 fn utc_midnight_boundary_keeps_next_payment_due_monotonic() {
-    let (
-        mut harness,
-        fixture,
-        plan,
-        _mandate,
-        subscriber_wrapped,
-        merchant_wrapped,
-        wrapped_mint,
-    ) = setup_fixture();
+    let (mut harness, fixture, plan, _mandate, subscriber_wrapped, merchant_wrapped, wrapped_mint) =
+        setup_fixture();
 
     // 2026-03-31 23:58:00 UTC, a few minutes before 2026-04-01 00:00:00 UTC.
     let due_timestamp = 1_775_001_480_i64;
@@ -156,6 +140,9 @@ fn utc_midnight_boundary_keeps_next_payment_due_monotonic() {
         &wrapped_mint,
     );
 
-    assert_eq!(mandate_after.next_payment_due, due_timestamp + ONE_DAY_SECONDS as i64);
+    assert_eq!(
+        mandate_after.next_payment_due,
+        due_timestamp + ONE_DAY_SECONDS as i64
+    );
     assert_eq!(mandate_after.next_payment_due, 1_775_087_880_i64);
 }

@@ -24,9 +24,9 @@ custom-panic = []
 [dependencies]
 anchor-lang = { version = "=0.32.1", features = ["init-if-needed", "interface-instructions"] }
 anchor-spl = "=0.32.1"
-arcium-anchor = "0.9.3"
-arcium-macros = "0.9.3"
-arcium-client = { version = "0.9.3", default-features = false }
+arcium-anchor = "0.9.7"
+arcium-macros = "0.9.7"
+arcium-client = { version = "0.9.7", default-features = false }
 spl-token-2022 = { version = "10.0.0", features = ["no-entrypoint"] }
 spl-token-metadata-interface = "0.8.0"
 spl-pod = "=0.7.1"

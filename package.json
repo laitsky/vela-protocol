@@ -19,6 +19,7 @@
     "deploy:devnet": "bash scripts/upgrade-devnet-safe.sh",
     "upgrade:devnet": "bash scripts/upgrade-devnet-safe.sh",
     "verify:deployed": "bash scripts/assert-deployed-hash.sh",
+    "verify:sbf": "bash scripts/verify-sbf-build-logs.sh",
     "verify:rollout": "bash scripts/verify-rollout.sh",
     "guard:deploy": "bash scripts/guard-anchor-deploy.sh"
   },

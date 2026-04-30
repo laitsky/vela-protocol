@@ -62,7 +62,7 @@ pub fn load_keeper_config(config_info: &AccountInfo<'_>) -> Result<LoadedKeeperC
 
     let data = config_info.try_borrow_data()?;
     if data.len() < KeeperConfig::DISCRIMINATOR.len()
-        || !data.starts_with(&KeeperConfig::DISCRIMINATOR)
+        || !data.starts_with(KeeperConfig::DISCRIMINATOR)
     {
         return Err(ProgramError::InvalidAccountData.into());
     }
@@ -100,6 +100,7 @@ pub fn upgrade_keeper_config<'info>(
     Ok(config)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn initialize_keeper_config<'info>(
     payer: &AccountInfo<'info>,
     config_info: &AccountInfo<'info>,

@@ -147,6 +147,11 @@ pub struct TransferHook<'info> {
 fn handler_init_extra_account_meta_list(ctx: Context<InitExtraAccountMetaList>) -> Result<()> {
     let config = load_protocol_config(&ctx.accounts.config)?;
     require_keys_eq!(
+        config.transfer_hook_program_id,
+        crate::ID,
+        VelaError::InvalidProtocolConfig
+    );
+    require_keys_eq!(
         config.admin,
         ctx.accounts.admin.key(),
         VelaError::UnauthorizedAdmin
@@ -173,6 +178,11 @@ fn handler_init_extra_account_meta_list(ctx: Context<InitExtraAccountMetaList>) 
 
 fn handler_update_extra_account_meta_list(ctx: Context<UpdateExtraAccountMetaList>) -> Result<()> {
     let config = load_protocol_config(&ctx.accounts.config)?;
+    require_keys_eq!(
+        config.transfer_hook_program_id,
+        crate::ID,
+        VelaError::InvalidProtocolConfig
+    );
     require_keys_eq!(
         config.admin,
         ctx.accounts.admin.key(),
@@ -229,6 +239,11 @@ fn handler_update_extra_account_meta_list(ctx: Context<UpdateExtraAccountMetaLis
 
 fn handler_transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
     let protocol_config = load_protocol_config(&ctx.accounts.protocol_config)?;
+    require_keys_eq!(
+        protocol_config.transfer_hook_program_id,
+        crate::ID,
+        VelaError::InvalidProtocolConfig
+    );
     let token_config = load_token_config(&ctx.accounts.token_config, &ctx.accounts.mint.key())?;
     require_keys_eq!(
         token_config.mint,
@@ -405,7 +420,9 @@ fn load_token_config(account: &UncheckedAccount<'_>, mint: &Pubkey) -> Result<To
 /// 3. protocol config
 /// 4. PullApproval PDA derived from owner
 /// 5. TokenConfig PDA derived from mint
-/// 6-8. reserved system program placeholders
+/// 6. reserved system program placeholder
+/// 7. reserved system program placeholder
+/// 8. reserved system program placeholder
 fn build_8_slot_account_metas(
     protocol_program_key: &SolPubkey,
     vault_key: &SolPubkey,

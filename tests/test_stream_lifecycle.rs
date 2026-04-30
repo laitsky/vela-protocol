@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err, clippy::too_many_arguments)]
+
 #[path = "helpers/mod.rs"]
 mod helpers;
 
@@ -6,7 +8,9 @@ use helpers::TestHarness;
 use litesvm::types::{FailedTransactionMetadata, TransactionMetadata};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
+use solana_program_pack::Pack;
 use solana_signer::Signer;
+use spl_token::state::Account as SplTokenAccount;
 use spl_token_2022::extension::{
     transfer_hook::TransferHookAccount, BaseStateWithExtensions, StateWithExtensions,
 };
@@ -334,11 +338,12 @@ fn test_hook_misroute_wrong_account_type() {
     );
     let mandate: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
     let admin = harness.merchant.insecure_clone();
-    let spl_usdc_mint = harness.create_spl_mint(&admin, 6);
-    harness.init_protocol_config(&admin);
-    let wrapped_mint = Keypair::new();
-    let (wrapped_mint_pubkey, wrapping_vault) =
-        harness.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
+    let wrapped_mint_pubkey = fixture.wrapped_usdc_mint;
+    let wrapping_vault = fixture.wrapping_vault;
+    let vault_data = harness.fetch_account_data(&wrapping_vault);
+    let vault_account =
+        SplTokenAccount::unpack_from_slice(&vault_data).expect("wrapping vault should unpack");
+    let spl_usdc_mint = Pubkey::new_from_array(vault_account.mint.to_bytes());
     let config = harness.derive_config();
     let token_config = harness.derive_token_config_address(&wrapped_mint_pubkey);
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());

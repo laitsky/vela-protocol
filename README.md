@@ -236,6 +236,9 @@ bun run verify:rollout
 # match target/deploy and target/idl.
 bun run verify:deployed
 
+# Verify the saved SBF build logs do not contain blocked loader warnings.
+bun run verify:sbf
+
 # Same as verify:rollout.
 bun run compat:quick
 
@@ -253,6 +256,7 @@ The upgrade command performs these gates:
 | Keypair restore | Ensures `target/deploy/*-keypair.json` matches the configured devnet program ids |
 | IDL sync | Ensures `target/idl` matches the SDK IDL copies |
 | Upgrade authority check | Ensures the configured wallet can upgrade the existing programs |
+| SBF stack-warning gate | Blocks release artifacts with Solana loader stack-frame warnings |
 | SDK checks | Catches instruction-builder, account-deserializer, and event-type drift |
 | Webhook checks | Catches public event schema and fixture drift |
 | Dashboard worker checks | Catches indexer, queue, and fanout drift |
@@ -267,6 +271,21 @@ SKIP_CONSUMER_CHECKS=1 bun run verify:rollout
 ```
 
 Do not use this override for normal releases. It is intended only for isolating failures while developing the upgrade pipeline.
+
+SBF stack-frame warnings are also blocked by default. For local diagnostics only,
+you can continue past them with:
+
+```sh
+ALLOW_SBF_STACK_WARNINGS=1 bun run build:devnet-safe
+```
+
+The release path also requires checked build logs under `target/sbf-build-logs`
+and `target/checked-build-logs`.
+For diagnostics against older artifacts only, set `REQUIRE_SBF_BUILD_LOGS=0`.
+
+Do not use this override for public releases or mainnet. A stack-frame warning
+must be fixed upstream, fixed in an audited local patch, or accepted only with
+written vendor guidance and deterministic post-build verification.
 
 ## Protocol Compatibility Policy
 

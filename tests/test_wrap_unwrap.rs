@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err, clippy::too_many_arguments)]
+
 //! Tests for wrap (SPL USDC -> wrapped USDC) and unwrap (wrapped USDC -> SPL USDC) instructions.
 //!
 //! These tests verify HOOK-03: the custom protocol vault wrapping mechanism.

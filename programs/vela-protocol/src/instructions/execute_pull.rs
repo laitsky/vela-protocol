@@ -8,6 +8,7 @@ use crate::{
     constants::{event_token_symbol, EXTRA_ACCOUNT_METAS_SEED},
     errors::VelaError,
     instructions::{
+        account_close::close_program_account,
         keeper_config_account::load_keeper_config,
         mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
         plan_account::{load_plan_account, require_plan_billing_type, LoadedPlanAccount},
@@ -360,12 +361,7 @@ pub fn handler<'a, 'b, 'c, 'info>(
     // Close PullApproval PDA and refund lamports to payer.
     let approval_info = ctx.accounts.pull_approval.to_account_info();
     let payer_info = ctx.accounts.payer.to_account_info();
-    let refund = approval_info.lamports();
-    **payer_info.lamports.borrow_mut() = payer_info
-        .lamports()
-        .checked_add(refund)
-        .ok_or(VelaError::Overflow)?;
-    **approval_info.lamports.borrow_mut() = 0;
+    close_program_account(&approval_info, &payer_info)?;
 
     Ok(())
 }

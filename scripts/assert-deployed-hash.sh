@@ -27,18 +27,36 @@ compare_program() {
   echo "==> Dumping ${name} from ${CLUSTER}"
   solana program dump "$program_id" "$dumped_so" --url "$RPC_URL" >/dev/null
 
-  local local_hash dumped_hash
-  local_hash="$(shasum -a 256 "$local_so" | awk '{print $1}')"
-  dumped_hash="$(shasum -a 256 "$dumped_so" | awk '{print $1}')"
+  python3 - "$local_so" "$dumped_so" "$name" "$program_id" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
 
-  if [ "$local_hash" != "$dumped_hash" ]; then
-    echo "ABORT: deployed ${name} bytes do not match local artifact." >&2
-    echo "  local:    $local_hash  $local_so" >&2
-    echo "  deployed: $dumped_hash  $program_id" >&2
-    exit 1
-  fi
+local_path, dumped_path, name, program_id = sys.argv[1:5]
+local = Path(local_path).read_bytes()
+dumped = Path(dumped_path).read_bytes()
 
-  echo "    PASS ${name}: $local_hash"
+local_hash = hashlib.sha256(local).hexdigest()
+dumped_prefix = dumped[: len(local)]
+prefix_hash = hashlib.sha256(dumped_prefix).hexdigest()
+
+if dumped_prefix != local:
+    print(f"ABORT: deployed {name} bytes do not match local artifact.", file=sys.stderr)
+    print(f"  local:    {local_hash}  {local_path}", file=sys.stderr)
+    print(f"  deployed: {prefix_hash}  {program_id} prefix[{len(local)}]", file=sys.stderr)
+    sys.exit(1)
+
+padding = dumped[len(local):]
+if any(padding):
+    print(f"ABORT: deployed {name} has non-zero trailing ProgramData padding.", file=sys.stderr)
+    print(f"  local size:    {len(local)} bytes", file=sys.stderr)
+    print(f"  deployed size: {len(dumped)} bytes", file=sys.stderr)
+    sys.exit(1)
+
+extra = len(dumped) - len(local)
+suffix = f", {extra} zero padding bytes" if extra else ""
+print(f"    PASS {name}: {local_hash}{suffix}")
+PY
 }
 
 compare_idl() {

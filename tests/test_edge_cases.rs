@@ -52,8 +52,11 @@ fn setup_fixture(
         )
         .expect("wrap into mandate billing account should succeed");
 
-    let merchant_wrapped_pubkey =
-        harness.create_token_2022_ata(&admin, &harness.merchant_pubkey(), &fixture.wrapped_usdc_mint);
+    let merchant_wrapped_pubkey = harness.create_token_2022_ata(
+        &admin,
+        &harness.merchant_pubkey(),
+        &fixture.wrapped_usdc_mint,
+    );
 
     (
         harness,

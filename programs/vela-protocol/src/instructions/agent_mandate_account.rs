@@ -92,7 +92,7 @@ pub fn load_agent_mandate(
 
     let data = mandate_info.try_borrow_data()?;
     if data.len() < AgentMandate::DISCRIMINATOR.len()
-        || !data.starts_with(&AgentMandate::DISCRIMINATOR)
+        || !data.starts_with(AgentMandate::DISCRIMINATOR)
     {
         return Err(ProgramError::InvalidAccountData.into());
     }
@@ -143,7 +143,7 @@ pub fn write_agent_mandate(
             services: mandate.services.clone(),
             bump: mandate.bump,
         };
-        data[..AgentMandate::DISCRIMINATOR.len()].copy_from_slice(&AgentMandate::DISCRIMINATOR);
+        data[..AgentMandate::DISCRIMINATOR.len()].copy_from_slice(AgentMandate::DISCRIMINATOR);
         let mut body: &mut [u8] = &mut data[AgentMandate::DISCRIMINATOR.len()..];
         legacy.serialize(&mut body)?;
         return Ok(());

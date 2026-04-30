@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(clippy::result_large_err, dead_code)]
 
 #[path = "helpers/mod.rs"]
 pub mod helpers;

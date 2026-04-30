@@ -1,5 +1,8 @@
 use serde_json::Value;
-use std::{env, fs, path::PathBuf};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("missing manifest dir"));
@@ -40,7 +43,7 @@ fn main() {
         .expect("failed to write generated circuit metadata");
 }
 
-fn load_inputs(build_dir: &PathBuf, circuit: &str) -> Vec<String> {
+fn load_inputs(build_dir: &Path, circuit: &str) -> Vec<String> {
     let json = load_idarc(build_dir, circuit);
     flatten_schema_array(
         json.get("inputs").and_then(Value::as_array),
@@ -48,7 +51,7 @@ fn load_inputs(build_dir: &PathBuf, circuit: &str) -> Vec<String> {
     )
 }
 
-fn load_outputs(build_dir: &PathBuf, circuit: &str) -> Vec<String> {
+fn load_outputs(build_dir: &Path, circuit: &str) -> Vec<String> {
     let json = load_idarc(build_dir, circuit);
     flatten_schema_array(
         json.get("outputs").and_then(Value::as_array),
@@ -56,7 +59,7 @@ fn load_outputs(build_dir: &PathBuf, circuit: &str) -> Vec<String> {
     )
 }
 
-fn load_idarc(build_dir: &PathBuf, circuit: &str) -> Value {
+fn load_idarc(build_dir: &Path, circuit: &str) -> Value {
     let path = build_dir.join(format!("{circuit}.idarc"));
     let raw = fs::read_to_string(&path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
@@ -64,7 +67,7 @@ fn load_idarc(build_dir: &PathBuf, circuit: &str) -> Value {
         .unwrap_or_else(|err| panic!("failed to parse {}: {err}", path.display()))
 }
 
-fn load_weight(build_dir: &PathBuf, circuit: &str) -> u64 {
+fn load_weight(build_dir: &Path, circuit: &str) -> u64 {
     let path = build_dir.join(format!("{circuit}.weight"));
     let raw = fs::read_to_string(&path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));

@@ -14,7 +14,10 @@ use crate::{
         USDC_DECIMALS,
     },
     errors::VelaError,
-    instructions::agent_mandate_account::{load_agent_mandate, write_agent_mandate},
+    instructions::{
+        account_close::close_program_account,
+        agent_mandate_account::{load_agent_mandate, write_agent_mandate},
+    },
     state::{AgentMandateStatus, ProtocolConfig, PullApproval},
 };
 
@@ -277,12 +280,7 @@ pub fn handler<'a, 'b, 'c, 'info>(
 
     let approval_info = ctx.accounts.pull_approval.to_account_info();
     let payer_info = ctx.accounts.payer.to_account_info();
-    let refund = approval_info.lamports();
-    **payer_info.lamports.borrow_mut() = payer_info
-        .lamports()
-        .checked_add(refund)
-        .ok_or(VelaError::Overflow)?;
-    **approval_info.lamports.borrow_mut() = 0;
+    close_program_account(&approval_info, &payer_info)?;
 
     let service_state = mandate
         .services

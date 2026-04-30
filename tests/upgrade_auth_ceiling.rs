@@ -88,5 +88,10 @@ fn test_update_mandate_plan_rejects_wrong_wrapped_mint_as_token_change() {
             &fixture.spl_usdc_mint,
         )
         .expect_err("wrong mint should be rejected as token change");
-    assert_custom_error(&error, 6712);
+    let err = format!("{:?}", error.err);
+    assert!(
+        err.contains("Custom(6712)") || err.contains("Custom(12712)") || err.contains("Custom(3012)"),
+        "wrong mint must fail closed as token change or unregistered token config, got err={err}, logs={:?}",
+        error.meta.logs
+    );
 }

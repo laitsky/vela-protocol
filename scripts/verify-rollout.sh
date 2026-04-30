@@ -44,6 +44,8 @@ require_file target/deploy/vela_transfer_hook.so
 require_file target/idl/vela_protocol.json
 require_file target/idl/vela_transfer_hook.json
 
+run env REQUIRE_SBF_BUILD_LOGS=1 bash scripts/verify-sbf-build-logs.sh
+
 if [ -d ../vela-sdk ]; then
   echo "==> Verifying SDK IDL copies"
   require_file ../vela-sdk/idl/vela_protocol.json

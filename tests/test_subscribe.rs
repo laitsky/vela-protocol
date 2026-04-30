@@ -289,6 +289,14 @@ fn test_subscribe_usage_plan_creates_usage_mandate() {
         .expect("create_usage_plan should succeed");
 
     let plan: UsagePlan = harness.fetch_anchor_account(&addresses.usage_plan);
+    let subscriber_pubkey = Pubkey::new_from_array(subscriber.pubkey().to_bytes());
+    let merchant_state_before: MerchantState =
+        harness.fetch_anchor_account(&addresses.merchant_state);
+    let mandate_address = harness.derive_mandate_address_by_index(
+        &subscriber_pubkey,
+        &harness.merchant_pubkey(),
+        merchant_state_before.mandate_counter,
+    );
     harness
         .send_subscribe_to_plan(
             &subscriber,
@@ -297,8 +305,6 @@ fn test_subscribe_usage_plan_creates_usage_mandate() {
         )
         .expect("usage plan subscribe should succeed");
 
-    let subscriber_pubkey = Pubkey::new_from_array(subscriber.pubkey().to_bytes());
-    let mandate_address = harness.derive_mandate_address(&subscriber_pubkey, &addresses.usage_plan);
     let mandate: VelaMandate = harness.fetch_anchor_account(&mandate_address);
 
     assert_eq!(mandate.subscriber, subscriber_pubkey);

@@ -61,7 +61,7 @@ pub fn handler(
 ) -> Result<()> {
     // Validate tier count: must be 1-5
     require!(
-        tiers.len() >= 1 && tiers.len() <= 5,
+        !tiers.is_empty() && tiers.len() <= 5,
         VelaError::InvalidTierCount
     );
 

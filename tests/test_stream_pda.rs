@@ -40,7 +40,7 @@ fn stream_mandate_discriminator() {
     let disc = StreamMandate::DISCRIMINATOR;
 
     assert_eq!(disc.len(), 8);
-    assert_eq!(disc.as_ref(), &expected[..8]);
+    assert_eq!(disc, &expected[..8]);
     assert_ne!(disc, VelaMandate::DISCRIMINATOR);
 }
 

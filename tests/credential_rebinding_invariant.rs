@@ -1,3 +1,5 @@
+#![allow(clippy::duplicate_mod)]
+
 #[path = "helpers/mod.rs"]
 mod helpers;
 #[path = "upgrade_helpers.rs"]

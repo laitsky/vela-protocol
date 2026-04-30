@@ -2,9 +2,7 @@ use anchor_lang::{prelude::*, AccountDeserialize, AccountSerialize, Discriminato
 
 use crate::{
     errors::VelaError,
-    state::{
-        BillingType, PlanStatus, PricingTier, UsagePlan, VelaPlan, CURRENT_ACCOUNT_VERSION,
-    },
+    state::{BillingType, PlanStatus, PricingTier, UsagePlan, VelaPlan, CURRENT_ACCOUNT_VERSION},
 };
 
 /// Legacy V1 flat plan layout (no version/_reserved fields).
@@ -214,10 +212,10 @@ pub fn load_plan_account(plan_info: &AccountInfo<'_>) -> Result<LoadedPlanAccoun
     require_keys_eq!(*plan_info.owner, crate::ID, VelaError::BillingTypeMismatch);
 
     let data = plan_info.try_borrow_data()?;
-    if data.len() < VelaPlan::DISCRIMINATOR.len() || !data.starts_with(&VelaPlan::DISCRIMINATOR) {
+    if data.len() < VelaPlan::DISCRIMINATOR.len() || !data.starts_with(VelaPlan::DISCRIMINATOR) {
         // Try UsagePlan discriminator
         if data.len() >= UsagePlan::DISCRIMINATOR.len()
-            && data.starts_with(&UsagePlan::DISCRIMINATOR)
+            && data.starts_with(UsagePlan::DISCRIMINATOR)
         {
             return load_usage_plan_inner(plan_info, &data);
         }

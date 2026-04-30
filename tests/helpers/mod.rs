@@ -1,4 +1,9 @@
-#![allow(dead_code)]
+#![allow(
+    clippy::duplicate_mod,
+    clippy::result_large_err,
+    clippy::too_many_arguments,
+    dead_code
+)]
 
 #[path = "arcium_helpers.rs"]
 pub mod arcium_helpers;
@@ -475,6 +480,7 @@ impl TestHarness {
         max_charge_per_period: u64,
         settlement_frequency: u64,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        self.ensure_default_billing_rail();
         let addresses = self.derive_usage_plan_addresses(plan_id);
         let accounts = vela_protocol::accounts::CreateUsagePlan {
             merchant: self.merchant_pubkey(),
@@ -878,6 +884,7 @@ impl TestHarness {
         plan: &Pubkey,
         credential_mint: &Pubkey,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        self.ensure_default_billing_rail();
         let subscriber_pubkey = to_anchor_pubkey(subscriber.pubkey());
         let (merchant_state, _) = Pubkey::find_program_address(
             &[
@@ -893,12 +900,19 @@ impl TestHarness {
             state.mandate_counter,
         );
         let credential_ata = self.derive_credential_ata(&subscriber_pubkey, credential_mint);
-        let plan_account: vela_protocol::state::VelaPlan = self.fetch_anchor_account(plan);
-        let billing_mint = if plan_account.billing_mint == Pubkey::default() {
+        let plan_data = self.fetch_account_data(plan);
+        let billing_mint = if let Ok(plan_account) =
+            vela_protocol::state::VelaPlan::try_deserialize(&mut plan_data.as_slice())
+        {
+            plan_account.billing_mint
+        } else {
+            Pubkey::default()
+        };
+        let billing_mint = if billing_mint == Pubkey::default() {
             let config: ProtocolConfig = self.fetch_anchor_account(&self.derive_config());
             config.wrapped_usdc_mint
         } else {
-            plan_account.billing_mint
+            billing_mint
         };
 
         let accounts = vela_protocol::accounts::Subscribe {
@@ -1968,7 +1982,7 @@ impl TestHarness {
         signers: &[&Keypair],
         payer: Option<&Address>,
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-        self.send_instructions(&[instruction.clone()], signers, payer)
+        self.send_instructions(std::slice::from_ref(instruction), signers, payer)
     }
 
     pub fn send_pause_protocol(

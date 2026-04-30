@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err, clippy::too_many_arguments)]
+
 #[path = "helpers/mod.rs"]
 mod helpers;
 
@@ -247,6 +249,56 @@ fn test_hook_disabled_token_fails() {
     assert!(
         error_str.contains("TokenDisabled") || error_str.contains("Custom(12502)"),
         "expected TokenDisabled error, got {:?}",
+        error.err,
+    );
+}
+
+#[test]
+fn test_hook_rejects_stale_protocol_config_binding() {
+    let (mut harness, admin, protocol_config, fixture, plan, mandate) =
+        setup_subscription_fixture();
+    let merchant = harness.merchant_pubkey();
+    let mint_fixture = create_hook_mint_fixture(
+        &mut harness,
+        &admin,
+        &fixture.mandate,
+        &merchant,
+        &Pubkey::default(),
+        true,
+    );
+
+    harness.set_clock_timestamp(mandate.next_payment_due);
+    let pull_approval = harness.create_pull_approval_with_amount(
+        &fixture.mandate,
+        mandate.next_payment_due,
+        true,
+        plan.amount,
+    );
+
+    let mut config: ProtocolConfig = harness.fetch_anchor_account(&protocol_config);
+    config.transfer_hook_program_id = Pubkey::new_unique();
+    harness.overwrite_anchor_account(&protocol_config, &config);
+
+    let caller = harness.create_wallet();
+    let error = call_transfer_hook_directly(
+        &mut harness,
+        &mint_fixture.source_token,
+        &mint_fixture.mint,
+        &mint_fixture.destination_token,
+        &fixture.mandate,
+        &mint_fixture.wrapping_vault,
+        &protocol_config,
+        &pull_approval,
+        &mint_fixture.token_config,
+        plan.amount,
+        &caller,
+    )
+    .expect_err("stale hook binding must fail closed");
+
+    let error_str = format!("{:?}", error.err);
+    assert!(
+        error_str.contains("InvalidProtocolConfig") || error_str.contains("Custom(6022)"),
+        "expected InvalidProtocolConfig for stale hook binding, got {:?}",
         error.err,
     );
 }

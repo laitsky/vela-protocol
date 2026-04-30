@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 #[path = "helpers/mod.rs"]
 mod helpers;
 
@@ -108,7 +110,7 @@ fn setup_fixture(
 
     use anchor_lang::Discriminator;
     let mut full_data = Vec::new();
-    full_data.extend_from_slice(&VelaMandate::DISCRIMINATOR);
+    full_data.extend_from_slice(VelaMandate::DISCRIMINATOR);
     full_data.extend_from_slice(&body);
     harness
         .svm

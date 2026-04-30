@@ -114,7 +114,7 @@ pub fn load_protocol_config(config_info: &AccountInfo<'_>) -> Result<LoadedProto
 
     let data = config_info.try_borrow_data()?;
     if data.len() < ProtocolConfig::DISCRIMINATOR.len()
-        || !data.starts_with(&ProtocolConfig::DISCRIMINATOR)
+        || !data.starts_with(ProtocolConfig::DISCRIMINATOR)
     {
         return Err(error!(VelaError::InvalidProtocolConfig));
     }

@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 #[path = "helpers/mod.rs"]
 mod helpers;
 

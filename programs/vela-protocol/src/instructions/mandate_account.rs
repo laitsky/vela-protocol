@@ -267,7 +267,7 @@ pub fn load_mandate_account(mandate_info: &AccountInfo<'_>) -> Result<LoadedMand
 
     let data = mandate_info.try_borrow_data()?;
     if data.len() < VelaMandate::DISCRIMINATOR.len()
-        || !data.starts_with(&VelaMandate::DISCRIMINATOR)
+        || !data.starts_with(VelaMandate::DISCRIMINATOR)
     {
         return Err(ProgramError::InvalidAccountData.into());
     }
@@ -343,7 +343,7 @@ pub fn write_mandate(
             bump: mandate.bump,
             billing_type: mandate.billing_type.clone(),
         };
-        data[..VelaMandate::DISCRIMINATOR.len()].copy_from_slice(&VelaMandate::DISCRIMINATOR);
+        data[..VelaMandate::DISCRIMINATOR.len()].copy_from_slice(VelaMandate::DISCRIMINATOR);
         let mut body: &mut [u8] = &mut data[VelaMandate::DISCRIMINATOR.len()..];
         legacy.serialize(&mut body)?;
         return Ok(());

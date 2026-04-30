@@ -40,6 +40,11 @@ pub fn request_usage_computation(
         mandate.billing_type == BillingType::Usage,
         VelaError::BillingTypeMismatch
     );
+    require_keys_eq!(
+        ctx.accounts.usage_plan.key(),
+        mandate.plan,
+        VelaError::PlanNotActive
+    );
     require!(
         mandate.status == MandateStatus::Active,
         VelaError::MandateNotActive

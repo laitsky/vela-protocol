@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err, clippy::too_many_arguments)]
+
 //! Tests for the transfer hook validation flow (HOOK-01, HOOK-02, HOOK-05).
 //!
 //! These tests validate:
@@ -25,7 +27,9 @@ mod helpers;
 use anchor_lang::prelude::Pubkey;
 use helpers::TestHarness;
 use solana_keypair::Keypair;
+use solana_program_pack::Pack;
 use solana_signer::Signer;
+use spl_token::state::Account as SplTokenAccount;
 use vela_protocol::{
     constants::MIN_FREQUENCY_SECONDS,
     state::{MandateStatus, VelaMandate, VelaPlan},
@@ -50,13 +54,12 @@ fn setup_subscription_with_t22(
     let mandate: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
 
     let admin = harness.merchant.insecure_clone();
-    let spl_usdc_mint = harness.create_spl_mint(&admin, 6);
-    harness.init_protocol_config(&admin);
-
-    let wrapped_mint = Keypair::new();
-    let (wrapped_mint_pubkey, wrapping_vault) =
-        harness.init_wrapped_mint(&admin, &wrapped_mint, &spl_usdc_mint);
-    harness.init_extra_account_meta_list(&admin, &wrapped_mint_pubkey, &wrapping_vault);
+    let wrapping_vault = fixture.wrapping_vault;
+    let vault_data = harness.fetch_account_data(&wrapping_vault);
+    let vault_account =
+        SplTokenAccount::unpack_from_slice(&vault_data).expect("wrapping vault should unpack");
+    let spl_usdc_mint = Pubkey::new_from_array(vault_account.mint.to_bytes());
+    let wrapped_mint_pubkey = fixture.wrapped_usdc_mint;
 
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
     let subscriber_usdc =

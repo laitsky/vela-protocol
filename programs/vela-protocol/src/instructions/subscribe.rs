@@ -17,8 +17,8 @@ use crate::{
     instructions::merchant_account::resolve_merchant_credential_mint,
     instructions::plan_account::load_plan_account,
     state::{
-        BillingRail, MandateStatus, MerchantState, PlanStatus, TokenConfig, UsagePlan,
-        VelaMandate, VelaPlan, CURRENT_ACCOUNT_VERSION,
+        BillingRail, MandateStatus, MerchantState, PlanStatus, TokenConfig, UsagePlan, VelaMandate,
+        VelaPlan, CURRENT_ACCOUNT_VERSION,
     },
 };
 

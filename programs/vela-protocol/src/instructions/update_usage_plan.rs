@@ -81,7 +81,7 @@ pub fn handler(
 
     if let Some(new_tiers) = tiers {
         require!(
-            new_tiers.len() >= 1 && new_tiers.len() <= 5,
+            !new_tiers.is_empty() && new_tiers.len() <= 5,
             VelaError::InvalidTierCount,
         );
 
@@ -91,10 +91,8 @@ pub fn handler(
             let curr = &new_tiers[i];
             if i < new_tiers.len() - 1 {
                 require!(curr.up_to > prev.up_to, VelaError::InvalidTierBoundary);
-            } else {
-                if curr.up_to != 0 {
-                    require!(curr.up_to > prev.up_to, VelaError::InvalidTierBoundary);
-                }
+            } else if curr.up_to != 0 {
+                require!(curr.up_to > prev.up_to, VelaError::InvalidTierBoundary);
             }
         }
 

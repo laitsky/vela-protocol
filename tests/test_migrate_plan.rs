@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 #[path = "helpers/mod.rs"]
 mod helpers;
 
@@ -88,7 +90,7 @@ fn inject_legacy_flat_plan(
         bump,
     );
     let mut full_data = Vec::new();
-    full_data.extend_from_slice(&VelaPlan::DISCRIMINATOR);
+    full_data.extend_from_slice(VelaPlan::DISCRIMINATOR);
     full_data.extend_from_slice(&body);
 
     harness
@@ -133,7 +135,7 @@ fn inject_legacy_usage_plan(
         bump,
     );
     let mut full_data = Vec::new();
-    full_data.extend_from_slice(&UsagePlan::DISCRIMINATOR);
+    full_data.extend_from_slice(UsagePlan::DISCRIMINATOR);
     full_data.extend_from_slice(&body);
 
     harness
@@ -175,7 +177,8 @@ fn test_fresh_flat_plan_is_v2() {
         "Fresh plan must be V2"
     );
     assert_eq!(
-        plan._reserved, [0u8; vela_protocol::state::PLAN_RESERVED_BYTES],
+        plan._reserved,
+        [0u8; vela_protocol::state::PLAN_RESERVED_BYTES],
         "Reserved must be zero-filled"
     );
 
@@ -286,7 +289,10 @@ fn test_migrate_flat_plan_preserves_business_fields() {
         plan.version, CURRENT_ACCOUNT_VERSION,
         "Migrated plan must be V2"
     );
-    assert_eq!(plan._reserved, [0u8; vela_protocol::state::PLAN_RESERVED_BYTES]);
+    assert_eq!(
+        plan._reserved,
+        [0u8; vela_protocol::state::PLAN_RESERVED_BYTES]
+    );
 
     // All business fields preserved
     assert_eq!(plan.merchant, merchant);

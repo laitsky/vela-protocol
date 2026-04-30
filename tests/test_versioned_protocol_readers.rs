@@ -367,7 +367,7 @@ fn test_init_config_and_keeper_config_write_versioned_accounts() {
     let keeper: KeeperConfig = harness.fetch_anchor_account(&keeper_config);
 
     assert_eq!(protocol_bytes.len(), ProtocolConfig::SIZE);
-    assert!(protocol_bytes.starts_with(&ProtocolConfig::DISCRIMINATOR));
+    assert!(protocol_bytes.starts_with(ProtocolConfig::DISCRIMINATOR));
     assert_eq!(keeper.version, 1);
     assert_eq!(keeper._reserved, [0u8; 64]);
 }
@@ -457,6 +457,30 @@ fn test_runtime_request_callback_wrap_unwrap_readers_reference_compatibility_hel
     assert!(
         usage_computation_callback.contains("load_protocol_config"),
         "usage_computation_callback must use load_protocol_config"
+    );
+    assert!(
+        request_usage_computation.contains("ctx.accounts.usage_plan.key()")
+            && request_usage_computation.contains("mandate.plan"),
+        "request_usage_computation must bind the supplied usage plan to the mandate"
+    );
+    assert!(
+        request_validation.contains("load_mandate_account")
+            && request_validation.contains("validate_loaded_mandate_address")
+            && request_validation.contains("require_plan_billing_type(&plan, &BillingType::Flat)"),
+        "request_validation must manually validate current/legacy mandate PDAs and flat billing"
+    );
+    assert!(
+        usage_computation_callback.contains("ctx.accounts.usage_report.mandate")
+            && usage_computation_callback.contains("ctx.accounts.mandate.key()"),
+        "usage_computation_callback must bind usage_report to mandate"
+    );
+    assert!(
+        usage_computation_callback.contains("computed_charge <= ctx.accounts.mandate.amount"),
+        "usage_computation_callback must reject charges above the mandate cap"
+    );
+    assert!(
+        validation_callback.contains("ctx.accounts.mandate.billing_type == BillingType::Flat"),
+        "validate_mandate_callback must be restricted to flat billing"
     );
 
     // wrap/unwrap use load_protocol_config

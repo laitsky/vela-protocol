@@ -28,6 +28,7 @@ impl TokenConfig {
     // SIZE = 8 (discriminator) + 32 + 32 + 1 + 1 + 1 + 32 + 32 + 8 + 1 + 1 + 64 = 213
     pub const SIZE: usize = 8 + 32 + 32 + 1 + 1 + 1 + 32 + 32 + 8 + 1 + 1 + ACCOUNT_RESERVED_BYTES;
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         mint: Pubkey,
         token_program: Pubkey,

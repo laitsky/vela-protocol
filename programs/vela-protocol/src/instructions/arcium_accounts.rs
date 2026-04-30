@@ -122,6 +122,7 @@ fn derive_request_offset(domain: &[u8], mandate: &Pubkey, extra_slices: &[&[u8]]
     u64::from_le_bytes(offset)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn validate_queue_accounts(
     mxe_account: &UncheckedAccount,
     mempool_account: &UncheckedAccount,

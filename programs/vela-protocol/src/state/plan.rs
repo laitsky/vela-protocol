@@ -20,8 +20,7 @@ pub struct VelaPlan {
 
 impl VelaPlan {
     pub const SEED_PREFIX: &'static [u8] = b"plan";
-    pub const SIZE: usize =
-        8 + 32 + 8 + 8 + 8 + 8 + 8 + 1 + 32 + 32 + 1 + 1 + PLAN_RESERVED_BYTES;
+    pub const SIZE: usize = 8 + 32 + 8 + 8 + 8 + 8 + 8 + 1 + 32 + 32 + 1 + 1 + PLAN_RESERVED_BYTES;
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]

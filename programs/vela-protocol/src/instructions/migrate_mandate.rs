@@ -6,6 +6,7 @@ use anchor_lang::{
 use crate::{
     errors::VelaError,
     instructions::{
+        account_close::close_program_account,
         mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
         plan_account::load_plan_account,
         protocol_config_account::load_protocol_config,
@@ -146,12 +147,7 @@ pub fn handler(ctx: Context<MigrateMandate>) -> Result<()> {
 
     let legacy_info = ctx.accounts.legacy_mandate.to_account_info();
     let admin_info = ctx.accounts.admin.to_account_info();
-    let refund = legacy_info.lamports();
-    **admin_info.lamports.borrow_mut() = admin_info
-        .lamports()
-        .checked_add(refund)
-        .ok_or(VelaError::Overflow)?;
-    **legacy_info.lamports.borrow_mut() = 0;
+    close_program_account(&legacy_info, &admin_info)?;
 
     Ok(())
 }

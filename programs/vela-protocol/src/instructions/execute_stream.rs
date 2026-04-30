@@ -14,7 +14,9 @@ use crate::{
             load_stream_mandate, validate_stream_mandate_address, write_stream_mandate,
         },
     },
-    state::{KeeperConfig, ProtocolConfig, PullApproval, StreamMandate, StreamSettled, TokenConfig},
+    state::{
+        KeeperConfig, ProtocolConfig, PullApproval, StreamMandate, StreamSettled, TokenConfig,
+    },
 };
 
 #[derive(Accounts)]
@@ -243,6 +245,7 @@ pub(crate) fn validate_stream_transfer_accounts(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn invoke_stream_transfer<'info>(
     source_info: &AccountInfo<'info>,
     mint_info: &AccountInfo<'info>,

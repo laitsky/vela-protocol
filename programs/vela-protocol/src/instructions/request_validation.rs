@@ -4,8 +4,12 @@ use crate::instructions::arcium_accounts::{
 };
 use crate::{
     errors::VelaError,
-    instructions::protocol_config_account::load_protocol_config,
-    state::{MandateStatus, ProtocolConfig, PullApproval, VelaMandate, VelaPlan},
+    instructions::{
+        mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
+        plan_account::{load_plan_account, require_plan_billing_type},
+        protocol_config_account::load_protocol_config,
+    },
+    state::{BillingType, MandateStatus, ProtocolConfig, PullApproval},
     ArciumSignerAccount, ID,
 };
 use anchor_lang::prelude::*;
@@ -24,7 +28,18 @@ pub fn request_validation(
     pub_key: [u8; 32],
     nonce: u128,
 ) -> Result<()> {
-    let mandate = &ctx.accounts.mandate;
+    let loaded_mandate = load_mandate_account(&ctx.accounts.mandate.to_account_info())?;
+    validate_loaded_mandate_address(&ctx.accounts.mandate.key(), &loaded_mandate)?;
+    let legacy_layout = loaded_mandate.is_legacy();
+    let mut mandate = loaded_mandate.into_current();
+    let plan = load_plan_account(&ctx.accounts.plan.to_account_info())?;
+
+    require_keys_eq!(
+        ctx.accounts.plan.key(),
+        mandate.plan,
+        VelaError::PlanNotActive
+    );
+    require_plan_billing_type(&plan, &BillingType::Flat)?;
 
     require!(
         mandate.status == MandateStatus::Active,
@@ -37,22 +52,20 @@ pub fn request_validation(
         VelaError::PullTooEarly
     );
     require!(
-        ctx.accounts.plan.status == crate::state::PlanStatus::Active,
+        *plan.status() == crate::state::PlanStatus::Active,
         VelaError::PlanNotActive
     );
     require!(ciphertext.len() == 8, VelaError::InvalidCiphertextInput);
     let config = load_protocol_config(&ctx.accounts.config.to_account_info())?.into_current();
     validate_protocol_config(&config)?;
 
-    let next_request_nonce = ctx
-        .accounts
-        .mandate
+    let next_request_nonce = mandate
         .validation_request_nonce
         .checked_add(1)
         .ok_or(VelaError::Overflow)?;
     let computation_offset = derive_validation_computation_offset(
         &ctx.accounts.mandate.key(),
-        ctx.accounts.mandate.next_payment_due,
+        mandate.next_payment_due,
         next_request_nonce,
     );
     require!(
@@ -89,9 +102,15 @@ pub fn request_validation(
     approval.mandate = Pubkey::default();
     approval.valid_until = 0;
     approval.approved = false;
+    approval.approved_amount = 0;
     approval.created_at = 0;
     approval.bump = ctx.bumps.pull_approval;
-    ctx.accounts.mandate.validation_request_nonce = next_request_nonce;
+    mandate.validation_request_nonce = next_request_nonce;
+    write_mandate(
+        &ctx.accounts.mandate.to_account_info(),
+        &mandate,
+        legacy_layout,
+    )?;
 
     let args = ArgBuilder::new()
         .x25519_pubkey(pub_key)
@@ -190,26 +209,12 @@ pub struct RequestValidation<'info> {
     #[account(mut)]
     pub clock_account: UncheckedAccount<'info>,
 
-    #[account(
-        seeds = [
-            VelaPlan::SEED_PREFIX,
-            plan.merchant.as_ref(),
-            plan.plan_id.to_le_bytes().as_ref()
-        ],
-        bump = plan.bump
-    )]
-    pub plan: Box<Account<'info, VelaPlan>>,
+    /// CHECK: Deserialized and validated manually to support current and legacy flat plans.
+    pub plan: UncheckedAccount<'info>,
 
-    #[account(
-        mut,
-        seeds = [
-            VelaMandate::SEED_PREFIX,
-            mandate.subscriber.as_ref(),
-            plan.key().as_ref()
-        ],
-        bump = mandate.bump
-    )]
-    pub mandate: Box<Account<'info, VelaMandate>>,
+    /// CHECK: Deserialized and validated manually to support current and legacy mandate layouts.
+    #[account(mut)]
+    pub mandate: UncheckedAccount<'info>,
 
     #[account(
         init_if_needed,

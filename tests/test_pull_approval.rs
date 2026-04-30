@@ -29,7 +29,12 @@ fn setup_fixture() -> (
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
     let subscriber_usdc =
         harness.create_spl_token_account(&fixture.subscriber, &fixture.usdc_mint, &subscriber);
-    harness.mint_spl_tokens(&admin, &fixture.usdc_mint, &subscriber_usdc, plan.amount * 10);
+    harness.mint_spl_tokens(
+        &admin,
+        &fixture.usdc_mint,
+        &subscriber_usdc,
+        plan.amount * 10,
+    );
 
     let subscriber_wrapped_pubkey =
         harness.create_token_2022_ata(&admin, &fixture.mandate, &fixture.wrapped_usdc_mint);
@@ -46,8 +51,11 @@ fn setup_fixture() -> (
         )
         .expect("wrap into the mandate billing account should succeed");
 
-    let merchant_wrapped_pubkey =
-        harness.create_token_2022_ata(&admin, &harness.merchant_pubkey(), &fixture.wrapped_usdc_mint);
+    let merchant_wrapped_pubkey = harness.create_token_2022_ata(
+        &admin,
+        &harness.merchant_pubkey(),
+        &fixture.wrapped_usdc_mint,
+    );
 
     (
         harness,

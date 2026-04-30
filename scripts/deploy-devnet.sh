@@ -44,16 +44,20 @@ bash scripts/prepare-program-keys.sh >/dev/null
 
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
   echo "==> Compiling Arcium circuits"
-  arcium build
+  bash scripts/run-checked-log.sh arcium-build arcium build
 
-  echo "==> Building vela_protocol with arch ${PROTOCOL_SBF_ARCH}"
-  cargo-build-sbf --manifest-path programs/vela-protocol/Cargo.toml --arch "${PROTOCOL_SBF_ARCH}"
+  bash scripts/build-sbf-checked.sh \
+    vela_protocol \
+    cargo-build-sbf --manifest-path programs/vela-protocol/Cargo.toml --arch "${PROTOCOL_SBF_ARCH}"
 
-  echo "==> Building vela_transfer_hook with arch ${TRANSFER_HOOK_SBF_ARCH}"
-  cargo-build-sbf --manifest-path programs/vela-transfer-hook/Cargo.toml --arch "${TRANSFER_HOOK_SBF_ARCH}"
+  bash scripts/build-sbf-checked.sh \
+    vela_transfer_hook \
+    cargo-build-sbf --manifest-path programs/vela-transfer-hook/Cargo.toml --arch "${TRANSFER_HOOK_SBF_ARCH}"
 else
   echo "==> SKIP_BUILD=1; using existing target/deploy artifacts"
 fi
+
+REQUIRE_SBF_BUILD_LOGS=1 bash scripts/verify-sbf-build-logs.sh
 
 if [ ! -f target/idl/vela_protocol.json ] || [ ! -f target/idl/vela_transfer_hook.json ]; then
   echo "ABORT: expected IDL artifacts are missing from target/idl." >&2
@@ -69,6 +73,25 @@ deploy_or_upgrade() {
 
   if solana program show "$program_id" --url "$RPC_URL" >/dev/null 2>&1; then
     echo "==> Upgrading ${name} at ${program_id}"
+    local local_size
+    local deployed_size
+    local extension_bytes
+    local_size="$(wc -c < "$so_path" | tr -d ' ')"
+    deployed_size="$(
+      solana program show "$program_id" --url "$RPC_URL" |
+        awk -F': ' '/^Data Length:/ {print $2}' |
+        awk '{print $1}'
+    )"
+    if [ -z "$deployed_size" ]; then
+      echo "ABORT: failed to read current ProgramData size for ${name}" >&2
+      exit 1
+    fi
+    if [ "$local_size" -gt "$deployed_size" ]; then
+      extension_bytes=$((local_size - deployed_size + 65536))
+      echo "    Extending ProgramData by ${extension_bytes} bytes (${deployed_size} -> at least ${local_size})"
+      solana program extend "$program_id" "$extension_bytes" --url "$RPC_URL"
+    fi
+
     local buffer
     buffer=$(solana program write-buffer "$so_path" --url "$RPC_URL" | awk '/^Buffer:/ {print $2}')
     if [ -z "$buffer" ]; then

@@ -1,3 +1,5 @@
+#![allow(clippy::needless_borrow, clippy::too_many_arguments)]
+
 #[path = "helpers/mod.rs"]
 mod helpers;
 
@@ -93,17 +95,16 @@ fn test_cu_execute_pull() {
     let fixture = harness.subscribe_fixture(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4);
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
 
-    let (subscriber_wrapped_pubkey, merchant_wrapped_pubkey) =
-        setup_wrapped_pull_accounts(
-            &mut harness,
-            &fixture.subscriber,
-            &subscriber,
-            &fixture.mandate,
-            &fixture.usdc_mint,
-            &fixture.wrapped_usdc_mint,
-            &fixture.wrapping_vault,
-            25_000_000,
-        );
+    let (subscriber_wrapped_pubkey, merchant_wrapped_pubkey) = setup_wrapped_pull_accounts(
+        &mut harness,
+        &fixture.subscriber,
+        &subscriber,
+        &fixture.mandate,
+        &fixture.usdc_mint,
+        &fixture.wrapped_usdc_mint,
+        &fixture.wrapping_vault,
+        25_000_000,
+    );
 
     let mandate: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
     harness.set_clock_timestamp(mandate.next_payment_due);
@@ -185,17 +186,16 @@ fn test_cu_full_lifecycle() {
     let mandate = harness.derive_mandate_address(&subscriber_pubkey, &addresses.plan);
     let mandate_account: VelaMandate = harness.fetch_anchor_account(&mandate);
 
-    let (subscriber_wrapped_pubkey, merchant_wrapped_pubkey) =
-        setup_wrapped_pull_accounts(
-            &mut harness,
-            &subscriber,
-            &subscriber_pubkey,
-            &mandate,
-            &spl_usdc_mint,
-            &wrapped_usdc_mint,
-            &wrapping_vault,
-            25_000_000,
-        );
+    let (subscriber_wrapped_pubkey, merchant_wrapped_pubkey) = setup_wrapped_pull_accounts(
+        &mut harness,
+        &subscriber,
+        &subscriber_pubkey,
+        &mandate,
+        &spl_usdc_mint,
+        &wrapped_usdc_mint,
+        &wrapping_vault,
+        25_000_000,
+    );
 
     harness.set_clock_timestamp(mandate_account.next_payment_due);
     harness.create_pull_approval_with_amount(

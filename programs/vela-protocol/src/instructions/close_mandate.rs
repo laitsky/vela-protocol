@@ -2,7 +2,10 @@ use anchor_lang::prelude::*;
 
 use crate::{
     errors::VelaError,
-    instructions::mandate_account::{load_mandate_account, validate_loaded_mandate_address},
+    instructions::{
+        account_close::close_program_account,
+        mandate_account::{load_mandate_account, validate_loaded_mandate_address},
+    },
     state::MandateStatus,
 };
 
@@ -44,12 +47,7 @@ pub fn handler(ctx: Context<CloseMandate>) -> Result<()> {
 
     let subscriber_info = ctx.accounts.subscriber.to_account_info();
     let mandate_info = ctx.accounts.mandate.to_account_info();
-    let refund = mandate_info.lamports();
-    **subscriber_info.lamports.borrow_mut() = subscriber_info
-        .lamports()
-        .checked_add(refund)
-        .ok_or(VelaError::Overflow)?;
-    **mandate_info.lamports.borrow_mut() = 0;
+    close_program_account(&mandate_info, &subscriber_info)?;
 
     Ok(())
 }

@@ -80,7 +80,10 @@ fn wrapped_usdc_mandates_still_pull_and_upgrade_on_same_mint() {
     assert_eq!(mandate.plan, fixture.plan_b);
     assert_eq!(mandate.amount, PREMIUM);
 
-    assert_eq!(mandate.pending_new_plan, anchor_lang::prelude::Pubkey::default());
+    assert_eq!(
+        mandate.pending_new_plan,
+        anchor_lang::prelude::Pubkey::default()
+    );
     assert_eq!(mandate.pending_effective_at, 0);
     assert_eq!(mandate.pending_change_type, 0);
 }

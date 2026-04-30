@@ -78,13 +78,13 @@ updateFile(resolve(protocolRoot, "programs/vela-protocol/src/constants.rs"), (co
 updateFile(resolve(protocolRoot, "README.md"), (content) => {
   let next = replacePattern(
     content,
-    /(\| `vela-protocol` \| `)[^`]+(` \| Core billing logic — plans, mandates, Arcium callbacks \|)/,
+    /(\| `vela-protocol` \| `)[^`]+(` \| Core billing logic[:—] plans, mandates, Arcium callbacks \|)/,
     `$1${devnet.velaProtocol}$2`,
     "README.md",
   );
   next = replacePattern(
     next,
-    /(\| `vela-transfer-hook` \| `)[^`]+(` \| Token-2022 transfer hook — enforces PullApproval on every transfer \|)/,
+    /(\| `vela-transfer-hook` \| `)[^`]+(` \| Token-2022 transfer hook[:—] enforces PullApproval on every transfer \|)/,
     `$1${devnet.velaTransferHook}$2`,
     "README.md",
   );
@@ -110,17 +110,6 @@ updateFile(resolve(protocolRoot, "ts-tests/setup.ts"), (content) =>
         'import idl from "../target/idl/vela_protocol.json";',
         'import idl from "../target/idl/vela_protocol.json";\nimport transferHookIdl from "../target/idl/vela_transfer_hook.json";',
         "ts-tests/setup.ts",
-      ),
-);
-
-updateFile(resolve(protocolRoot, "scripts/deploy-devnet.sh"), (content) =>
-  content.includes('["devnet"]["velaProtocol"]')
-    ? content
-    : replacePattern(
-        content,
-        /PROGRAM_ID="[^"]+"/,
-        'PROGRAM_ID=$(python3 - <<\'PY\'\nimport json\nfrom pathlib import Path\nprint(json.loads(Path("config/program-ids.json").read_text())["devnet"]["velaProtocol"])\nPY\n)',
-        "scripts/deploy-devnet.sh",
       ),
 );
 

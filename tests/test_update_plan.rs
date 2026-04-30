@@ -63,7 +63,10 @@ fn test_update_flat_plan_modifies_fields() {
 
     // Versioning preserved through update
     assert_eq!(updated.version, CURRENT_ACCOUNT_VERSION);
-    assert_eq!(updated._reserved, [0u8; vela_protocol::state::PLAN_RESERVED_BYTES]);
+    assert_eq!(
+        updated._reserved,
+        [0u8; vela_protocol::state::PLAN_RESERVED_BYTES]
+    );
 
     // Immutable fields should NOT change
     assert_eq!(updated.merchant, harness.merchant_pubkey());

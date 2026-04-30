@@ -19,7 +19,7 @@ pub fn load_stream_mandate(info: &AccountInfo<'_>) -> Result<StreamMandate> {
     if data.len() < StreamMandate::DISCRIMINATOR.len() {
         return Err(ProgramError::InvalidAccountData.into());
     }
-    if !data.starts_with(&StreamMandate::DISCRIMINATOR) {
+    if !data.starts_with(StreamMandate::DISCRIMINATOR) {
         return Err(VelaError::WrongAccountType.into());
     }
 
