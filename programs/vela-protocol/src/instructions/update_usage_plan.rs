@@ -2,7 +2,10 @@ use anchor_lang::prelude::*;
 
 use crate::{
     errors::VelaError,
-    instructions::plan_account::{load_plan_account, write_usage_plan, LoadedPlanAccount},
+    instructions::{
+        create_usage_plan::validate_usage_pricing_bounds,
+        plan_account::{load_plan_account, write_usage_plan, LoadedPlanAccount},
+    },
     state::{PricingTier, UsagePlan},
 };
 
@@ -78,6 +81,8 @@ pub fn handler(
     let old_max_charge = plan.max_charge_per_period;
     let old_settlement = plan.settlement_frequency;
     let old_tier_count = plan.tier_count;
+    let mut next_tiers_vec: Option<Vec<PricingTier>> = None;
+    let next_max_charge = max_charge_per_period.unwrap_or(plan.max_charge_per_period);
 
     if let Some(new_tiers) = tiers {
         require!(
@@ -96,17 +101,25 @@ pub fn handler(
             }
         }
 
+        validate_usage_pricing_bounds(&new_tiers, next_max_charge)?;
+
         let mut tiers_array = [PricingTier::default(); 5];
         for (i, tier) in new_tiers.iter().enumerate() {
             tiers_array[i] = *tier;
         }
         plan.tiers = tiers_array;
         plan.tier_count = new_tiers.len() as u8;
+        next_tiers_vec = Some(new_tiers);
     }
 
     if let Some(m) = max_charge_per_period {
         require!(m > 0, VelaError::InvalidAmount);
         plan.max_charge_per_period = m;
+    }
+
+    if next_tiers_vec.is_none() {
+        let active_tiers = &plan.tiers[..usize::from(plan.tier_count)];
+        validate_usage_pricing_bounds(active_tiers, plan.max_charge_per_period)?;
     }
 
     if let Some(s) = settlement_frequency {

@@ -4,7 +4,10 @@ mod helpers;
 use helpers::TestHarness;
 use spl_token_2022::{extension::StateWithExtensions, state::Mint};
 use vela_protocol::{
-    constants::{CREDENTIAL_DECIMALS, MIN_FREQUENCY_SECONDS},
+    constants::{
+        CREDENTIAL_DECIMALS, MAX_SAFE_USAGE_CHARGE, MAX_SAFE_USAGE_RATE_PER_UNIT,
+        MAX_SAFE_USAGE_UNITS, MIN_FREQUENCY_SECONDS,
+    },
     state::{MerchantState, PlanStatus, PricingTier, UsagePlan, VelaPlan},
 };
 
@@ -201,4 +204,63 @@ fn test_create_usage_plan_requires_merchant_credential_bootstrap() {
         "expected MigrationPreconditionFailed custom error, got {:?}",
         error.err,
     );
+}
+
+#[test]
+fn test_create_usage_plan_rejects_overflow_risk_pricing() {
+    let mut harness = TestHarness::new();
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+
+    let mut unit_name = [0u8; 32];
+    unit_name[..5].copy_from_slice(b"units");
+    let tiers = vec![PricingTier {
+        up_to: MAX_SAFE_USAGE_UNITS + 1,
+        rate_per_unit: 100,
+        _padding: 0,
+    }];
+
+    let error = harness
+        .send_create_usage_plan(7, unit_name, tiers, 50_000_000, MIN_FREQUENCY_SECONDS)
+        .expect_err("unsafe tier boundary must be rejected");
+
+    assert!(
+        format!("{:?}", error.err).contains("Custom(6064)"),
+        "expected UsagePricingOverflowRisk custom error, got {:?}",
+        error.err,
+    );
+}
+
+#[test]
+fn test_create_usage_plan_accepts_safe_pricing_boundary() {
+    let mut harness = TestHarness::new();
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+
+    let mut unit_name = [0u8; 32];
+    unit_name[..5].copy_from_slice(b"units");
+    let tiers = vec![
+        PricingTier {
+            up_to: MAX_SAFE_USAGE_UNITS,
+            rate_per_unit: MAX_SAFE_USAGE_RATE_PER_UNIT,
+            _padding: 0,
+        },
+        PricingTier {
+            up_to: 0,
+            rate_per_unit: MAX_SAFE_USAGE_RATE_PER_UNIT,
+            _padding: 0,
+        },
+    ];
+
+    harness
+        .send_create_usage_plan(
+            8,
+            unit_name,
+            tiers,
+            MAX_SAFE_USAGE_CHARGE,
+            MIN_FREQUENCY_SECONDS,
+        )
+        .expect("safe pricing boundary should be accepted");
 }

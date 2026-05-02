@@ -110,6 +110,14 @@ impl LoadedPlanAccount {
         }
     }
 
+    pub fn usage_tier_count(&self) -> Option<u8> {
+        match self {
+            Self::Usage(plan) => Some(plan.tier_count),
+            Self::LegacyUsage(plan) => Some(plan.tier_count),
+            Self::Flat(_) | Self::LegacyFlat(_) => None,
+        }
+    }
+
     pub fn plan_id(&self) -> u64 {
         match self {
             Self::Flat(plan) => plan.plan_id,
@@ -237,6 +245,9 @@ pub fn load_plan_account(plan_info: &AccountInfo<'_>) -> Result<LoadedPlanAccoun
     {
         let mut legacy_slice: &[u8] = &data[VelaPlan::DISCRIMINATOR.len()..];
         if let Ok(legacy) = VelaPlanV1::deserialize(&mut legacy_slice) {
+            if !legacy_slice.is_empty() && !has_only_zero_padding(legacy_slice) {
+                return Err(ProgramError::InvalidAccountData.into());
+            }
             validate_flat_plan_legacy(plan_info.key, &legacy)?;
             return Ok(LoadedPlanAccount::LegacyFlat(legacy));
         }
@@ -257,6 +268,9 @@ pub fn load_plan_account(plan_info: &AccountInfo<'_>) -> Result<LoadedPlanAccoun
     {
         let mut legacy_slice: &[u8] = &data[UsagePlan::DISCRIMINATOR.len()..];
         if let Ok(legacy) = UsagePlanV1::deserialize(&mut legacy_slice) {
+            if !legacy_slice.is_empty() && !has_only_zero_padding(legacy_slice) {
+                return Err(ProgramError::InvalidAccountData.into());
+            }
             validate_usage_plan_legacy(plan_info.key, &legacy)?;
             return Ok(LoadedPlanAccount::LegacyUsage(legacy));
         }
@@ -284,6 +298,9 @@ fn load_usage_plan_inner<'info>(
     {
         let mut legacy_slice: &[u8] = &data[UsagePlan::DISCRIMINATOR.len()..];
         if let Ok(legacy) = UsagePlanV1::deserialize(&mut legacy_slice) {
+            if !legacy_slice.is_empty() && !has_only_zero_padding(legacy_slice) {
+                return Err(ProgramError::InvalidAccountData.into());
+            }
             validate_usage_plan_legacy(plan_info.key, &legacy)?;
             return Ok(LoadedPlanAccount::LegacyUsage(legacy));
         }
@@ -370,4 +387,8 @@ fn validate_usage_plan_legacy(plan_key: &Pubkey, plan: &UsagePlanV1) -> Result<(
     );
     require_keys_eq!(*plan_key, expected, VelaError::BillingTypeMismatch);
     Ok(())
+}
+
+fn has_only_zero_padding(bytes: &[u8]) -> bool {
+    bytes.iter().all(|byte| *byte == 0)
 }

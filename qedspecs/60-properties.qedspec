@@ -1,0 +1,54 @@
+spec VelaProtocolSecurity
+
+property closed_mandates_are_scrubbed :
+  state.mandate_owner_is_program == 0 implies
+    state.mandate_data_len == 0 and state.mandate_lamports == 0
+  preserved_by [close_mandate, revoke_agent_mandate]
+
+property closed_pull_approvals_are_scrubbed :
+  state.pull_approval_owner_is_program == 0 implies
+    state.pull_approval_data_len == 0 and state.pull_approval_lamports == 0
+  preserved_by [close_pull_approval, agent_pull]
+
+property transfer_hook_bound_to_protocol_config :
+  state.hook_matches_protocol_config == 1
+  preserved_by [transfer_hook_execute, execute_stream, cancel_stream]
+
+property usage_report_single_settlement :
+  state.usage_report_settled == 1 implies state.usage_report_matches_mandate == 1
+  preserved_by [request_usage_computation, usage_charge_callback]
+
+property usage_computation_uses_committed_ciphertext :
+  state.usage_ciphertext_committed == 1
+  preserved_by [submit_usage_report, request_usage_computation]
+
+property usage_charge_never_exceeds_mandate_cap :
+  state.computed_charge <= state.mandate_amount
+  preserved_by [usage_charge_callback]
+
+property usage_pricing_math_stays_in_safe_envelope :
+  state.usage_pricing_in_bounds == 1
+  preserved_by [submit_usage_report]
+
+property validation_callback_flat_active_only :
+  state.callback_mandate_active == 1 and state.callback_billing_type_flat == 1
+  preserved_by [validate_mandate_callback, request_validation]
+
+property arcium_request_state_is_bound_when_pending :
+  state.arcium_request_pending == 1 implies
+    state.arcium_request_matches_flow == 1 and
+    state.arcium_request_matches_subject == 1 and
+    state.callback_offset_matches_state == 1
+  preserved_by [request_validation, request_usage_computation, request_billing_record, validate_mandate_callback, usage_charge_callback, record_billing_event_callback]
+
+property legacy_plan_loader_rejects_nonzero_padding :
+  state.legacy_plan_padding_zero == 1
+  preserved_by [request_validation, submit_usage_report, request_usage_computation]
+
+property token_registry_allows_only_enabled_matching_mints :
+  state.token_config_enabled == 1 and state.token_config_mint_matches == 1
+  preserved_by [transfer_hook_execute]
+
+property stream_settlement_requires_active_monotonic_clock :
+  state.stream_status_active == 1 and state.stream_clock_monotonic == 1
+  preserved_by [execute_stream]

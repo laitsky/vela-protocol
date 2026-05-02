@@ -1,0 +1,22 @@
+spec VelaProtocolSecurity
+
+handler agent_pull : State.Active -> State.Active {
+  permissionless
+  accounts { agent : signer, agent_mandate : writable, pull_approval : writable }
+  requires state.pull_approval_owner_is_program == 1 else IncorrectProgramId
+  modifies [pull_approval_owner_is_program, pull_approval_data_len, pull_approval_lamports]
+  effect {
+    pull_approval_owner_is_program := 0
+    pull_approval_data_len := 0
+    pull_approval_lamports := 0
+  }
+  ensures state.pull_approval_owner_is_program == 0
+  ensures state.pull_approval_data_len == 0
+  ensures state.pull_approval_lamports == 0
+}
+
+handler revoke_agent_mandate : State.Active -> State.Active {
+  permissionless
+  accounts { authority : signer, agent_mandate : writable }
+  requires state.mandate_owner_is_program == 1 else IncorrectProgramId
+}

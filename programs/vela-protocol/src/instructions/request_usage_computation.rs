@@ -5,10 +5,15 @@ use crate::instructions::arcium_accounts::{
 use crate::{
     errors::VelaError,
     instructions::{
+        arcium_request_state::{start_arcium_request, StartArciumRequestArgs},
+        create_usage_plan::validate_usage_pricing_bounds,
         mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
         protocol_config_account::load_protocol_config,
     },
-    state::{BillingType, MandateStatus, ProtocolConfig, PullApproval, UsagePlan, UsageReport},
+    state::{
+        ArciumRequestFlow, ArciumRequestState, BillingType, MandateStatus, ProtocolConfig,
+        PullApproval, UsagePlan, UsageReport,
+    },
     ArciumSignerAccount, ID,
 };
 use anchor_lang::prelude::*;
@@ -24,9 +29,6 @@ const USAGE_COMPUTATION_CALLBACK_DISCRIMINATOR: [u8; 8] = [201, 76, 6, 25, 189, 
 pub fn request_usage_computation(
     ctx: Context<RequestUsageComputation>,
     requested_computation_offset: u64,
-    ciphertext: Vec<[u8; 32]>,
-    pub_key: [u8; 32],
-    nonce: u128,
 ) -> Result<()> {
     let loaded = load_mandate_account(&ctx.accounts.mandate.to_account_info())?;
     validate_loaded_mandate_address(&ctx.accounts.mandate.key(), &loaded)?;
@@ -90,9 +92,17 @@ pub fn request_usage_computation(
 
     let expected_ciphertext_len = if usage_plan.tier_count == 1 { 3 } else { 13 };
     require!(
-        ciphertext.len() == expected_ciphertext_len,
+        usize::from(usage_report.ciphertext_count) == expected_ciphertext_len,
         VelaError::InvalidCiphertextInput
     );
+    require!(
+        usage_plan.tier_count > 0 && usage_plan.tier_count <= 5,
+        VelaError::InvalidTierCount
+    );
+    validate_usage_pricing_bounds(
+        &usage_plan.tiers[..usize::from(usage_plan.tier_count)],
+        usage_plan.max_charge_per_period,
+    )?;
 
     validate_queue_accounts(
         &ctx.accounts.mxe_account,
@@ -115,6 +125,19 @@ pub fn request_usage_computation(
         return Err(VelaError::ApprovalAlreadyExists.into());
     }
 
+    start_arcium_request(
+        &mut ctx.accounts.request_state,
+        StartArciumRequestArgs {
+            mandate: mandate_key,
+            flow: ArciumRequestFlow::UsageComputation,
+            subject: usage_report.period_start.to_le_bytes(),
+            computation_offset,
+            request_nonce: next_request_nonce,
+            bump: ctx.bumps.request_state,
+            now: clock.unix_timestamp,
+        },
+    )?;
+
     // Reset pull_approval state while computation is in-flight
     let approval = &mut ctx.accounts.pull_approval;
     approval.mandate = Pubkey::default();
@@ -131,14 +154,16 @@ pub fn request_usage_computation(
         legacy_layout,
     )?;
 
-    // Build ArgBuilder for the selected circuit.
-    // usage_charge circuit expects: (usage_units: Enc<Shared,u64>, rate_per_unit: Enc<Shared,u64>, max_charge: Enc<Shared,u64>)
-    // tiered_pricing circuit expects: (usage_units: Enc<Shared,u64>, tier_boundaries: Enc<Shared,[u64;5]>, tier_rates: Enc<Shared,[u64;5]>, tier_count: Enc<Shared,u8>, max_charge: Enc<Shared,u64>)
-    // In both cases the full encrypted payload is passed via ciphertext parameter from the client.
+    // Queue only the ciphertext committed in the merchant-submitted UsageReport.
+    // This prevents a later request caller from swapping usage or pricing inputs.
     let mut args = ArgBuilder::new()
-        .x25519_pubkey(pub_key)
-        .plaintext_u128(nonce);
-    for ct in &ciphertext {
+        .x25519_pubkey(usage_report.pub_key)
+        .plaintext_u128(usage_report.nonce);
+    for ct in usage_report
+        .computation_ciphertext
+        .iter()
+        .take(expected_ciphertext_len)
+    {
         args = args.encrypted_u64(*ct);
     }
     let args = args.build();
@@ -155,6 +180,10 @@ pub fn request_usage_computation(
             config.cluster_offset,
             circuit_name,
             &[
+                CallbackAccount {
+                    pubkey: ctx.accounts.request_state.key(),
+                    is_writable: true,
+                },
                 CallbackAccount {
                     pubkey: ctx.accounts.pull_approval.key(),
                     is_writable: true,
@@ -264,6 +293,20 @@ pub struct RequestUsageComputation<'info> {
         bump,
     )]
     pub pull_approval: Box<Account<'info, PullApproval>>,
+
+    #[account(
+        init_if_needed,
+        payer = payer,
+        space = ArciumRequestState::SIZE,
+        seeds = [
+            ArciumRequestState::SEED_PREFIX,
+            ArciumRequestFlow::USAGE_COMPUTATION_SEED,
+            mandate.key().as_ref(),
+            usage_report.period_start.to_le_bytes().as_ref(),
+        ],
+        bump,
+    )]
+    pub request_state: Box<Account<'info, ArciumRequestState>>,
 
     pub system_program: Program<'info, System>,
     pub arcium_program: Program<'info, Arcium>,

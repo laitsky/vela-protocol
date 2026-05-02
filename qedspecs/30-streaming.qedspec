@@ -1,0 +1,16 @@
+spec VelaProtocolSecurity
+
+handler execute_stream : State.Active -> State.Active {
+  permissionless
+  accounts { payer : signer, stream_mandate : writable, hook_program : program }
+  requires state.hook_matches_protocol_config == 1 else InvalidProtocolConfig
+  requires state.stream_status_active == 1 else StreamNotActive
+  requires state.stream_clock_monotonic == 1 else ClockRegression
+}
+
+handler cancel_stream : State.Active -> State.Active {
+  permissionless
+  accounts { authority : signer, stream_mandate : writable, hook_program : program }
+  requires state.hook_matches_protocol_config == 1 else InvalidProtocolConfig
+  requires state.stream_clock_monotonic == 1 else ClockRegression
+}

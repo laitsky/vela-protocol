@@ -107,6 +107,14 @@ if [ "${SKIP_CONSUMER_CHECKS:-0}" != "1" ]; then
     run bash -c 'cd ../vela-dashboard && bun test worker/src/routes/webhook.test.ts worker/src/queue/webhook-fanout.test.ts worker/src/queue/helius-webhook-upgrade-events.test.ts worker/tests/stream-events.test.ts'
   fi
 
+  if [ -d ../vela-admin ]; then
+    run bash -c 'cd ../vela-admin && bun run typecheck && bun test tests/server/program-status.test.ts tests/server/reconciliation.test.ts tests/token-enabled-toggle.test.tsx'
+  fi
+
+  if [ -d ../vela-portal ]; then
+    run bash -c 'cd ../vela-portal && bun run typecheck'
+  fi
+
   if [ -d ../vela-checkout ]; then
     run bash -c 'cd ../vela-checkout && bun run check'
   fi
@@ -114,8 +122,20 @@ if [ "${SKIP_CONSUMER_CHECKS:-0}" != "1" ]; then
   if [ -d ../vela-widget ]; then
     run bash -c 'cd ../vela-widget && bun run typecheck'
   fi
+
+  if [ -d ../vela-demo ]; then
+    run bash -c 'cd ../vela-demo && bun run check && bun test'
+  fi
+
+  if [ -d ../vela-synthetic ]; then
+    run bash -c 'cd ../vela-synthetic && bun run check && bun test'
+  fi
+
+  if [ -d ../vela-docs ]; then
+    run bash -c 'cd ../vela-docs && bun run build'
+  fi
 else
-  echo "==> SKIP_CONSUMER_CHECKS=1; skipping SDK/dashboard/webhook/checkout/widget checks"
+  echo "==> SKIP_CONSUMER_CHECKS=1; skipping SDK/dashboard/webhook/admin/portal/checkout/widget/demo/synthetic/docs checks"
 fi
 
 echo "==> Rollout verification passed"

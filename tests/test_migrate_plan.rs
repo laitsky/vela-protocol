@@ -108,6 +108,46 @@ fn inject_legacy_flat_plan(
         .expect("legacy plan account should be created");
 }
 
+fn inject_legacy_flat_plan_with_trailing_byte(
+    harness: &mut TestHarness,
+    plan_key: &Pubkey,
+    merchant: &Pubkey,
+    plan_id: u64,
+    credential_mint: &Pubkey,
+    bump: u8,
+) {
+    use anchor_lang::Discriminator;
+    let body = build_v1_flat_plan_bytes(
+        merchant,
+        plan_id,
+        25_000_000,
+        MIN_FREQUENCY_SECONDS,
+        0,
+        4,
+        &PlanStatus::Active,
+        credential_mint,
+        bump,
+    );
+    let mut full_data = Vec::new();
+    full_data.extend_from_slice(VelaPlan::DISCRIMINATOR);
+    full_data.extend_from_slice(&body);
+    full_data.push(1);
+
+    harness
+        .svm
+        .set_account(
+            to_address(*plan_key),
+            solana_account::Account {
+                lamports: 1_500_000,
+                data: full_data,
+                owner: harness.program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
+        )
+        .expect("malformed legacy plan account should be created");
+}
+
 fn inject_legacy_usage_plan(
     harness: &mut TestHarness,
     plan_key: &Pubkey,
@@ -151,6 +191,52 @@ fn inject_legacy_usage_plan(
             },
         )
         .expect("legacy usage plan account should be created");
+}
+
+fn inject_legacy_usage_plan_with_trailing_byte(
+    harness: &mut TestHarness,
+    plan_key: &Pubkey,
+    merchant: &Pubkey,
+    plan_id: u64,
+    credential_mint: &Pubkey,
+    bump: u8,
+) {
+    use anchor_lang::Discriminator;
+    let tiers = [PricingTier {
+        up_to: 0,
+        rate_per_unit: 100,
+        _padding: 0,
+    }; 5];
+    let body = build_v1_usage_plan_bytes(
+        merchant,
+        plan_id,
+        &[0u8; 32],
+        &tiers,
+        1,
+        50_000_000,
+        3600,
+        credential_mint,
+        &PlanStatus::Active,
+        bump,
+    );
+    let mut full_data = Vec::new();
+    full_data.extend_from_slice(UsagePlan::DISCRIMINATOR);
+    full_data.extend_from_slice(&body);
+    full_data.push(1);
+
+    harness
+        .svm
+        .set_account(
+            to_address(*plan_key),
+            solana_account::Account {
+                lamports: 1_500_000,
+                data: full_data,
+                owner: harness.program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
+        )
+        .expect("malformed legacy usage plan account should be created");
 }
 
 /// Test: Fresh V2 flat plan created via create_plan has version=CURRENT_ACCOUNT_VERSION.
@@ -371,6 +457,71 @@ fn test_migrate_usage_plan_preserves_business_fields() {
     assert_eq!(plan.settlement_frequency, settlement_freq);
     assert_eq!(plan.credential_mint, dummy_credential);
     assert_eq!(plan.bump, usage_bump);
+}
+
+#[test]
+fn test_migrate_flat_plan_rejects_nonzero_legacy_trailing_bytes() {
+    let mut harness = TestHarness::new();
+    let merchant = harness.merchant_pubkey();
+    let addresses = harness.derive_plan_addresses(11);
+    let dummy_credential = Pubkey::new_unique();
+    harness.inject_token_2022_mint(&dummy_credential, &Pubkey::default(), 0);
+
+    let plan_id_bytes = 11u64.to_le_bytes();
+    let (_, plan_bump) = Pubkey::find_program_address(
+        &[
+            VelaPlan::SEED_PREFIX,
+            merchant.as_ref(),
+            plan_id_bytes.as_ref(),
+        ],
+        &vela_protocol::ID,
+    );
+
+    inject_legacy_flat_plan_with_trailing_byte(
+        &mut harness,
+        &addresses.plan,
+        &merchant,
+        11,
+        &dummy_credential,
+        plan_bump,
+    );
+
+    harness
+        .send_migrate_plan(&addresses.plan)
+        .expect_err("nonzero legacy trailing bytes must be rejected");
+}
+
+#[test]
+fn test_migrate_usage_plan_rejects_nonzero_legacy_trailing_bytes() {
+    let mut harness = TestHarness::new();
+    let merchant = harness.merchant_pubkey();
+    let plan_id = 43u64;
+    let addresses = harness.derive_usage_plan_addresses(plan_id);
+    let dummy_credential = Pubkey::new_unique();
+    harness.inject_token_2022_mint(&dummy_credential, &Pubkey::default(), 0);
+
+    let plan_id_bytes = plan_id.to_le_bytes();
+    let (_, usage_bump) = Pubkey::find_program_address(
+        &[
+            UsagePlan::SEED_PREFIX,
+            merchant.as_ref(),
+            plan_id_bytes.as_ref(),
+        ],
+        &vela_protocol::ID,
+    );
+
+    inject_legacy_usage_plan_with_trailing_byte(
+        &mut harness,
+        &addresses.usage_plan,
+        &merchant,
+        plan_id,
+        &dummy_credential,
+        usage_bump,
+    );
+
+    harness
+        .send_migrate_plan(&addresses.usage_plan)
+        .expect_err("nonzero legacy usage trailing bytes must be rejected");
 }
 
 /// Test: migrate_plan on already-V2 plan is a no-op (idempotent).

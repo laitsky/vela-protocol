@@ -1,9 +1,14 @@
 use anchor_lang::prelude::*;
 
 use crate::{
+    constants::MAX_USAGE_COMPUTATION_CIPHERTEXTS,
     errors::VelaError,
-    instructions::mandate_account::{load_mandate_account, validate_loaded_mandate_address},
-    state::{BillingType, MandateStatus, UsageReport},
+    instructions::{
+        create_usage_plan::validate_usage_pricing_bounds,
+        mandate_account::{load_mandate_account, validate_loaded_mandate_address},
+        plan_account::{load_plan_account, require_plan_billing_type, LoadedPlanAccount},
+    },
+    state::{BillingType, MandateStatus, PlanStatus, UsageReport},
 };
 
 #[derive(Accounts)]
@@ -14,6 +19,9 @@ pub struct SubmitUsageReport<'info> {
 
     /// CHECK: Deserialized and validated manually to support both legacy and V2 mandate layouts.
     pub mandate: UncheckedAccount<'info>,
+
+    /// CHECK: Deserialized and validated manually to support current and legacy usage plans.
+    pub usage_plan: UncheckedAccount<'info>,
 
     #[account(
         init,
@@ -35,7 +43,7 @@ pub fn handler(
     ctx: Context<SubmitUsageReport>,
     period_start: i64,
     period_end: i64,
-    encrypted_usage: [[u8; 32]; 4],
+    computation_ciphertext: Vec<[u8; 32]>,
     nonce: u128,
     pub_key: [u8; 32],
 ) -> Result<()> {
@@ -61,6 +69,37 @@ pub fn handler(
         mandate.status == MandateStatus::Active,
         VelaError::MandateNotActive
     );
+    require_keys_eq!(
+        ctx.accounts.usage_plan.key(),
+        mandate.plan,
+        VelaError::PlanNotActive
+    );
+
+    let plan = load_plan_account(&ctx.accounts.usage_plan.to_account_info())?;
+    require_plan_billing_type(&plan, &BillingType::Usage)?;
+    require!(
+        *plan.status() == PlanStatus::Active,
+        VelaError::PlanNotActive
+    );
+    require_keys_eq!(
+        plan.merchant(),
+        mandate.merchant,
+        VelaError::BillingTypeMismatch
+    );
+
+    let tier_count = plan
+        .usage_tier_count()
+        .ok_or(VelaError::BillingTypeMismatch)?;
+    require!(
+        tier_count > 0 && tier_count <= 5,
+        VelaError::InvalidTierCount
+    );
+    validate_loaded_usage_pricing_bounds(&plan)?;
+    let expected_ciphertext_len = if tier_count == 1 { 3 } else { 13 };
+    require!(
+        computation_ciphertext.len() == expected_ciphertext_len,
+        VelaError::InvalidCiphertextInput
+    );
 
     // Validate period boundaries
     require!(period_start < period_end, VelaError::InvalidPeriod);
@@ -72,13 +111,18 @@ pub fn handler(
     );
 
     let clock = Clock::get()?;
+    let mut ciphertext_array = [[0u8; 32]; MAX_USAGE_COMPUTATION_CIPHERTEXTS];
+    for (index, ciphertext) in computation_ciphertext.iter().enumerate() {
+        ciphertext_array[index] = *ciphertext;
+    }
 
     ctx.accounts.usage_report.set_inner(UsageReport {
         mandate: ctx.accounts.mandate.key(),
         merchant: mandate.merchant,
         period_start,
         period_end,
-        encrypted_usage,
+        computation_ciphertext: ciphertext_array,
+        ciphertext_count: computation_ciphertext.len() as u8,
         nonce,
         pub_key,
         settled: false,
@@ -87,4 +131,32 @@ pub fn handler(
     });
 
     Ok(())
+}
+
+fn validate_loaded_usage_pricing_bounds(plan: &LoadedPlanAccount) -> Result<()> {
+    match plan {
+        LoadedPlanAccount::Usage(plan) => {
+            require!(
+                plan.tier_count > 0 && plan.tier_count <= 5,
+                VelaError::InvalidTierCount
+            );
+            validate_usage_pricing_bounds(
+                &plan.tiers[..usize::from(plan.tier_count)],
+                plan.max_charge_per_period,
+            )
+        }
+        LoadedPlanAccount::LegacyUsage(plan) => {
+            require!(
+                plan.tier_count > 0 && plan.tier_count <= 5,
+                VelaError::InvalidTierCount
+            );
+            validate_usage_pricing_bounds(
+                &plan.tiers[..usize::from(plan.tier_count)],
+                plan.max_charge_per_period,
+            )
+        }
+        LoadedPlanAccount::Flat(_) | LoadedPlanAccount::LegacyFlat(_) => {
+            Err(VelaError::BillingTypeMismatch.into())
+        }
+    }
 }

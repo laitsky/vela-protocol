@@ -5,10 +5,11 @@ use crate::instructions::arcium_accounts::{
 use crate::{
     errors::VelaError,
     instructions::{
+        arcium_request_state::{start_arcium_request, StartArciumRequestArgs},
         mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
         protocol_config_account::load_protocol_config,
     },
-    state::{BillingEvent, ProtocolConfig, VelaPlan},
+    state::{ArciumRequestFlow, ArciumRequestState, BillingEvent, ProtocolConfig, VelaPlan},
     ArciumSignerAccount, ID,
 };
 use anchor_lang::prelude::*;
@@ -87,6 +88,20 @@ pub fn request_billing_record(
         return Err(VelaError::BillingEventAlreadyExists.into());
     }
 
+    let clock = Clock::get()?;
+    start_arcium_request(
+        &mut ctx.accounts.request_state,
+        StartArciumRequestArgs {
+            mandate: mandate_key,
+            flow: ArciumRequestFlow::BillingRecord,
+            subject: pulls_executed_seed.to_le_bytes(),
+            computation_offset,
+            request_nonce: next_request_nonce,
+            bump: ctx.bumps.request_state,
+            now: clock.unix_timestamp,
+        },
+    )?;
+
     let billing_event = &mut ctx.accounts.billing_event;
     billing_event.mandate = Pubkey::default();
     billing_event.merchant = Pubkey::default();
@@ -125,6 +140,10 @@ pub fn request_billing_record(
             config.cluster_offset,
             RECORD_BILLING_EVENT_CIRCUIT,
             &[
+                CallbackAccount {
+                    pubkey: ctx.accounts.request_state.key(),
+                    is_writable: true,
+                },
                 CallbackAccount {
                     pubkey: ctx.accounts.billing_event.key(),
                     is_writable: true,
@@ -228,6 +247,20 @@ pub struct RequestBillingRecord<'info> {
         bump,
     )]
     pub billing_event: Box<Account<'info, BillingEvent>>,
+
+    #[account(
+        init_if_needed,
+        payer = payer,
+        space = ArciumRequestState::SIZE,
+        seeds = [
+            ArciumRequestState::SEED_PREFIX,
+            ArciumRequestFlow::BILLING_RECORD_SEED,
+            mandate.key().as_ref(),
+            pulls_executed_seed.to_le_bytes().as_ref(),
+        ],
+        bump,
+    )]
+    pub request_state: Box<Account<'info, ArciumRequestState>>,
 
     pub system_program: Program<'info, System>,
     pub arcium_program: Program<'info, Arcium>,

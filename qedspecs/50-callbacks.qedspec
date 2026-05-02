@@ -1,0 +1,108 @@
+spec VelaProtocolSecurity
+
+handler validate_mandate_callback : State.Active -> State.Active {
+  permissionless
+  accounts { mandate : readonly, request_state : writable, pull_approval : writable }
+  requires state.arcium_request_pending == 1 and
+    state.arcium_request_matches_flow == 1 and
+    state.arcium_request_matches_subject == 1 and
+    state.callback_offset_matches_state == 1 else InvalidArciumRequestState
+  requires state.callback_mandate_active == 1 else MandateNotActive
+  requires state.callback_billing_type_flat == 1 else BillingTypeMismatch
+  modifies [arcium_request_pending]
+  effect {
+    arcium_request_pending := 0
+  }
+  ensures state.arcium_request_pending == 0
+}
+
+handler request_validation : State.Active -> State.Active {
+  permissionless
+  accounts { mandate : writable, plan : readonly, request_state : writable, pull_approval : writable }
+  requires state.arcium_request_pending == 0 else ArciumRequestAlreadyPending
+  requires state.usage_plan_matches_mandate == 1 else PlanNotActive
+  requires state.callback_billing_type_flat == 1 else BillingTypeMismatch
+  requires state.callback_mandate_active == 1 else MandateNotActive
+  modifies [arcium_request_pending, arcium_request_matches_flow, arcium_request_matches_subject, callback_offset_matches_state]
+  effect {
+    arcium_request_pending := 1
+    arcium_request_matches_flow := 1
+    arcium_request_matches_subject := 1
+    callback_offset_matches_state := 1
+  }
+  ensures state.arcium_request_pending == 1
+}
+
+handler submit_usage_report : State.Active -> State.Active {
+  permissionless
+  accounts { merchant : signer, mandate : readonly, usage_plan : readonly, usage_report : writable }
+  requires state.usage_plan_matches_mandate == 1 else PlanNotActive
+  requires state.usage_pricing_in_bounds == 1 else UsagePricingOverflowRisk
+  requires state.usage_ciphertext_committed == 1 else InvalidCiphertextInput
+  ensures state.usage_ciphertext_committed == 1
+}
+
+handler request_usage_computation : State.Active -> State.Active {
+  permissionless
+  accounts { mandate : writable, usage_plan : readonly, usage_report : writable, request_state : writable }
+  requires state.arcium_request_pending == 0 else ArciumRequestAlreadyPending
+  requires state.usage_plan_matches_mandate == 1 else PlanNotActive
+  requires state.usage_report_matches_mandate == 1 else BillingTypeMismatch
+  requires state.usage_report_settled == 0 else UsageReportAlreadySettled
+  requires state.usage_ciphertext_committed == 1 else InvalidCiphertextInput
+  modifies [arcium_request_pending, arcium_request_matches_flow, arcium_request_matches_subject, callback_offset_matches_state]
+  effect {
+    arcium_request_pending := 1
+    arcium_request_matches_flow := 1
+    arcium_request_matches_subject := 1
+    callback_offset_matches_state := 1
+  }
+  ensures state.arcium_request_pending == 1
+}
+
+handler usage_charge_callback : State.Active -> State.Active {
+  permissionless
+  accounts { mandate : readonly, usage_report : writable, request_state : writable, pull_approval : writable }
+  requires state.arcium_request_pending == 1 and
+    state.arcium_request_matches_flow == 1 and
+    state.arcium_request_matches_subject == 1 and
+    state.callback_offset_matches_state == 1 else InvalidArciumRequestState
+  requires state.usage_report_matches_mandate == 1 else BillingTypeMismatch
+  requires state.usage_report_settled == 0 else UsageReportAlreadySettled
+  requires state.computed_charge <= state.mandate_amount else AmountExceedsPlanAmount
+  modifies [usage_report_settled, arcium_request_pending]
+  effect {
+    usage_report_settled := 1
+    arcium_request_pending := 0
+  }
+  ensures state.usage_report_settled == 1
+  ensures state.arcium_request_pending == 0
+}
+
+handler request_billing_record : State.Active -> State.Active {
+  permissionless
+  accounts { mandate : writable, plan : readonly, request_state : writable }
+  requires state.arcium_request_pending == 0 else ArciumRequestAlreadyPending
+  modifies [arcium_request_pending, arcium_request_matches_flow, arcium_request_matches_subject, callback_offset_matches_state]
+  effect {
+    arcium_request_pending := 1
+    arcium_request_matches_flow := 1
+    arcium_request_matches_subject := 1
+    callback_offset_matches_state := 1
+  }
+  ensures state.arcium_request_pending == 1
+}
+
+handler record_billing_event_callback : State.Active -> State.Active {
+  permissionless
+  accounts { mandate : writable, plan : readonly, request_state : writable, billing_event : writable }
+  requires state.arcium_request_pending == 1 and
+    state.arcium_request_matches_flow == 1 and
+    state.arcium_request_matches_subject == 1 and
+    state.callback_offset_matches_state == 1 else InvalidArciumRequestState
+  modifies [arcium_request_pending]
+  effect {
+    arcium_request_pending := 0
+  }
+  ensures state.arcium_request_pending == 0
+}

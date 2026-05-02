@@ -352,7 +352,7 @@ pub mod vela_protocol {
         ctx: Context<SubmitUsageReport>,
         period_start: i64,
         period_end: i64,
-        encrypted_usage: [[u8; 32]; 4],
+        computation_ciphertext: Vec<[u8; 32]>,
         nonce: u128,
         pub_key: [u8; 32],
     ) -> Result<()> {
@@ -360,7 +360,7 @@ pub mod vela_protocol {
             ctx,
             period_start,
             period_end,
-            encrypted_usage,
+            computation_ciphertext,
             nonce,
             pub_key,
         )
@@ -409,6 +409,7 @@ pub mod vela_protocol {
     pub fn request_validation(
         ctx: Context<RequestValidation>,
         computation_offset: u64,
+        next_payment_due_seed: i64,
         ciphertext: Vec<[u8; 32]>,
         pub_key: [u8; 32],
         nonce: u128,
@@ -416,6 +417,7 @@ pub mod vela_protocol {
         instructions::request_validation::request_validation(
             ctx,
             computation_offset,
+            next_payment_due_seed,
             ciphertext,
             pub_key,
             nonce,
@@ -448,16 +450,10 @@ pub mod vela_protocol {
     pub fn request_usage_computation(
         ctx: Context<RequestUsageComputation>,
         requested_computation_offset: u64,
-        ciphertext: Vec<[u8; 32]>,
-        pub_key: [u8; 32],
-        nonce: u128,
     ) -> Result<()> {
         instructions::request_usage_computation::request_usage_computation(
             ctx,
             requested_computation_offset,
-            ciphertext,
-            pub_key,
-            nonce,
         )
     }
 

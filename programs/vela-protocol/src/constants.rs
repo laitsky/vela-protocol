@@ -28,6 +28,14 @@ pub const AGENT_MANDATE_SEED: &[u8] = b"agent-mandate";
 pub const AGENT_MANDATE_MAX_SERVICES: usize = 8;
 pub const AGENT_PULL_APPROVAL_TTL_SECONDS: i64 = 60;
 pub const AGENT_DAILY_RESET_WINDOW_SECONDS: i64 = 86_400;
+/// Maximum metered usage units accepted by the v1 encrypted usage-pricing model.
+/// Client/keeper integrations must not submit encrypted usage reports above this envelope.
+pub const MAX_SAFE_USAGE_UNITS: u64 = 1_000_000_000_000;
+/// Rate bound chosen so five full tiers at MAX_SAFE_USAGE_UNITS cannot overflow u64.
+pub const MAX_SAFE_USAGE_RATE_PER_UNIT: u64 = u64::MAX / MAX_SAFE_USAGE_UNITS / 5;
+pub const MAX_SAFE_USAGE_CHARGE: u64 = MAX_SAFE_USAGE_UNITS * MAX_SAFE_USAGE_RATE_PER_UNIT;
+/// Max encrypted arguments accepted by the v1 tiered_pricing circuit.
+pub const MAX_USAGE_COMPUTATION_CIPHERTEXTS: usize = 13;
 pub const TRANSFER_HOOK_PROGRAM_ID_BYTES: [u8; 32] = [
     38, 88, 51, 11, 174, 38, 240, 93, 61, 132, 135, 206, 83, 22, 195, 125, 84, 91, 232, 236, 203,
     208, 129, 231, 241, 173, 56, 165, 156, 34, 54, 160,

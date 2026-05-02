@@ -1,0 +1,9 @@
+spec VelaProtocolSecurity
+
+handler transfer_hook_execute : State.Active -> State.Active {
+  permissionless
+  accounts { protocol_config : readonly, hook_program : program, token_config : readonly }
+  requires state.hook_matches_protocol_config == 1 else InvalidProtocolConfig
+  requires state.token_config_enabled == 1 else TokenDisabled
+  requires state.token_config_mint_matches == 1 else TokenNotRegistered
+}

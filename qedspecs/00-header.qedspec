@@ -1,0 +1,52 @@
+spec VelaProtocolSecurity
+
+program_id "CVM6UqbwKgHckZzm8R2qbN3BWhCTdk1PsSeEQLchkwKT"
+
+type State
+  | Active of {
+      mandate_is_terminal            : U8,
+      mandate_owner_is_program       : U8,
+      mandate_data_len               : U64,
+      mandate_lamports               : U64,
+      pull_approval_owner_is_program : U8,
+      pull_approval_data_len         : U64,
+      pull_approval_lamports         : U64,
+      hook_matches_protocol_config   : U8,
+      usage_plan_matches_mandate     : U8,
+      usage_report_matches_mandate   : U8,
+      usage_report_settled           : U8,
+      computed_charge                : U64,
+      mandate_amount                 : U64,
+      token_config_enabled           : U8,
+      token_config_mint_matches      : U8,
+      stream_status_active           : U8,
+      stream_clock_monotonic         : U8,
+      callback_mandate_active        : U8,
+      callback_billing_type_flat     : U8,
+      arcium_request_pending         : U8,
+      arcium_request_matches_flow    : U8,
+      arcium_request_matches_subject : U8,
+      callback_offset_matches_state  : U8,
+      usage_ciphertext_committed     : U8,
+      usage_pricing_in_bounds        : U8,
+      legacy_plan_padding_zero       : U8
+    }
+
+type Error
+  | UnauthorizedCancel
+  | MigrationPreconditionFailed
+  | IncorrectProgramId
+  | InvalidProtocolConfig
+  | PlanNotActive
+  | BillingTypeMismatch
+  | UsageReportAlreadySettled
+  | AmountExceedsPlanAmount
+  | TokenDisabled
+  | TokenNotRegistered
+  | StreamNotActive
+  | ClockRegression
+  | MandateNotActive
+  | ArciumRequestAlreadyPending
+  | InvalidArciumRequestState
+  | UsagePricingOverflowRisk
+  | InvalidCiphertextInput

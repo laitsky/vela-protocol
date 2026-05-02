@@ -4,6 +4,7 @@ pub mod admin_cancel;
 pub mod agent_mandate_account;
 pub mod agent_pull;
 pub mod arcium_accounts;
+pub mod arcium_request_state;
 pub mod billing_callback;
 pub mod cancel;
 pub mod cancel_plan_change;

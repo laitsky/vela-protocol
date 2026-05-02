@@ -1,11 +1,17 @@
 use crate::instructions::arcium_accounts::{
-    derive_usage_computation_offset, deserialize_cluster, validate_callback_binding,
-    validate_protocol_config, validate_static_callback_accounts,
+    deserialize_cluster, validate_callback_binding, validate_protocol_config,
+    validate_static_callback_accounts,
 };
 use crate::{
     errors::VelaError,
-    instructions::protocol_config_account::load_protocol_config,
-    state::{ProtocolConfig, PullApproval, UsageReport, VelaMandate},
+    instructions::{
+        arcium_request_state::{complete_arcium_request, validate_pending_arcium_request},
+        protocol_config_account::load_protocol_config,
+    },
+    state::{
+        ArciumRequestFlow, ArciumRequestState, ProtocolConfig, PullApproval, UsageReport,
+        VelaMandate,
+    },
     validate_callback_ixs,
 };
 use anchor_lang::prelude::*;
@@ -47,11 +53,12 @@ pub fn usage_charge_callback(
         &config,
         &ctx.accounts.cluster_account,
         &ctx.accounts.computation_account,
-        derive_usage_computation_offset(
-            &ctx.accounts.mandate.key(),
-            ctx.accounts.usage_report.period_start,
-            ctx.accounts.mandate.validation_request_nonce,
-        ),
+        validate_pending_arcium_request(
+            &ctx.accounts.request_state,
+            ctx.accounts.mandate.key(),
+            ArciumRequestFlow::UsageComputation,
+            ctx.accounts.usage_report.period_start.to_le_bytes(),
+        )?,
     )?;
     let cluster = deserialize_cluster(&ctx.accounts.cluster_account)?;
 
@@ -80,8 +87,10 @@ pub fn usage_charge_callback(
     approval.valid_until = ctx.accounts.mandate.next_payment_due;
     approval.approved = true; // successful usage computation means approval
     approval.approved_amount = computed_charge;
-    approval.created_at = Clock::get()?.unix_timestamp;
+    let now = Clock::get()?.unix_timestamp;
+    approval.created_at = now;
     approval.bump = ctx.bumps.pull_approval;
+    complete_arcium_request(&mut ctx.accounts.request_state, now)?;
 
     // Mark usage report as settled
     ctx.accounts.usage_report.settled = true;
@@ -89,7 +98,7 @@ pub fn usage_charge_callback(
     emit!(UsageComputationCompleteEvent {
         mandate: ctx.accounts.mandate.key(),
         approved_amount: computed_charge,
-        timestamp: Clock::get()?.unix_timestamp,
+        timestamp: now,
     });
 
     Ok(())
@@ -120,6 +129,18 @@ pub struct UsageComputationCallback<'info> {
     #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
     /// CHECK: The address constraint pins this to the instructions sysvar account.
     pub instructions_sysvar: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        seeds = [
+            ArciumRequestState::SEED_PREFIX,
+            ArciumRequestFlow::USAGE_COMPUTATION_SEED,
+            mandate.key().as_ref(),
+            usage_report.period_start.to_le_bytes().as_ref(),
+        ],
+        bump = request_state.bump,
+    )]
+    pub request_state: Account<'info, ArciumRequestState>,
 
     #[account(
         mut,

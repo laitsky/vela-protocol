@@ -1,12 +1,15 @@
 use anchor_lang::prelude::*;
 use solana_pubkey::Pubkey as SplPubkey;
 
-use crate::errors::VelaError;
 use crate::instructions::merchant_account::{
     ensure_merchant_state, resolve_merchant_credential_mint,
 };
 use crate::state::{
     PlanStatus, PricingTier, UsagePlan, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION,
+};
+use crate::{
+    constants::{MAX_SAFE_USAGE_CHARGE, MAX_SAFE_USAGE_RATE_PER_UNIT, MAX_SAFE_USAGE_UNITS},
+    errors::VelaError,
 };
 
 #[derive(Accounts)]
@@ -68,6 +71,7 @@ pub fn handler(
     // Validate max charge and settlement frequency
     require!(max_charge_per_period > 0, VelaError::InvalidAmount);
     require!(settlement_frequency > 0, VelaError::InvalidFrequency);
+    validate_usage_pricing_bounds(&tiers, max_charge_per_period)?;
 
     // Validate tier boundaries are monotonically increasing (except last which can be 0 = unlimited)
     for i in 1..tiers.len() {
@@ -139,4 +143,29 @@ pub fn handler(
 
 fn anchor_pubkey(key: SplPubkey) -> Pubkey {
     Pubkey::new_from_array(key.to_bytes())
+}
+
+pub(crate) fn validate_usage_pricing_bounds(
+    tiers: &[PricingTier],
+    max_charge_per_period: u64,
+) -> Result<()> {
+    require!(
+        max_charge_per_period <= MAX_SAFE_USAGE_CHARGE,
+        VelaError::UsagePricingOverflowRisk
+    );
+
+    for tier in tiers {
+        require!(
+            tier.rate_per_unit <= MAX_SAFE_USAGE_RATE_PER_UNIT,
+            VelaError::UsagePricingOverflowRisk
+        );
+        if tier.up_to != 0 {
+            require!(
+                tier.up_to <= MAX_SAFE_USAGE_UNITS,
+                VelaError::UsagePricingOverflowRisk
+            );
+        }
+    }
+
+    Ok(())
 }

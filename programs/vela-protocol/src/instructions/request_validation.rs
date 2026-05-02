@@ -5,11 +5,15 @@ use crate::instructions::arcium_accounts::{
 use crate::{
     errors::VelaError,
     instructions::{
+        arcium_request_state::{start_arcium_request, StartArciumRequestArgs},
         mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
         plan_account::{load_plan_account, require_plan_billing_type},
         protocol_config_account::load_protocol_config,
     },
-    state::{BillingType, MandateStatus, ProtocolConfig, PullApproval},
+    state::{
+        ArciumRequestFlow, ArciumRequestState, BillingType, MandateStatus, ProtocolConfig,
+        PullApproval,
+    },
     ArciumSignerAccount, ID,
 };
 use anchor_lang::prelude::*;
@@ -24,6 +28,7 @@ const VALIDATE_MANDATE_CALLBACK_DISCRIMINATOR: [u8; 8] = [18, 21, 173, 122, 11, 
 pub fn request_validation(
     ctx: Context<RequestValidation>,
     requested_computation_offset: u64,
+    next_payment_due_seed: i64,
     ciphertext: Vec<[u8; 32]>,
     pub_key: [u8; 32],
     nonce: u128,
@@ -45,11 +50,29 @@ pub fn request_validation(
         mandate.status == MandateStatus::Active,
         VelaError::MandateNotActive
     );
+    require!(
+        mandate.amount == plan.mandate_amount(),
+        VelaError::PlanNotActive
+    );
+    require!(
+        mandate.pulls_executed < mandate.max_pulls,
+        VelaError::MaxPullsExceeded
+    );
 
     let clock = Clock::get()?;
+    if mandate.expiry > 0 {
+        require!(
+            clock.unix_timestamp < mandate.expiry,
+            VelaError::MandateExpired
+        );
+    }
     require!(
         clock.unix_timestamp >= mandate.next_payment_due,
         VelaError::PullTooEarly
+    );
+    require!(
+        next_payment_due_seed == mandate.next_payment_due,
+        VelaError::InvalidArciumRequestState
     );
     require!(
         *plan.status() == crate::state::PlanStatus::Active,
@@ -98,6 +121,19 @@ pub fn request_validation(
         return Err(VelaError::ApprovalAlreadyExists.into());
     }
 
+    start_arcium_request(
+        &mut ctx.accounts.request_state,
+        StartArciumRequestArgs {
+            mandate: ctx.accounts.mandate.key(),
+            flow: ArciumRequestFlow::Validation,
+            subject: next_payment_due_seed.to_le_bytes(),
+            computation_offset,
+            request_nonce: next_request_nonce,
+            bump: ctx.bumps.request_state,
+            now: clock.unix_timestamp,
+        },
+    )?;
+
     let approval = &mut ctx.accounts.pull_approval;
     approval.mandate = Pubkey::default();
     approval.valid_until = 0;
@@ -138,6 +174,10 @@ pub fn request_validation(
             VALIDATE_MANDATE_CIRCUIT,
             &[
                 CallbackAccount {
+                    pubkey: ctx.accounts.request_state.key(),
+                    is_writable: true,
+                },
+                CallbackAccount {
                     pubkey: ctx.accounts.pull_approval.key(),
                     is_writable: true,
                 },
@@ -159,6 +199,7 @@ pub fn request_validation(
 }
 
 #[derive(Accounts)]
+#[instruction(requested_computation_offset: u64, next_payment_due_seed: i64)]
 pub struct RequestValidation<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
@@ -224,6 +265,20 @@ pub struct RequestValidation<'info> {
         bump,
     )]
     pub pull_approval: Box<Account<'info, PullApproval>>,
+
+    #[account(
+        init_if_needed,
+        payer = payer,
+        space = ArciumRequestState::SIZE,
+        seeds = [
+            ArciumRequestState::SEED_PREFIX,
+            ArciumRequestFlow::VALIDATION_SEED,
+            mandate.key().as_ref(),
+            next_payment_due_seed.to_le_bytes().as_ref(),
+        ],
+        bump,
+    )]
+    pub request_state: Box<Account<'info, ArciumRequestState>>,
 
     pub system_program: Program<'info, System>,
     pub arcium_program: Program<'info, Arcium>,

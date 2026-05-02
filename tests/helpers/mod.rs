@@ -36,7 +36,7 @@ use vela_protocol::{
     state::{
         AgentMandate, BillingEvent, BillingRail, ClusterType, KeeperConfig, KeeperMode,
         MerchantState, PricingTier, ProtocolConfig, PullApproval, StreamMandate, TokenConfig,
-        UsagePlan, VelaMandate,
+        UsagePlan, UsageReport, VelaMandate,
     },
 };
 
@@ -326,6 +326,18 @@ impl TestHarness {
                 BillingEvent::SEED_PREFIX,
                 mandate.as_ref(),
                 pulls_executed.to_le_bytes().as_ref(),
+            ],
+            &vela_protocol::ID,
+        )
+        .0
+    }
+
+    pub fn derive_usage_report_address(&self, mandate: &Pubkey, period_start: i64) -> Pubkey {
+        Pubkey::find_program_address(
+            &[
+                UsageReport::SEED_PREFIX,
+                mandate.as_ref(),
+                period_start.to_le_bytes().as_ref(),
             ],
             &vela_protocol::ID,
         )
@@ -2214,6 +2226,45 @@ impl TestHarness {
             .data(),
         };
         self.send_instruction(&instruction, &[signer], Some(&signer.pubkey()))
+    }
+
+    pub fn send_submit_usage_report(
+        &mut self,
+        mandate: &Pubkey,
+        usage_plan: &Pubkey,
+        period_start: i64,
+        period_end: i64,
+        computation_ciphertext: Vec<[u8; 32]>,
+        nonce: u128,
+        pub_key: [u8; 32],
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let usage_report = self.derive_usage_report_address(mandate, period_start);
+        let accounts = vela_protocol::accounts::SubmitUsageReport {
+            merchant: self.merchant_pubkey(),
+            mandate: *mandate,
+            usage_plan: *usage_plan,
+            usage_report,
+            system_program: anchor_lang::system_program::ID,
+        };
+
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: accounts
+                .to_account_metas(None)
+                .into_iter()
+                .map(convert_account_meta)
+                .collect(),
+            data: vela_protocol::instruction::SubmitUsageReport {
+                period_start,
+                period_end,
+                computation_ciphertext,
+                nonce,
+                pub_key,
+            }
+            .data(),
+        };
+        let merchant = self.merchant.insecure_clone();
+        self.send_instruction(&instruction, &[&merchant], Some(&merchant.pubkey()))
     }
 
     /// Derives the merchant credential mint PDA: seeds = ["merchant-credential", merchant].

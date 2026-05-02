@@ -181,6 +181,10 @@ name = "test_update_usage_plan"
 path = "../../tests/test_update_usage_plan.rs"
 
 [[test]]
+name = "test_submit_usage_report"
+path = "../../tests/test_submit_usage_report.rs"
+
+[[test]]
 name = "test_update_mandate"
 path = "../../tests/test_update_mandate.rs"
 

@@ -2,8 +2,9 @@
 mod helpers;
 
 use helpers::TestHarness;
-use vela_protocol::state::{
-    PlanStatus, PricingTier, UsagePlan, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION,
+use vela_protocol::{
+    constants::{MAX_SAFE_USAGE_CHARGE, MAX_SAFE_USAGE_RATE_PER_UNIT},
+    state::{PlanStatus, PricingTier, UsagePlan, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION},
 };
 
 /// Test: update_usage_plan instruction allows merchant to modify usage plan fields.
@@ -186,4 +187,70 @@ fn test_update_usage_plan_partial_update() {
         "settlement_frequency should be unchanged"
     );
     assert_eq!(updated.tier_count, 1, "tier_count should be unchanged");
+}
+
+#[test]
+fn test_update_usage_plan_rejects_overflow_risk_rate() {
+    let mut harness = TestHarness::new();
+
+    let plan_id = 50u64;
+    let unit_name = [0u8; 32];
+    let tiers = vec![PricingTier {
+        up_to: 0,
+        rate_per_unit: 100,
+        _padding: 0,
+    }];
+
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+    harness
+        .send_create_usage_plan(plan_id, unit_name, tiers, 50_000_000, 3600)
+        .expect("create_usage_plan should succeed");
+
+    let unsafe_tiers = vec![PricingTier {
+        up_to: 0,
+        rate_per_unit: MAX_SAFE_USAGE_RATE_PER_UNIT + 1,
+        _padding: 0,
+    }];
+
+    let error = harness
+        .send_update_usage_plan(plan_id, Some(unsafe_tiers), None, None)
+        .expect_err("unsafe usage rate must be rejected");
+
+    assert!(
+        format!("{:?}", error.err).contains("Custom(6064)"),
+        "expected UsagePricingOverflowRisk custom error, got {:?}",
+        error.err,
+    );
+}
+
+#[test]
+fn test_update_usage_plan_rejects_overflow_risk_cap_only_update() {
+    let mut harness = TestHarness::new();
+
+    let plan_id = 51u64;
+    let unit_name = [0u8; 32];
+    let tiers = vec![PricingTier {
+        up_to: 0,
+        rate_per_unit: 100,
+        _padding: 0,
+    }];
+
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+    harness
+        .send_create_usage_plan(plan_id, unit_name, tiers, 50_000_000, 3600)
+        .expect("create_usage_plan should succeed");
+
+    let error = harness
+        .send_update_usage_plan(plan_id, None, Some(MAX_SAFE_USAGE_CHARGE + 1), None)
+        .expect_err("unsafe max charge must be rejected");
+
+    assert!(
+        format!("{:?}", error.err).contains("Custom(6064)"),
+        "expected UsagePricingOverflowRisk custom error, got {:?}",
+        error.err,
+    );
 }

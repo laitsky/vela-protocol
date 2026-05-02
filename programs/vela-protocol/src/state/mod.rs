@@ -3,6 +3,7 @@ pub const CURRENT_ACCOUNT_VERSION: u8 = 1;
 pub const ACCOUNT_RESERVED_BYTES: usize = 64;
 
 pub mod agent_mandate;
+pub mod arcium_request;
 pub mod billing_event;
 pub mod billing_type;
 pub mod keeper_config;
@@ -17,6 +18,7 @@ pub mod usage_plan;
 pub mod usage_report;
 
 pub use agent_mandate::*;
+pub use arcium_request::*;
 pub use billing_event::*;
 pub use billing_type::*;
 pub use keeper_config::*;

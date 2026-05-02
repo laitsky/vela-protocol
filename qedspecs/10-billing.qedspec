@@ -1,0 +1,32 @@
+spec VelaProtocolSecurity
+
+handler close_mandate : State.Active -> State.Active {
+  permissionless
+  accounts { authority : signer, subscriber : writable, mandate : writable }
+  requires state.mandate_is_terminal == 1 else MigrationPreconditionFailed
+  requires state.mandate_owner_is_program == 1 else IncorrectProgramId
+  modifies [mandate_owner_is_program, mandate_data_len, mandate_lamports]
+  effect {
+    mandate_owner_is_program := 0
+    mandate_data_len := 0
+    mandate_lamports := 0
+  }
+  ensures state.mandate_owner_is_program == 0
+  ensures state.mandate_data_len == 0
+  ensures state.mandate_lamports == 0
+}
+
+handler close_pull_approval : State.Active -> State.Active {
+  permissionless
+  accounts { payer : signer, pull_approval : writable }
+  requires state.pull_approval_owner_is_program == 1 else IncorrectProgramId
+  modifies [pull_approval_owner_is_program, pull_approval_data_len, pull_approval_lamports]
+  effect {
+    pull_approval_owner_is_program := 0
+    pull_approval_data_len := 0
+    pull_approval_lamports := 0
+  }
+  ensures state.pull_approval_owner_is_program == 0
+  ensures state.pull_approval_data_len == 0
+  ensures state.pull_approval_lamports == 0
+}

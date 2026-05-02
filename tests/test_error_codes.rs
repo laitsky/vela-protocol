@@ -21,6 +21,9 @@ fn legacy_error_codes_remain_pinned() {
     assert_eq!(error_code(VelaError::UnauthorizedAdmin), 6015);
     assert_eq!(error_code(VelaError::InvalidFrequency), 6058);
     assert_eq!(error_code(VelaError::UsageReportAlreadySettled), 6061);
+    assert_eq!(error_code(VelaError::ArciumRequestAlreadyPending), 6062);
+    assert_eq!(error_code(VelaError::InvalidArciumRequestState), 6063);
+    assert_eq!(error_code(VelaError::UsagePricingOverflowRisk), 6064);
 }
 
 #[test]

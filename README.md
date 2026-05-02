@@ -64,13 +64,13 @@ Arcium calls record_billing_event_callback -> BillingEvent stored (immutable)
 
 | Instruction | Description |
 | --- | --- |
-| `request_validation` | Submit encrypted mandate inputs to Arcium for eligibility check |
-| `validate_mandate_callback` | Arcium callback: stores `PullApproval` with approval flag and amount |
-| `request_usage_computation` | Submit encrypted usage report to Arcium for charge calculation |
-| `usage_charge_callback` | Arcium callback: stores usage-computed charge in `PullApproval` |
+| `request_validation` | Submit encrypted mandate inputs to Arcium for eligibility check; requires writable request-state PDA |
+| `validate_mandate_callback` | Arcium callback: validates request-state PDA and stores `PullApproval` with approval flag and amount |
+| `request_usage_computation` | Queue the ciphertext committed in `UsageReport` to Arcium for charge calculation; requires writable request-state PDA |
+| `usage_charge_callback` | Arcium callback: validates request-state PDA and stores usage-computed charge in `PullApproval` |
 | `execute_pull` | Transfer hook validates `PullApproval`, executes the billing-token transfer |
-| `request_billing_record` | Submit billing inputs to Arcium for encrypted audit record |
-| `record_billing_event_callback` | Arcium callback: stores immutable `BillingEvent` |
+| `request_billing_record` | Submit billing inputs to Arcium for encrypted audit record; requires writable request-state PDA |
+| `record_billing_event_callback` | Arcium callback: validates request-state PDA and stores immutable `BillingEvent` |
 
 #### Token Configuration and Wrapping
 
@@ -328,6 +328,9 @@ The addresses must match `config/program-ids.json` before any deploy or upgrade.
 
 - **Credential NFTs** - Non-transferable Token-2022 mints issued per mandate, proving active subscription.
 - **Billing type routing** - `VelaMandate.billing_type` is `Flat` or `Usage`. Usage mandates require a settled `UsageReport` before `request_validation` proceeds to `execute_pull`.
+- **Usage pricing envelope** - Usage plans support up to 5 tiers. Create/update enforces protocol bounds on rates, tier boundaries, and per-period caps so encrypted `u64` pricing intermediates stay inside the overflow-safe envelope.
+- **Usage ciphertext commitment** - Merchants commit the exact usage-computation ciphertext in `submit_usage_report`; `request_usage_computation` queues only the stored report payload, preventing a later caller from swapping usage or pricing inputs.
+- **Arcium request state** - Validation, usage-computation, and billing-record requests use dedicated request-state PDAs keyed by flow, mandate, and business subject. Callbacks validate the stored request offset and complete that PDA, preventing duplicate in-flight requests from stranding callbacks.
 - **Keeper modes** - `Centralized` uses an off-chain keeper polling subscriptions. `TukTuk` routes through the on-chain task queue (not yet live).
 - **Minimum frequency** - Plans must have `frequency >= 3600` seconds (1 hour).
 - **Pending billing guard** - `execute_pull` is blocked if the previous pull has no finalized `BillingEvent`, enforcing sequential billing records.

@@ -190,6 +190,15 @@ pub enum VelaError {
     #[msg("Usage report has already been settled")]
     UsageReportAlreadySettled = 61,
 
+    #[msg("An Arcium request is already pending for this mandate and subject")]
+    ArciumRequestAlreadyPending = 62,
+
+    #[msg("Arcium request state does not match the queued computation")]
+    InvalidArciumRequestState = 63,
+
+    #[msg("Usage pricing inputs exceed the overflow-safe protocol envelope")]
+    UsagePricingOverflowRisk = 64,
+
     #[msg("Mandate version is unsupported by this instruction")]
     MandateVersionUnsupported = 100,
 

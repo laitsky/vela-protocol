@@ -1,11 +1,17 @@
 use crate::instructions::arcium_accounts::{
-    derive_validation_computation_offset, deserialize_cluster, validate_callback_binding,
-    validate_protocol_config, validate_static_callback_accounts,
+    deserialize_cluster, validate_callback_binding, validate_protocol_config,
+    validate_static_callback_accounts,
 };
 use crate::{
     errors::VelaError,
-    instructions::protocol_config_account::load_protocol_config,
-    state::{BillingType, MandateStatus, ProtocolConfig, PullApproval, VelaMandate},
+    instructions::{
+        arcium_request_state::{complete_arcium_request, validate_pending_arcium_request},
+        protocol_config_account::load_protocol_config,
+    },
+    state::{
+        ArciumRequestFlow, ArciumRequestState, BillingType, MandateStatus, ProtocolConfig,
+        PullApproval, VelaMandate,
+    },
     validate_callback_ixs,
 };
 use anchor_lang::prelude::*;
@@ -43,11 +49,12 @@ pub fn validate_mandate_callback(
         &config,
         &ctx.accounts.cluster_account,
         &ctx.accounts.computation_account,
-        derive_validation_computation_offset(
-            &ctx.accounts.mandate.key(),
-            ctx.accounts.mandate.next_payment_due,
-            ctx.accounts.mandate.validation_request_nonce,
-        ),
+        validate_pending_arcium_request(
+            &ctx.accounts.request_state,
+            ctx.accounts.mandate.key(),
+            ArciumRequestFlow::Validation,
+            ctx.accounts.mandate.next_payment_due.to_le_bytes(),
+        )?,
     )?;
     let cluster = deserialize_cluster(&ctx.accounts.cluster_account)?;
 
@@ -78,13 +85,15 @@ pub fn validate_mandate_callback(
             ctx.accounts.mandate.amount
         }
     };
-    approval.created_at = Clock::get()?.unix_timestamp;
+    let now = Clock::get()?.unix_timestamp;
+    approval.created_at = now;
     approval.bump = ctx.bumps.pull_approval;
+    complete_arcium_request(&mut ctx.accounts.request_state, now)?;
 
     emit!(ValidationCompleteEvent {
         mandate: ctx.accounts.mandate.key(),
         approved: result,
-        timestamp: Clock::get()?.unix_timestamp,
+        timestamp: now,
     });
 
     Ok(())
@@ -104,6 +113,18 @@ pub struct ValidateMandateCallback<'info> {
     #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
     /// CHECK: The address constraint pins this to the instructions sysvar account.
     pub instructions_sysvar: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        seeds = [
+            ArciumRequestState::SEED_PREFIX,
+            ArciumRequestFlow::VALIDATION_SEED,
+            mandate.key().as_ref(),
+            mandate.next_payment_due.to_le_bytes().as_ref(),
+        ],
+        bump = request_state.bump,
+    )]
+    pub request_state: Account<'info, ArciumRequestState>,
 
     #[account(
         mut,
