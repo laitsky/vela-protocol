@@ -3,6 +3,8 @@ name = "vela-transfer-hook"
 version = "0.1.0"
 description = "Dedicated transfer-hook validator for Vela wrapped USDC"
 edition = "2021"
+license.workspace = true
+repository.workspace = true
 
 [lib]
 crate-type = ["cdylib", "rlib"]

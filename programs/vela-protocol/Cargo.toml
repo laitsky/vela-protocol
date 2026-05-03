@@ -1,9 +1,11 @@
 [package]
 name = "vela-protocol"
 version = "0.2.0"
-description = "Created with Anchor"
+description = "Vela Protocol — private, programmable payment authority on Solana"
 edition = "2021"
 build = "build.rs"
+license.workspace = true
+repository.workspace = true
 
 [lib]
 crate-type = ["cdylib", "lib"]
