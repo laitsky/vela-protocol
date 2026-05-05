@@ -1,0 +1,6 @@
+{
+  "name": "vela_protocol",
+  "spec": "qedspecs",
+  "interfaces_dir": ".qed/interfaces",
+  "created_at": "1777616097s-since-epoch"
+}
