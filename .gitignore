@@ -39,3 +39,4 @@ Thumbs.db
 
 # Planning / debug scratch (private)
 .planning/
+.superstack/

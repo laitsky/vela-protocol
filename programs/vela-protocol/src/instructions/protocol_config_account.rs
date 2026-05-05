@@ -5,6 +5,7 @@ use anchor_lang::{
 };
 
 use crate::{
+    constants::TRANSFER_HOOK_PROGRAM_ID,
     errors::VelaError,
     state::{ClusterType, ProtocolConfig, CURRENT_ACCOUNT_VERSION, PROTOCOL_CONFIG_RESERVED_BYTES},
 };
@@ -95,7 +96,7 @@ impl LoadedProtocolConfig {
                 wrapping_vault: legacy.wrapping_vault,
                 paused: legacy.paused,
                 paused_at: legacy.paused_at,
-                transfer_hook_program_id: Pubkey::default(),
+                transfer_hook_program_id: TRANSFER_HOOK_PROGRAM_ID,
                 bump: legacy.bump,
                 version: CURRENT_ACCOUNT_VERSION,
                 _reserved: [0; PROTOCOL_CONFIG_RESERVED_BYTES],
@@ -145,6 +146,9 @@ pub fn upgrade_protocol_config<'info>(
 
     resize_protocol_config_account(payer, config_info, system_program)?;
 
+    if config.transfer_hook_program_id == Pubkey::default() {
+        config.transfer_hook_program_id = TRANSFER_HOOK_PROGRAM_ID;
+    }
     config.version = CURRENT_ACCOUNT_VERSION;
     config._reserved = [0; PROTOCOL_CONFIG_RESERVED_BYTES];
     write_protocol_config(config_info, &config)?;
@@ -221,7 +225,7 @@ mod tests {
 
         assert_eq!(upgraded.admin, legacy.admin);
         assert_eq!(upgraded.cluster_pubkey, legacy.cluster_pubkey);
-        assert_eq!(upgraded.transfer_hook_program_id, Pubkey::default());
+        assert_eq!(upgraded.transfer_hook_program_id, TRANSFER_HOOK_PROGRAM_ID);
         assert_eq!(upgraded.version, CURRENT_ACCOUNT_VERSION);
         assert_eq!(upgraded._reserved, [0; PROTOCOL_CONFIG_RESERVED_BYTES]);
     }

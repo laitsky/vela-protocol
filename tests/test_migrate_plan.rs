@@ -307,7 +307,7 @@ fn test_fresh_usage_plan_is_v2() {
         plan.version, CURRENT_ACCOUNT_VERSION,
         "Fresh usage plan must be V2"
     );
-    assert_eq!(plan._reserved, [0u8; ACCOUNT_RESERVED_BYTES]);
+    assert_eq!(plan._reserved, [0u8; ACCOUNT_RESERVED_BYTES - 32]);
     assert_eq!(plan.merchant, harness.merchant_pubkey());
     assert_eq!(plan.plan_id, plan_id);
     assert_eq!(plan.max_charge_per_period, max_charge);
@@ -447,7 +447,7 @@ fn test_migrate_usage_plan_preserves_business_fields() {
         plan.version, CURRENT_ACCOUNT_VERSION,
         "Migrated usage plan must be V2"
     );
-    assert_eq!(plan._reserved, [0u8; ACCOUNT_RESERVED_BYTES]);
+    assert_eq!(plan._reserved, [0u8; ACCOUNT_RESERVED_BYTES - 32]);
 
     // All business fields preserved
     assert_eq!(plan.merchant, merchant);

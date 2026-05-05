@@ -15,7 +15,7 @@ use crate::{
 use anchor_lang::prelude::*;
 use arcium_anchor::{prelude::*, traits::QueueCompAccs};
 use arcium_client::idl::arcium::{
-    cpi::accounts::QueueComputation as ArciumQueueComputation, types::CallbackAccount, ID_CONST,
+    cpi::accounts::QueueComputation as ArciumQueueComputation, types::CallbackAccount,
 };
 
 const RECORD_BILLING_EVENT_CIRCUIT: &str = "record_billing_event";
@@ -190,7 +190,6 @@ pub struct RequestBillingRecord<'info> {
         payer = payer,
         seeds = [&SIGN_PDA_SEED],
         bump,
-        address = derive_sign_pda!(),
     )]
     pub sign_pda_account: Account<'info, ArciumSignerAccount>,
 

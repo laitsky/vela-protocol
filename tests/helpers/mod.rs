@@ -494,11 +494,17 @@ impl TestHarness {
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         self.ensure_default_billing_rail();
         let addresses = self.derive_usage_plan_addresses(plan_id);
+        let config = self.derive_config();
+        let config_account: ProtocolConfig = self.fetch_anchor_account(&config);
+        let billing_mint = config_account.wrapped_usdc_mint;
+        let token_config = self.derive_token_config_address(&billing_mint);
         let accounts = vela_protocol::accounts::CreateUsagePlan {
             merchant: self.merchant_pubkey(),
             merchant_state: addresses.merchant_state,
             usage_plan: addresses.usage_plan,
             credential_mint: addresses.credential_mint,
+            billing_mint,
+            token_config,
             system_program: anchor_lang::system_program::ID,
             token_2022_program: token_2022_anchor_id(),
             rent: anchor_lang::solana_program::sysvar::rent::ID,

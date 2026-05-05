@@ -70,7 +70,8 @@ impl LoadedPlanAccount {
     pub fn billing_mint(&self) -> Pubkey {
         match self {
             Self::Flat(plan) => plan.billing_mint,
-            Self::Usage(_) | Self::LegacyFlat(_) | Self::LegacyUsage(_) => Pubkey::default(),
+            Self::Usage(plan) => plan.billing_mint,
+            Self::LegacyFlat(_) | Self::LegacyUsage(_) => Pubkey::default(),
         }
     }
 

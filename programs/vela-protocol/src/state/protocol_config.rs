@@ -1,5 +1,7 @@
 use anchor_lang::prelude::*;
 
+use crate::constants::TRANSFER_HOOK_PROGRAM_ID;
+
 use super::CURRENT_ACCOUNT_VERSION;
 
 pub const PROTOCOL_CONFIG_RESERVED_BYTES: usize = 32;
@@ -44,7 +46,7 @@ impl ProtocolConfig {
             wrapping_vault: Pubkey::default(),
             paused: false,
             paused_at: 0,
-            transfer_hook_program_id: Pubkey::default(),
+            transfer_hook_program_id: TRANSFER_HOOK_PROGRAM_ID,
             bump,
             version: CURRENT_ACCOUNT_VERSION,
             _reserved: [0; PROTOCOL_CONFIG_RESERVED_BYTES],
@@ -77,7 +79,7 @@ mod tests {
             1,
         );
 
-        assert_eq!(config.transfer_hook_program_id, Pubkey::default());
+        assert_eq!(config.transfer_hook_program_id, TRANSFER_HOOK_PROGRAM_ID);
         assert_eq!(config._reserved, [0; PROTOCOL_CONFIG_RESERVED_BYTES]);
     }
 }

@@ -14,6 +14,7 @@ pub mod create_agent_mandate;
 pub mod create_plan;
 pub mod create_stream_mandate;
 pub mod create_usage_plan;
+pub mod demo_approve_pull;
 pub mod drain_agent_mandate;
 pub mod execute_pull;
 pub mod execute_stream;
@@ -111,6 +112,10 @@ pub mod __client_accounts_wrap {
 
 pub mod __client_accounts_create_usage_plan {
     pub use super::create_usage_plan::__client_accounts_create_usage_plan::*;
+}
+
+pub mod __client_accounts_demo_approve_pull {
+    pub use super::demo_approve_pull::__client_accounts_demo_approve_pull::*;
 }
 
 pub mod __client_accounts_submit_usage_report {
@@ -265,6 +270,7 @@ pub use create_agent_mandate::{CreateAgentMandate, ServiceLimitInput};
 pub use create_plan::CreatePlan;
 pub use create_stream_mandate::CreateStreamMandate;
 pub use create_usage_plan::CreateUsagePlan;
+pub use demo_approve_pull::DemoApprovePull;
 pub use drain_agent_mandate::DrainAgentMandate;
 pub use execute_pull::ExecutePull;
 pub use execute_stream::ExecuteStream;

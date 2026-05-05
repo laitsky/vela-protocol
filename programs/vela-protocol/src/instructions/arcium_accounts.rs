@@ -3,15 +3,15 @@ use crate::state::ProtocolConfig;
 use crate::ID;
 use anchor_lang::{prelude::*, AccountDeserialize};
 use arcium_anchor::{
-    comp_def_offset, derive_comp_def_pda, derive_mxe_pda, ARCIUM_CLOCK_ACCOUNT_ADDRESS,
-    ARCIUM_FEE_POOL_ACCOUNT_ADDRESS, CLUSTER_PDA_SEED, COMP_DEF_PDA_SEED, COMP_PDA_SEED,
-    EXECPOOL_PDA_SEED, MEMPOOL_PDA_SEED, MXE_PDA_SEED,
+    comp_def_offset, derive_mxe_pda, ARCIUM_CLOCK_ACCOUNT_ADDRESS, ARCIUM_FEE_POOL_ACCOUNT_ADDRESS,
+    CLUSTER_PDA_SEED, COMP_DEF_PDA_SEED, COMP_PDA_SEED, EXECPOOL_PDA_SEED, MEMPOOL_PDA_SEED,
+    MXE_PDA_SEED,
 };
 use arcium_client::{
     idl::arcium::{
         accounts::Cluster,
         types::{CallbackAccount, CallbackInstruction},
-        ID_CONST, ID_CONST as ARCIUM_PROG_ID,
+        ID_CONST as ARCIUM_PROG_ID,
     },
     ARCIUM_PROGRAM_ID,
 };
@@ -66,6 +66,15 @@ pub fn derive_computation_pubkey(cluster_id: u32, computation_offset: u64) -> Pu
             &cluster_id.to_le_bytes(),
             &computation_offset.to_le_bytes(),
         ],
+        &ARCIUM_PROG_ID,
+    )
+    .0
+}
+
+pub fn derive_comp_def_pubkey(circuit_name: &str) -> Pubkey {
+    let offset = comp_def_offset(circuit_name);
+    Pubkey::find_program_address(
+        &[COMP_DEF_PDA_SEED, ID.as_ref(), &offset.to_le_bytes()],
         &ARCIUM_PROG_ID,
     )
     .0
@@ -160,7 +169,7 @@ pub fn validate_queue_accounts(
     );
     require_keys_eq!(
         comp_def_account.key(),
-        derive_comp_def_pda!(comp_def_offset(circuit_name)),
+        derive_comp_def_pubkey(circuit_name),
         VelaError::InvalidArciumAccount
     );
     require_keys_eq!(
@@ -194,7 +203,7 @@ pub fn validate_static_callback_accounts(
     );
     require_keys_eq!(
         comp_def_account.key(),
-        derive_comp_def_pda!(comp_def_offset(circuit_name)),
+        derive_comp_def_pubkey(circuit_name),
         VelaError::InvalidArciumAccount
     );
     Ok(())
@@ -249,7 +258,7 @@ pub fn build_callback_instruction(
         is_writable: false,
     });
     accounts.push(CallbackAccount {
-        pubkey: derive_comp_def_pda!(comp_def_offset(circuit_name)),
+        pubkey: derive_comp_def_pubkey(circuit_name),
         is_writable: false,
     });
     accounts.push(CallbackAccount {

@@ -5,7 +5,8 @@ use crate::instructions::merchant_account::{
     ensure_merchant_state, resolve_merchant_credential_mint,
 };
 use crate::state::{
-    PlanStatus, PricingTier, UsagePlan, ACCOUNT_RESERVED_BYTES, CURRENT_ACCOUNT_VERSION,
+    BillingRail, PlanStatus, PricingTier, TokenConfig, UsagePlan, ACCOUNT_RESERVED_BYTES,
+    CURRENT_ACCOUNT_VERSION,
 };
 use crate::{
     constants::{MAX_SAFE_USAGE_CHARGE, MAX_SAFE_USAGE_RATE_PER_UNIT, MAX_SAFE_USAGE_UNITS},
@@ -45,6 +46,15 @@ pub struct CreateUsagePlan<'info> {
     )]
     /// CHECK: PDA mint account is created via manual CPI and constrained by seeds.
     pub credential_mint: UncheckedAccount<'info>,
+
+    /// CHECK: Billing mint is validated against TokenConfig.
+    pub billing_mint: UncheckedAccount<'info>,
+
+    #[account(
+        seeds = [TokenConfig::SEED_PREFIX, billing_mint.key().as_ref()],
+        bump = token_config.bump,
+    )]
+    pub token_config: Account<'info, TokenConfig>,
 
     pub system_program: Program<'info, System>,
 
@@ -116,6 +126,16 @@ pub fn handler(
             && resolved_credential_mint == merchant_state.credential_mint,
         VelaError::MigrationPreconditionFailed
     );
+    require!(ctx.accounts.token_config.enabled, VelaError::TokenDisabled);
+    require!(
+        ctx.accounts.token_config.billing_rail == BillingRail::TransferHook,
+        VelaError::InvalidBillingRail
+    );
+    require_keys_eq!(
+        ctx.accounts.token_config.mint,
+        ctx.accounts.billing_mint.key(),
+        VelaError::TokenNotRegistered
+    );
 
     // Copy tiers into fixed array, zero-fill unused slots
     let mut tiers_array = [PricingTier::default(); 5];
@@ -132,10 +152,11 @@ pub fn handler(
         max_charge_per_period,
         settlement_frequency,
         credential_mint: resolved_credential_mint,
+        billing_mint: ctx.accounts.billing_mint.key(),
         status: PlanStatus::Active,
         bump: ctx.bumps.usage_plan,
         version: CURRENT_ACCOUNT_VERSION,
-        _reserved: [0; ACCOUNT_RESERVED_BYTES],
+        _reserved: [0; ACCOUNT_RESERVED_BYTES - 32],
     });
 
     Ok(())

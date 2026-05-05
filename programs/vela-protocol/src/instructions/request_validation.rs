@@ -19,7 +19,7 @@ use crate::{
 use anchor_lang::prelude::*;
 use arcium_anchor::{prelude::*, traits::QueueCompAccs};
 use arcium_client::idl::arcium::{
-    cpi::accounts::QueueComputation as ArciumQueueComputation, types::CallbackAccount, ID_CONST,
+    cpi::accounts::QueueComputation as ArciumQueueComputation, types::CallbackAccount,
 };
 
 const VALIDATE_MANDATE_CIRCUIT: &str = "validate_mandate";
@@ -219,7 +219,6 @@ pub struct RequestValidation<'info> {
         payer = payer,
         seeds = [&SIGN_PDA_SEED],
         bump,
-        address = derive_sign_pda!(),
     )]
     pub sign_pda_account: Account<'info, ArciumSignerAccount>,
 

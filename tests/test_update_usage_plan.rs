@@ -75,7 +75,7 @@ fn test_update_usage_plan_modifies_fields() {
 
     // Versioning preserved
     assert_eq!(updated.version, CURRENT_ACCOUNT_VERSION);
-    assert_eq!(updated._reserved, [0u8; ACCOUNT_RESERVED_BYTES]);
+    assert_eq!(updated._reserved, [0u8; ACCOUNT_RESERVED_BYTES - 32]);
 
     // Immutable fields should NOT change
     assert_eq!(updated.merchant, harness.merchant_pubkey());

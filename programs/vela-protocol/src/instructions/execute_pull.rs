@@ -101,11 +101,6 @@ pub fn handler<'a, 'b, 'c, 'info>(
     ctx: Context<'a, 'b, 'c, 'info, ExecutePull<'info>>,
 ) -> Result<()> {
     let keeper_config = load_keeper_config(&ctx.accounts.keeper_config.to_account_info())?;
-    require_keys_eq!(
-        ctx.accounts.payer.key(),
-        keeper_config.keeper_authority(),
-        VelaError::UnauthorizedKeeper
-    );
     let protocol_config = load_protocol_config(&ctx.accounts.protocol_config.to_account_info())?;
     require!(!protocol_config.paused(), VelaError::ProtocolPaused);
     let hook_program_id = protocol_config.transfer_hook_program_id();
@@ -123,11 +118,16 @@ pub fn handler<'a, 'b, 'c, 'info>(
         protocol_config.wrapping_vault(),
         VelaError::VaultMismatch
     );
-    let current_plan = load_plan_account(&ctx.accounts.plan.to_account_info())?;
+    let current_plan = Box::new(load_plan_account(&ctx.accounts.plan.to_account_info())?);
     let loaded_mandate = load_mandate_account(&ctx.accounts.mandate.to_account_info())?;
     validate_loaded_mandate_address(&ctx.accounts.mandate.key(), &loaded_mandate)?;
     let legacy_layout = loaded_mandate.is_legacy();
     let mut mandate = loaded_mandate.into_current();
+    require!(
+        ctx.accounts.payer.key() == keeper_config.keeper_authority()
+            || ctx.accounts.payer.key() == mandate.subscriber,
+        VelaError::UnauthorizedKeeper
+    );
     require_plan_billing_type(&current_plan, &mandate.billing_type)?;
     require!(
         *current_plan.status() == PlanStatus::Active,
@@ -177,10 +177,12 @@ pub fn handler<'a, 'b, 'c, 'info>(
         mandate.pulls_executed < mandate.max_pulls,
         VelaError::MaxPullsExceeded
     );
-    require!(
-        clock.unix_timestamp >= mandate.next_payment_due,
-        VelaError::PullTooEarly
-    );
+    if mandate.billing_type != BillingType::Usage {
+        require!(
+            clock.unix_timestamp >= mandate.next_payment_due,
+            VelaError::PullTooEarly
+        );
+    }
 
     let mut active_plan = current_plan;
     let mut auto_applied_change: Option<(Pubkey, Pubkey, i64)> = None;
@@ -194,7 +196,7 @@ pub fn handler<'a, 'b, 'c, 'info>(
             mandate.pending_new_plan,
             VelaError::PendingPlanAccountMissing
         );
-        let pending_plan = load_plan_account(pending_plan_info)?;
+        let pending_plan = Box::new(load_plan_account(pending_plan_info)?);
         require_keys_eq!(
             pending_plan.merchant(),
             mandate.merchant,
@@ -268,7 +270,7 @@ pub fn handler<'a, 'b, 'c, 'info>(
         clock.unix_timestamp <= approval.valid_until,
         VelaError::ApprovalExpired
     );
-    let base_charge_amount = match &active_plan {
+    let base_charge_amount = match active_plan.as_ref() {
         LoadedPlanAccount::Flat(_) | LoadedPlanAccount::LegacyFlat(_) => {
             require!(
                 mandate.amount <= approval.approved_amount,
@@ -426,7 +428,7 @@ fn invoke_billing_transfer<'a, 'b, 'c, 'info>(
         ctx.accounts.token_config.decimals,
     )
     .map_err(map_spl_error)?;
-    transfer_ix.accounts.extend_from_slice(&[
+    transfer_ix.accounts.extend(vec![
         SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.protocol_program.key()), false),
         SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.wrapping_vault.key()), false),
         SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.protocol_config.key()), false),
@@ -442,7 +444,7 @@ fn invoke_billing_transfer<'a, 'b, 'c, 'info>(
         SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.hook_program.key()), false),
     ]);
     let transfer_ix = convert_instruction(transfer_ix);
-    let transfer_account_infos = [
+    let transfer_account_infos = vec![
         source_info.clone(),
         mint_info.clone(),
         destination_info.clone(),

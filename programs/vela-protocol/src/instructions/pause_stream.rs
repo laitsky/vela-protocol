@@ -99,7 +99,15 @@ pub fn handler(ctx: Context<PauseStream>) -> Result<()> {
     }
 
     let clock_now = Clock::get()?.unix_timestamp;
-    let settle_amount = crate::instructions::settle_accrued_in_place(&mut mandate, clock_now)?;
+    let elapsed_since_settle = clock_now
+        .checked_sub(mandate.last_settled_ts)
+        .ok_or(VelaError::ClockRegression)?;
+    require!(elapsed_since_settle >= 0, VelaError::ClockRegression);
+    let settle_amount = if elapsed_since_settle >= i64::from(mandate.min_settle_interval) {
+        crate::instructions::settle_accrued_in_place(&mut mandate, clock_now)?
+    } else {
+        0
+    };
     if settle_amount > 0 {
         let mandate_index_bytes = mandate.mandate_index.to_le_bytes();
         let mandate_bump = [mandate.bump];

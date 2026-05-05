@@ -81,10 +81,11 @@ pub fn handler(ctx: Context<MigratePlan>) -> Result<()> {
                 max_charge_per_period: legacy.max_charge_per_period,
                 settlement_frequency: legacy.settlement_frequency,
                 credential_mint: legacy.credential_mint,
+                billing_mint: Pubkey::default(),
                 status: legacy.status.clone(),
                 bump: legacy.bump,
                 version: CURRENT_ACCOUNT_VERSION,
-                _reserved: [0; ACCOUNT_RESERVED_BYTES],
+                _reserved: [0; ACCOUNT_RESERVED_BYTES - 32],
             };
 
             // Realloc account to V2 size

@@ -106,8 +106,9 @@ pub fn handler<'a, 'b, 'c, 'info>(
     let payer_key = ctx.accounts.payer.key();
     let is_keeper = payer_key == keeper_config.keeper_authority();
     let is_merchant = payer_key == stream.merchant;
+    let is_subscriber = payer_key == stream.subscriber;
     require!(
-        is_keeper || is_merchant,
+        is_keeper || is_merchant || is_subscriber,
         VelaError::UnauthorizedStreamSigner
     );
 

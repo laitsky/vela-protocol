@@ -12,7 +12,7 @@ use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
     AdjustAgentMandate, AdminCancel, AgentPull, Cancel, CancelPlanChange, CancelStream,
     CloseMandate, CreateAgentMandate, CreatePlan, CreateStreamMandate, CreateUsagePlan,
-    DrainAgentMandate, ExecutePull, ExecuteStream, InitConfig, InitKeeperConfig,
+    DemoApprovePull, DrainAgentMandate, ExecutePull, ExecuteStream, InitConfig, InitKeeperConfig,
     InitMerchantCredential, InitRecordBillingCompDef, InitTokenConfig, InitTokenConfigIx,
     InitValidateMandateCompDef, InitWrappedMint, MigrateMandate, MigratePlan, PauseAgentMandate,
     PauseProtocol, PauseStream, RecordBillingEventCallback, RequestBillingRecord,
@@ -47,6 +47,10 @@ mod __client_accounts_unpause_protocol {
 
 mod __client_accounts_create_usage_plan {
     pub use crate::instructions::__client_accounts_create_usage_plan::*;
+}
+
+mod __client_accounts_demo_approve_pull {
+    pub use crate::instructions::__client_accounts_demo_approve_pull::*;
 }
 
 mod __client_accounts_submit_usage_report {
@@ -370,6 +374,14 @@ pub mod vela_protocol {
         ctx: Context<'a, 'b, 'c, 'info, ExecutePull<'info>>,
     ) -> Result<()> {
         instructions::execute_pull::handler(ctx)
+    }
+
+    pub fn demo_approve_pull(
+        ctx: Context<DemoApprovePull>,
+        approved_amount: u64,
+        ttl_seconds: i64,
+    ) -> Result<()> {
+        instructions::demo_approve_pull::handler(ctx, approved_amount, ttl_seconds)
     }
 
     pub fn execute_stream<'a, 'b, 'c, 'info>(

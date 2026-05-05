@@ -1,7 +1,7 @@
 use anchor_lang::{prelude::*, solana_program::program::invoke};
 use anchor_spl::{
     associated_token,
-    token::{revoke, Revoke, Token, TokenAccount},
+    token::{revoke, Revoke},
 };
 use solana_instruction::Instruction as SplInstruction;
 use solana_program_error::ProgramError as SplProgramError;
@@ -51,9 +51,11 @@ pub struct Cancel<'info> {
     pub token_2022_program: UncheckedAccount<'info>,
 
     #[account(mut)]
-    pub subscriber_token_account: Account<'info, TokenAccount>,
+    /// CHECK: Legacy SPL-token approval account. Token-2022 billing rails do not require it.
+    pub subscriber_token_account: UncheckedAccount<'info>,
 
-    pub token_program: Program<'info, Token>,
+    /// CHECK: Legacy SPL token program used only when subscriber_token_account is owned by it.
+    pub token_program: UncheckedAccount<'info>,
 }
 
 pub fn handler(ctx: Context<Cancel>) -> Result<()> {
@@ -82,10 +84,6 @@ pub fn handler(ctx: Context<Cancel>) -> Result<()> {
     );
     require!(
         ctx.accounts.authority.key() == ctx.accounts.subscriber.key(),
-        VelaError::UnauthorizedCancel
-    );
-    require!(
-        ctx.accounts.subscriber_token_account.owner == ctx.accounts.subscriber.key(),
         VelaError::UnauthorizedCancel
     );
     require!(
@@ -121,14 +119,18 @@ pub fn handler(ctx: Context<Cancel>) -> Result<()> {
         ],
     )?;
 
-    let revoke_ctx = CpiContext::new(
-        ctx.accounts.token_program.to_account_info(),
-        Revoke {
-            source: ctx.accounts.subscriber_token_account.to_account_info(),
-            authority: ctx.accounts.authority.to_account_info(),
-        },
-    );
-    revoke(revoke_ctx)?;
+    if ctx.accounts.subscriber_token_account.owner == ctx.accounts.token_program.key
+        && !ctx.accounts.subscriber_token_account.data_is_empty()
+    {
+        let revoke_ctx = CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            Revoke {
+                source: ctx.accounts.subscriber_token_account.to_account_info(),
+                authority: ctx.accounts.authority.to_account_info(),
+            },
+        );
+        revoke(revoke_ctx)?;
+    }
 
     mandate.status = MandateStatus::Cancelled;
     write_mandate(
