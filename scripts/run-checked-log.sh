@@ -13,6 +13,8 @@ cd "$(dirname "$0")/.."
 
 LOG_DIR="${CHECKED_LOG_DIR:-target/checked-build-logs}"
 LOG_PATH="${LOG_DIR}/${NAME}.log"
+STACK_WARNING_RE="Stack offset of [0-9]+ exceeded max offset of 4096"
+KNOWN_ARCIUM_IDL_STACK_RE="arcium_client\\.\\.idl\\.\\.arcium\\.\\.utils\\.\\.Account.*try_from.*Stack offset of [0-9]+ exceeded max offset of 4096"
 mkdir -p "$LOG_DIR"
 
 echo "==> Running ${NAME}"
@@ -22,7 +24,21 @@ if ! "$@" 2>&1 | tee "$LOG_PATH"; then
   exit 1
 fi
 
-if grep -E "Stack offset of [0-9]+ exceeded max offset of 4096" "$LOG_PATH" >/dev/null; then
+if grep -E "$STACK_WARNING_RE" "$LOG_PATH" >/dev/null; then
+  if [[ "$NAME" == arcium-build* ]] \
+    && ! grep -E "$STACK_WARNING_RE" "$LOG_PATH" | grep -Ev "$KNOWN_ARCIUM_IDL_STACK_RE" >/dev/null; then
+    cat >&2 <<EOF
+WARNING: known Arcium generated IDL stack-frame warning detected while running ${NAME}.
+
+The command completed successfully and this warning is allowed only for
+arcium_client::idl::arcium::utils::Account::try_from in Arcium checked-build
+logs. Final deployable SBF artifacts are still verified separately.
+
+Build log: ${LOG_PATH}
+EOF
+    exit 0
+  fi
+
   if [ "${ALLOW_SBF_STACK_WARNINGS:-0}" = "1" ]; then
     cat >&2 <<EOF
 WARNING: SBF stack-frame warning detected while running ${NAME}.

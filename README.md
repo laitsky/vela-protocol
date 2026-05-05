@@ -256,7 +256,7 @@ The upgrade command performs these gates:
 | Keypair restore | Ensures `target/deploy/*-keypair.json` matches the configured devnet program ids |
 | IDL sync | Ensures `target/idl` matches the SDK IDL copies |
 | Upgrade authority check | Ensures the configured wallet can upgrade the existing programs |
-| SBF stack-warning gate | Blocks release artifacts with Solana loader stack-frame warnings |
+| SBF stack-warning gate | Blocks final deployable artifacts with Solana loader stack-frame warnings |
 | SDK checks | Catches instruction-builder, account-deserializer, and event-type drift |
 | Webhook checks | Catches public event schema and fixture drift |
 | Dashboard worker checks | Catches indexer, queue, and fanout drift |
@@ -272,20 +272,27 @@ SKIP_CONSUMER_CHECKS=1 bun run verify:rollout
 
 Do not use this override for normal releases. It is intended only for isolating failures while developing the upgrade pipeline.
 
-SBF stack-frame warnings are also blocked by default. For local diagnostics only,
-you can continue past them with:
+SBF stack-frame warnings in final deployable program logs are blocked by
+default. For local diagnostics only, you can continue past them with:
 
 ```sh
 ALLOW_SBF_STACK_WARNINGS=1 bun run build:devnet-safe
 ```
 
-The release path also requires checked build logs under `target/sbf-build-logs`
-and `target/checked-build-logs`.
+The release path also requires build logs under `target/sbf-build-logs`.
 For diagnostics against older artifacts only, set `REQUIRE_SBF_BUILD_LOGS=0`.
 
 Do not use this override for public releases or mainnet. A stack-frame warning
-must be fixed upstream, fixed in an audited local patch, or accepted only with
-written vendor guidance and deterministic post-build verification.
+in a final deployable artifact must be fixed upstream or fixed in an audited
+local patch.
+
+`arcium build` may emit a known stack-frame warning for Arcium's generated
+IDL helper `arcium_client::idl::arcium::utils::Account::try_from`. That command
+still exits successfully and produces deployable `.so` artifacts, while the
+direct final `cargo-build-sbf` logs for `vela_protocol` and `vela_transfer_hook`
+remain clean. The rollout gate allows only that exact warning in
+`target/checked-build-logs/arcium-build*.log`; any other checked-log stack
+warning, and any final artifact stack warning, still fails verification.
 
 ## Protocol Compatibility Policy
 

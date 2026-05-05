@@ -23,6 +23,13 @@ node_modules/
 .env.local
 .env.*.local
 
+# Private Solana key material
+*keypair*.json
+id.json
+wallet*.json
+*.pem
+*.key
+
 # OS
 .DS_Store
 Thumbs.db
