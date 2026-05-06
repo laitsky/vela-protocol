@@ -2,21 +2,12 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+. scripts/lib/program-ids.sh
 
 CLUSTER="${CLUSTER:-devnet}"
 RPC_URL="${RPC_URL:-https://api.devnet.solana.com}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
-
-read_ids() {
-python3 - <<'PY'
-import json
-from pathlib import Path
-ids = json.loads(Path("config/program-ids.json").read_text())["devnet"]
-print(ids["velaProtocol"])
-print(ids["velaTransferHook"])
-PY
-}
 
 compare_program() {
   local name="$1"
@@ -85,7 +76,7 @@ print(f"    PASS {name} IDL")
 PY
 }
 
-IDS="$(read_ids)"
+IDS="$(read_devnet_program_ids)"
 PROTOCOL_PROGRAM_ID="$(printf '%s\n' "$IDS" | sed -n '1p')"
 TRANSFER_HOOK_PROGRAM_ID="$(printf '%s\n' "$IDS" | sed -n '2p')"
 

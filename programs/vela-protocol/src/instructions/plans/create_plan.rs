@@ -3,7 +3,6 @@ use anchor_lang::{
     solana_program::{program::invoke_signed, program_error::ProgramError, system_instruction},
 };
 use anchor_spl::token_interface::Mint;
-use solana_pubkey::Pubkey as SplPubkey;
 
 use crate::{
     constants::MIN_FREQUENCY_SECONDS,
@@ -11,7 +10,7 @@ use crate::{
     instructions::merchant_account::{
         ensure_merchant_state, resolve_merchant_credential_mint, write_merchant_state,
     },
-    instructions::plan_account::write_plan,
+    instructions::{plan_account::write_plan, spl_helpers::anchor_pubkey},
     state::{
         BillingRail, MerchantState, PlanStatus, TokenConfig, VelaPlan, CURRENT_ACCOUNT_VERSION,
         PLAN_RESERVED_BYTES,
@@ -173,8 +172,4 @@ pub fn handler(
     write_merchant_state(&merchant_state_info, &merchant_state)?;
 
     Ok(())
-}
-
-fn anchor_pubkey(key: SplPubkey) -> Pubkey {
-    Pubkey::new_from_array(key.to_bytes())
 }

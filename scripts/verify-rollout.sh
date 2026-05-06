@@ -2,32 +2,12 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+. scripts/lib/program-ids.sh
+. scripts/lib/guards.sh
 
 RPC_URL="${RPC_URL:-https://api.devnet.solana.com}"
 
-run() {
-  echo "==> $*"
-  "$@"
-}
-
-require_file() {
-  if [ ! -f "$1" ]; then
-    echo "ABORT: missing required file: $1" >&2
-    exit 1
-  fi
-}
-
-read_ids() {
-python3 - <<'PY'
-import json
-from pathlib import Path
-ids = json.loads(Path("config/program-ids.json").read_text())["devnet"]
-print(ids["velaProtocol"])
-print(ids["velaTransferHook"])
-PY
-}
-
-IDS="$(read_ids)"
+IDS="$(read_devnet_program_ids)"
 PROTOCOL_PROGRAM_ID="$(printf '%s\n' "$IDS" | sed -n '1p')"
 TRANSFER_HOOK_PROGRAM_ID="$(printf '%s\n' "$IDS" | sed -n '2p')"
 

@@ -1,30 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Safe devnet deploy or upgrade for the Vela programs.
-# We intentionally preserve the original devnet program keypairs and always deploy
-# against those addresses instead of letting Anchor create new random program ids.
-
-read_ids() {
-python3 - <<'PY'
-import json
-from pathlib import Path
-ids = json.loads(Path("config/program-ids.json").read_text())["devnet"]
-print(ids["velaProtocol"])
-print(ids["velaTransferHook"])
-PY
-}
-
-IDS="$(read_ids)"
-PROTOCOL_PROGRAM_ID="$(printf '%s\n' "$IDS" | sed -n '1p')"
-TRANSFER_HOOK_PROGRAM_ID="$(printf '%s\n' "$IDS" | sed -n '2p')"
-
 CLUSTER="${CLUSTER:-devnet}"
 RPC_URL="${RPC_URL:-https://api.devnet.solana.com}"
 PROTOCOL_SBF_ARCH="${PROTOCOL_SBF_ARCH:-v2}"
 TRANSFER_HOOK_SBF_ARCH="${TRANSFER_HOOK_SBF_ARCH:-v2}"
 
 cd "$(dirname "$0")/.."
+. scripts/lib/program-ids.sh
+
+# Safe devnet deploy or upgrade for the Vela programs.
+# We intentionally preserve the original devnet program keypairs and always deploy
+# against those addresses instead of letting Anchor create new random program ids.
+IDS="$(read_devnet_program_ids)"
+PROTOCOL_PROGRAM_ID="$(printf '%s\n' "$IDS" | sed -n '1p')"
+TRANSFER_HOOK_PROGRAM_ID="$(printf '%s\n' "$IDS" | sed -n '2p')"
 
 declared_protocol=$(grep -oE 'declare_id!\("[A-Za-z0-9]+"\)' programs/vela-protocol/src/lib.rs | grep -oE '"[A-Za-z0-9]+"' | tr -d '"')
 declared_transfer_hook=$(grep -oE 'declare_id!\("[A-Za-z0-9]+"\)' programs/vela-transfer-hook/src/lib.rs | grep -oE '"[A-Za-z0-9]+"' | tr -d '"')

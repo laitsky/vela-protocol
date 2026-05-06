@@ -56,12 +56,27 @@ fn test_billing_event_unique_per_pull() {
 
 #[test]
 fn test_billing_event_immutable() {
+    fn visit_instruction_sources(
+        dir: &std::path::Path,
+        visitor: &mut impl FnMut(&std::path::Path),
+    ) {
+        for entry in std::fs::read_dir(dir).expect("instructions dir should exist") {
+            let entry = entry.expect("dir entry should read");
+            let path = entry.path();
+            if path.is_dir() {
+                visit_instruction_sources(&path, visitor);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                visitor(&path);
+            }
+        }
+    }
+
     let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
         .expect("repo root should resolve");
     let instructions_dir = repo_root.join("programs/vela-protocol/src/instructions");
-    let billing_callback = instructions_dir.join("billing_callback.rs");
+    let billing_callback = instructions_dir.join("billing/billing_callback.rs");
     let callback_source =
         std::fs::read_to_string(&billing_callback).expect("billing callback source should exist");
 
@@ -70,18 +85,17 @@ fn test_billing_event_immutable() {
         "billing events must never expose a close authority",
     );
 
-    for entry in std::fs::read_dir(&instructions_dir).expect("instructions dir should exist") {
-        let entry = entry.expect("dir entry should read");
-        if entry.file_name() == "billing_callback.rs"
-            || entry.file_name() == "request_billing_record.rs"
+    visit_instruction_sources(&instructions_dir, &mut |path| {
+        if path.ends_with("billing/billing_callback.rs")
+            || path.ends_with("billing/request_billing_record.rs")
         {
-            continue;
+            return;
         }
-        let source = std::fs::read_to_string(entry.path()).expect("instruction source should read");
+        let source = std::fs::read_to_string(path).expect("instruction source should read");
         assert!(
             !source.contains("Account<'info, BillingEvent>"),
             "BillingEvent should not be mutable outside the billing request/callback flow, found in {}",
-            entry.path().display()
+            path.display()
         );
-    }
+    });
 }

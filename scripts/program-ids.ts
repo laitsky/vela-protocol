@@ -17,8 +17,45 @@ type ProgramIdsManifest = {
 export const protocolRoot = resolve(import.meta.dir, "..");
 const manifestPath = resolve(protocolRoot, "config/program-ids.json");
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function requireProgramIds(value: unknown, label: string): ProgramIds {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid program id manifest: ${label} must be an object`);
+  }
+
+  const { velaProtocol, velaTransferHook } = value;
+  if (typeof velaProtocol !== "string" || typeof velaTransferHook !== "string") {
+    throw new Error(
+      `Invalid program id manifest: ${label} must include velaProtocol and velaTransferHook strings`,
+    );
+  }
+
+  return { velaProtocol, velaTransferHook };
+}
+
+function parseProgramIdsManifest(value: unknown): ProgramIdsManifest {
+  if (!isRecord(value)) {
+    throw new Error("Invalid program id manifest: root must be an object");
+  }
+
+  if (value.defaultCluster !== "devnet" && value.defaultCluster !== "localnet") {
+    throw new Error(
+      "Invalid program id manifest: defaultCluster must be devnet or localnet",
+    );
+  }
+
+  return {
+    defaultCluster: value.defaultCluster,
+    devnet: requireProgramIds(value.devnet, "devnet"),
+    localnet: requireProgramIds(value.localnet, "localnet"),
+  };
+}
+
 export function loadProgramIds(): ProgramIdsManifest {
-  return JSON.parse(readFileSync(manifestPath, "utf8")) as ProgramIdsManifest;
+  return parseProgramIdsManifest(JSON.parse(readFileSync(manifestPath, "utf8")));
 }
 
 export function bytesForBase58(pubkey: string): number[] {

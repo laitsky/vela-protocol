@@ -180,6 +180,7 @@ fn test_agent_mandate_consumers_use_compatibility_loader() {
     let instruction_path = |name: &str| {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src/instructions")
+            .join("agent_mandates")
             .join(name)
     };
 

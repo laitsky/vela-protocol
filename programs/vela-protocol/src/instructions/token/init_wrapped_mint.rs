@@ -10,9 +10,7 @@ use anchor_spl::{
     token::{Mint as SplMint, Token, TokenAccount as SplTokenAccount},
     token_2022::Token2022,
 };
-use solana_instruction::Instruction as SplInstruction;
 use solana_program_error::ProgramError as SplProgramError;
-use solana_pubkey::Pubkey as SplPubkey;
 use spl_pod::optional_keys::OptionalNonZeroPubkey;
 use spl_token_2022::{
     extension::ExtensionType, instruction::initialize_mint2, state::Mint as Token2022Mint,
@@ -25,8 +23,11 @@ use crate::{
         WRAPPED_USDC_NAME, WRAPPED_USDC_SYMBOL, WRAPPED_USDC_URI,
     },
     errors::VelaError,
-    instructions::protocol_config_account::{
-        load_protocol_config, upgrade_protocol_config, write_protocol_config,
+    instructions::{
+        protocol_config_account::{
+            load_protocol_config, upgrade_protocol_config, write_protocol_config,
+        },
+        spl_helpers::{convert_instruction, map_spl_error_to_invalid_instruction, spl_pubkey},
     },
     state::ProtocolConfig,
 };
@@ -251,40 +252,6 @@ pub fn handler(ctx: Context<InitWrappedMint>) -> Result<()> {
     Ok(())
 }
 
-fn spl_pubkey(key: &Pubkey) -> SplPubkey {
-    SplPubkey::from(key.to_bytes())
-}
-
-fn anchor_pubkey(key: SplPubkey) -> Pubkey {
-    Pubkey::new_from_array(key.to_bytes())
-}
-
-fn convert_instruction(
-    ix: SplInstruction,
-) -> anchor_lang::solana_program::instruction::Instruction {
-    anchor_lang::solana_program::instruction::Instruction {
-        program_id: anchor_pubkey(ix.program_id),
-        accounts: ix
-            .accounts
-            .into_iter()
-            .map(|meta| {
-                if meta.is_writable {
-                    anchor_lang::solana_program::instruction::AccountMeta::new(
-                        anchor_pubkey(meta.pubkey),
-                        meta.is_signer,
-                    )
-                } else {
-                    anchor_lang::solana_program::instruction::AccountMeta::new_readonly(
-                        anchor_pubkey(meta.pubkey),
-                        meta.is_signer,
-                    )
-                }
-            })
-            .collect(),
-        data: ix.data,
-    }
-}
-
-fn map_interface_error(_error: SplProgramError) -> anchor_lang::error::Error {
-    anchor_lang::error::Error::from(anchor_lang::prelude::ProgramError::InvalidInstructionData)
+fn map_interface_error(error: SplProgramError) -> anchor_lang::error::Error {
+    map_spl_error_to_invalid_instruction(error)
 }

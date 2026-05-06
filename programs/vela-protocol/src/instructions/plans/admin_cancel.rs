@@ -1,8 +1,6 @@
 use anchor_lang::{prelude::*, solana_program::program::invoke_signed};
 use anchor_spl::associated_token;
-use solana_instruction::Instruction as SplInstruction;
 use solana_program_error::ProgramError as SplProgramError;
-use solana_pubkey::Pubkey as SplPubkey;
 use spl_token_2022::instruction::burn;
 
 use crate::{
@@ -13,6 +11,9 @@ use crate::{
         plan_account::LoadedPlanAccount,
         plan_account::{load_plan_account, require_plan_billing_type},
         protocol_config_account::load_protocol_config,
+        spl_helpers::{
+            anchor_pubkey, convert_instruction, map_spl_error_preserving_custom, spl_pubkey,
+        },
     },
     state::{MandateStatus, MerchantState, ProtocolConfig, UsagePlan, VelaPlan},
 };
@@ -141,9 +142,9 @@ pub fn handler(ctx: Context<AdminCancel>) -> Result<()> {
 
     let burn_ix = burn(
         &spl_token_2022::id(),
-        &spl_pubkey(ctx.accounts.subscriber_credential_account.key()),
-        &spl_pubkey(ctx.accounts.credential_mint.key()),
-        &spl_pubkey(burn_authority),
+        &spl_pubkey(&ctx.accounts.subscriber_credential_account.key()),
+        &spl_pubkey(&ctx.accounts.credential_mint.key()),
+        &spl_pubkey(&burn_authority),
         &[],
         1,
     )
@@ -172,45 +173,6 @@ pub fn handler(ctx: Context<AdminCancel>) -> Result<()> {
     Ok(())
 }
 
-fn spl_pubkey(key: Pubkey) -> SplPubkey {
-    SplPubkey::from(key.to_bytes())
-}
-
-fn anchor_pubkey(key: SplPubkey) -> Pubkey {
-    Pubkey::new_from_array(key.to_bytes())
-}
-
-fn convert_instruction(
-    ix: SplInstruction,
-) -> anchor_lang::solana_program::instruction::Instruction {
-    anchor_lang::solana_program::instruction::Instruction {
-        program_id: anchor_pubkey(ix.program_id),
-        accounts: ix
-            .accounts
-            .into_iter()
-            .map(|meta| {
-                if meta.is_writable {
-                    anchor_lang::solana_program::instruction::AccountMeta::new(
-                        anchor_pubkey(meta.pubkey),
-                        meta.is_signer,
-                    )
-                } else {
-                    anchor_lang::solana_program::instruction::AccountMeta::new_readonly(
-                        anchor_pubkey(meta.pubkey),
-                        meta.is_signer,
-                    )
-                }
-            })
-            .collect(),
-        data: ix.data,
-    }
-}
-
 fn map_interface_error(error: SplProgramError) -> Error {
-    match error {
-        SplProgramError::Custom(code) => {
-            Error::from(anchor_lang::prelude::ProgramError::Custom(code))
-        }
-        _ => Error::from(anchor_lang::prelude::ProgramError::InvalidInstructionData),
-    }
+    map_spl_error_preserving_custom(error)
 }

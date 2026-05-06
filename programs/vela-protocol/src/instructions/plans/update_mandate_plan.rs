@@ -6,10 +6,10 @@ use crate::{
     errors::VelaError,
     instructions::{
         compute_proration,
-        execute_stream::invoke_stream_transfer,
         mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
         plan_account::load_plan_account,
         protocol_config_account::load_protocol_config,
+        stream_transfer::{invoke_stream_transfer, StreamTransferAccounts},
     },
     state::{
         MandateCreditAdded, MandateStatus, MandateUpgradeFinalized, MandateUpgradeInitiated,
@@ -190,20 +190,35 @@ pub fn handler(ctx: Context<UpdateMandatePlan>) -> Result<()> {
             mandate_index_bytes.as_ref(),
             &mandate_bump,
         ];
+        let source_info = ctx.accounts.subscriber_wrapped_account.to_account_info();
+        let mint_info = ctx.accounts.wrapped_usdc_mint.to_account_info();
+        let destination_info = ctx.accounts.merchant_wrapped_account.to_account_info();
+        let authority_info = ctx.accounts.mandate.to_account_info();
+        let protocol_program_info = ctx.accounts.protocol_program.to_account_info();
+        let wrapping_vault_info = ctx.accounts.wrapping_vault.to_account_info();
+        let protocol_config_info = ctx.accounts.protocol_config.to_account_info();
+        let pull_approval_info = ctx.accounts.pull_approval.to_account_info();
+        let token_config_info = ctx.accounts.token_config.to_account_info();
+        let system_program_info = ctx.accounts.system_program.to_account_info();
+        let extra_account_meta_list_info = ctx.accounts.extra_account_meta_list.to_account_info();
+        let hook_program_info = ctx.accounts.hook_program.to_account_info();
+        let token_2022_program_info = ctx.accounts.token_2022_program.to_account_info();
         invoke_stream_transfer(
-            &ctx.accounts.subscriber_wrapped_account.to_account_info(),
-            &ctx.accounts.wrapped_usdc_mint.to_account_info(),
-            &ctx.accounts.merchant_wrapped_account.to_account_info(),
-            &ctx.accounts.mandate.to_account_info(),
-            &ctx.accounts.protocol_program.to_account_info(),
-            &ctx.accounts.wrapping_vault.to_account_info(),
-            &ctx.accounts.protocol_config.to_account_info(),
-            &ctx.accounts.pull_approval.to_account_info(),
-            &ctx.accounts.token_config.to_account_info(),
-            &ctx.accounts.system_program.to_account_info(),
-            &ctx.accounts.extra_account_meta_list.to_account_info(),
-            &ctx.accounts.hook_program.to_account_info(),
-            &ctx.accounts.token_2022_program.to_account_info(),
+            StreamTransferAccounts {
+                source: &source_info,
+                mint: &mint_info,
+                destination: &destination_info,
+                authority: &authority_info,
+                protocol_program: &protocol_program_info,
+                wrapping_vault: &wrapping_vault_info,
+                protocol_config: &protocol_config_info,
+                pull_approval: &pull_approval_info,
+                token_config: &token_config_info,
+                system_program: &system_program_info,
+                extra_account_meta_list: &extra_account_meta_list_info,
+                hook_program: &hook_program_info,
+                token_2022_program: &token_2022_program_info,
+            },
             charge_amount,
             &[signer_seeds],
         )?;

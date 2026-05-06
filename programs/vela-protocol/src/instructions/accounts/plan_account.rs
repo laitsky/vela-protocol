@@ -41,6 +41,32 @@ pub enum LoadedPlanAccount {
     LegacyUsage(UsagePlanV1),
 }
 
+macro_rules! plan_getter {
+    ($name:ident, $field:ident, $ty:ty) => {
+        pub fn $name(&self) -> $ty {
+            match self {
+                Self::Flat(plan) => plan.$field,
+                Self::Usage(plan) => plan.$field,
+                Self::LegacyFlat(plan) => plan.$field,
+                Self::LegacyUsage(plan) => plan.$field,
+            }
+        }
+    };
+}
+
+macro_rules! plan_ref_getter {
+    ($name:ident, $field:ident, $ty:ty) => {
+        pub fn $name(&self) -> &$ty {
+            match self {
+                Self::Flat(plan) => &plan.$field,
+                Self::Usage(plan) => &plan.$field,
+                Self::LegacyFlat(plan) => &plan.$field,
+                Self::LegacyUsage(plan) => &plan.$field,
+            }
+        }
+    };
+}
+
 impl LoadedPlanAccount {
     pub fn billing_type(&self) -> BillingType {
         match self {
@@ -49,23 +75,8 @@ impl LoadedPlanAccount {
         }
     }
 
-    pub fn merchant(&self) -> Pubkey {
-        match self {
-            Self::Flat(plan) => plan.merchant,
-            Self::Usage(plan) => plan.merchant,
-            Self::LegacyFlat(plan) => plan.merchant,
-            Self::LegacyUsage(plan) => plan.merchant,
-        }
-    }
-
-    pub fn credential_mint(&self) -> Pubkey {
-        match self {
-            Self::Flat(plan) => plan.credential_mint,
-            Self::Usage(plan) => plan.credential_mint,
-            Self::LegacyFlat(plan) => plan.credential_mint,
-            Self::LegacyUsage(plan) => plan.credential_mint,
-        }
-    }
+    plan_getter!(merchant, merchant, Pubkey);
+    plan_getter!(credential_mint, credential_mint, Pubkey);
 
     pub fn billing_mint(&self) -> Pubkey {
         match self {
@@ -75,14 +86,7 @@ impl LoadedPlanAccount {
         }
     }
 
-    pub fn status(&self) -> &PlanStatus {
-        match self {
-            Self::Flat(plan) => &plan.status,
-            Self::Usage(plan) => &plan.status,
-            Self::LegacyFlat(plan) => &plan.status,
-            Self::LegacyUsage(plan) => &plan.status,
-        }
-    }
+    plan_ref_getter!(status, status, PlanStatus);
 
     pub fn mandate_amount(&self) -> u64 {
         match self {
@@ -119,23 +123,8 @@ impl LoadedPlanAccount {
         }
     }
 
-    pub fn plan_id(&self) -> u64 {
-        match self {
-            Self::Flat(plan) => plan.plan_id,
-            Self::Usage(plan) => plan.plan_id,
-            Self::LegacyFlat(plan) => plan.plan_id,
-            Self::LegacyUsage(plan) => plan.plan_id,
-        }
-    }
-
-    pub fn bump(&self) -> u8 {
-        match self {
-            Self::Flat(plan) => plan.bump,
-            Self::Usage(plan) => plan.bump,
-            Self::LegacyFlat(plan) => plan.bump,
-            Self::LegacyUsage(plan) => plan.bump,
-        }
-    }
+    plan_getter!(plan_id, plan_id, u64);
+    plan_getter!(bump, bump, u8);
 
     pub fn is_legacy(&self) -> bool {
         matches!(self, Self::LegacyFlat(_) | Self::LegacyUsage(_))

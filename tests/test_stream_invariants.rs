@@ -1,20 +1,22 @@
 use std::{fs, path::PathBuf};
 
 const STREAMING_SOURCES: &[&str] = &[
-    "programs/vela-protocol/src/instructions/create_stream_mandate.rs",
-    "programs/vela-protocol/src/instructions/execute_stream.rs",
-    "programs/vela-protocol/src/instructions/pause_stream.rs",
-    "programs/vela-protocol/src/instructions/resume_stream.rs",
-    "programs/vela-protocol/src/instructions/cancel_stream.rs",
-    "programs/vela-protocol/src/instructions/update_stream_rate.rs",
-    "programs/vela-protocol/src/instructions/stream_account.rs",
+    "programs/vela-protocol/src/instructions/streaming/create_stream_mandate.rs",
+    "programs/vela-protocol/src/instructions/streaming/execute_stream.rs",
+    "programs/vela-protocol/src/instructions/streaming/pause_stream.rs",
+    "programs/vela-protocol/src/instructions/streaming/resume_stream.rs",
+    "programs/vela-protocol/src/instructions/streaming/cancel_stream.rs",
+    "programs/vela-protocol/src/instructions/streaming/update_stream_rate.rs",
+    "programs/vela-protocol/src/instructions/accounts/stream_account.rs",
+    "programs/vela-protocol/src/instructions/streaming/transfer.rs",
     "programs/vela-protocol/src/state/stream_mandate.rs",
     "programs/vela-transfer-hook/src/lib.rs",
 ];
 
 const FORBIDDEN_PATTERNS: &[&str] = &["Clock::slot", "clock.slot", ".slot_history"];
 const CLOCK_HELPER_ONLY_SOURCES: &[&str] = &[
-    "programs/vela-protocol/src/instructions/stream_account.rs",
+    "programs/vela-protocol/src/instructions/accounts/stream_account.rs",
+    "programs/vela-protocol/src/instructions/streaming/transfer.rs",
     "programs/vela-protocol/src/state/stream_mandate.rs",
 ];
 

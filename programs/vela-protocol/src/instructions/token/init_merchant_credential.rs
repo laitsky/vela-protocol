@@ -6,9 +6,7 @@ use anchor_lang::{
         system_instruction,
     },
 };
-use solana_instruction::Instruction as SplInstruction;
 use solana_program_error::ProgramError as SplProgramError;
-use solana_pubkey::Pubkey as SplPubkey;
 use spl_token_2022::{
     extension::ExtensionType,
     instruction::{
@@ -19,7 +17,10 @@ use spl_token_2022::{
 
 use crate::{
     constants::CREDENTIAL_DECIMALS,
-    instructions::merchant_account::{ensure_merchant_state, write_merchant_state},
+    instructions::{
+        merchant_account::{ensure_merchant_state, write_merchant_state},
+        spl_helpers::{anchor_pubkey, convert_instruction, spl_pubkey},
+    },
     state::MerchantState,
 };
 
@@ -157,40 +158,6 @@ pub fn handler(ctx: Context<InitMerchantCredential>) -> Result<()> {
     write_merchant_state(&merchant_state_info, &merchant_state)?;
 
     Ok(())
-}
-
-fn spl_pubkey(key: &Pubkey) -> SplPubkey {
-    SplPubkey::from(key.to_bytes())
-}
-
-fn anchor_pubkey(key: SplPubkey) -> Pubkey {
-    Pubkey::new_from_array(key.to_bytes())
-}
-
-fn convert_instruction(
-    ix: SplInstruction,
-) -> anchor_lang::solana_program::instruction::Instruction {
-    anchor_lang::solana_program::instruction::Instruction {
-        program_id: anchor_pubkey(ix.program_id),
-        accounts: ix
-            .accounts
-            .into_iter()
-            .map(|meta| {
-                if meta.is_writable {
-                    anchor_lang::solana_program::instruction::AccountMeta::new(
-                        anchor_pubkey(meta.pubkey),
-                        meta.is_signer,
-                    )
-                } else {
-                    anchor_lang::solana_program::instruction::AccountMeta::new_readonly(
-                        anchor_pubkey(meta.pubkey),
-                        meta.is_signer,
-                    )
-                }
-            })
-            .collect(),
-        data: ix.data,
-    }
 }
 
 fn map_interface_error(error: SplProgramError) -> anchor_lang::error::Error {

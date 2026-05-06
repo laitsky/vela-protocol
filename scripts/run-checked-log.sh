@@ -10,11 +10,10 @@ NAME="$1"
 shift
 
 cd "$(dirname "$0")/.."
+. scripts/lib/sbf-logs.sh
 
 LOG_DIR="${CHECKED_LOG_DIR:-target/checked-build-logs}"
 LOG_PATH="${LOG_DIR}/${NAME}.log"
-STACK_WARNING_RE="Stack offset of [0-9]+ exceeded max offset of 4096"
-KNOWN_ARCIUM_IDL_STACK_RE="arcium_client\\.\\.idl\\.\\.arcium\\.\\.utils\\.\\.Account.*try_from.*Stack offset of [0-9]+ exceeded max offset of 4096"
 mkdir -p "$LOG_DIR"
 
 echo "==> Running ${NAME}"

@@ -1,9 +1,9 @@
 use anchor_lang::prelude::*;
-use solana_pubkey::Pubkey as SplPubkey;
 
 use crate::instructions::merchant_account::{
     ensure_merchant_state, resolve_merchant_credential_mint,
 };
+use crate::instructions::spl_helpers::anchor_pubkey;
 use crate::state::{
     BillingRail, PlanStatus, PricingTier, TokenConfig, UsagePlan, ACCOUNT_RESERVED_BYTES,
     CURRENT_ACCOUNT_VERSION,
@@ -160,10 +160,6 @@ pub fn handler(
     });
 
     Ok(())
-}
-
-fn anchor_pubkey(key: SplPubkey) -> Pubkey {
-    Pubkey::new_from_array(key.to_bytes())
 }
 
 pub(crate) fn validate_usage_pricing_bounds(

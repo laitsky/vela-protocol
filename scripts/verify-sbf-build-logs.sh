@@ -2,6 +2,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+. scripts/lib/sbf-logs.sh
 
 SBF_LOG_DIR="${SBF_BUILD_LOG_DIR:-target/sbf-build-logs}"
 CHECKED_LOG_DIR="${CHECKED_LOG_DIR:-target/checked-build-logs}"
@@ -9,9 +10,6 @@ LOG_DIRS=("$SBF_LOG_DIR" "$CHECKED_LOG_DIR")
 LOG_FILES=()
 SBF_LOG_FILES=()
 CHECKED_LOG_FILES=()
-STACK_WARNING_RE="Stack offset of [0-9]+ exceeded max offset of 4096"
-KNOWN_ARCIUM_IDL_STACK_RE="arcium_client\\.\\.idl\\.\\.arcium\\.\\.utils\\.\\.Account.*try_from.*Stack offset of [0-9]+ exceeded max offset of 4096"
-
 for dir in "${LOG_DIRS[@]}"; do
   if [ ! -d "$dir" ]; then
     continue

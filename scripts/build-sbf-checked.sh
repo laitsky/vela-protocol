@@ -10,6 +10,7 @@ NAME="$1"
 shift
 
 cd "$(dirname "$0")/.."
+. scripts/lib/sbf-logs.sh
 
 LOG_DIR="${SBF_BUILD_LOG_DIR:-target/sbf-build-logs}"
 LOG_PATH="${LOG_DIR}/${NAME}.log"
@@ -22,7 +23,7 @@ if ! "$@" 2>&1 | tee "$LOG_PATH"; then
   exit 1
 fi
 
-if grep -E "Stack offset of [0-9]+ exceeded max offset of 4096" "$LOG_PATH" >/dev/null; then
+if grep -E "$STACK_WARNING_RE" "$LOG_PATH" >/dev/null; then
   if [ "${ALLOW_SBF_STACK_WARNINGS:-0}" = "1" ]; then
     cat >&2 <<EOF
 WARNING: SBF stack-frame warning detected while building ${NAME}.

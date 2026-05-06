@@ -2,6 +2,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+. scripts/lib/program-ids.sh
 
 KEY_DIR="${VELA_PROGRAM_KEY_DIR:-$HOME/.config/velapay/keys/devnet}"
 OVERWRITE="${VELA_PROGRAM_KEY_OVERWRITE:-0}"
@@ -11,18 +12,7 @@ if ! command -v solana >/dev/null 2>&1; then
   exit 1
 fi
 
-read_expected_ids() {
-  python3 - <<'PY'
-import json
-from pathlib import Path
-
-data = json.loads(Path("config/program-ids.json").read_text())
-print(data["devnet"]["velaProtocol"])
-print(data["devnet"]["velaTransferHook"])
-PY
-}
-
-EXPECTED_IDS="$(read_expected_ids)"
+EXPECTED_IDS="$(read_devnet_program_ids)"
 EXPECTED_PROTOCOL_ID="$(printf '%s\n' "$EXPECTED_IDS" | sed -n '1p')"
 EXPECTED_TRANSFER_HOOK_ID="$(printf '%s\n' "$EXPECTED_IDS" | sed -n '2p')"
 

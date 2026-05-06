@@ -1,8 +1,5 @@
-use anchor_lang::{prelude::*, solana_program::program::invoke_signed};
+use anchor_lang::prelude::*;
 use anchor_spl::token_2022::Token2022;
-use solana_instruction::{AccountMeta as SplAccountMeta, Instruction as SplInstruction};
-use solana_program_error::ProgramError as SplProgramError;
-use solana_pubkey::Pubkey as SplPubkey;
 
 use crate::{
     constants::{event_token_symbol, EXTRA_ACCOUNT_METAS_SEED},
@@ -13,6 +10,7 @@ use crate::{
         mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
         plan_account::{load_plan_account, require_plan_billing_type, LoadedPlanAccount},
         protocol_config_account::load_protocol_config,
+        spl_helpers::{invoke_transfer_checked_with_hook, TransferCheckedWithHookAccounts},
     },
     state::{
         BillingType, KeeperConfig, MandateStatus, MandateUpgradeFinalized, PlanStatus,
@@ -374,40 +372,6 @@ pub struct ArciumUnavailableEvent {
     pub timestamp: i64,
 }
 
-fn spl_pubkey(key: &Pubkey) -> SplPubkey {
-    SplPubkey::from(key.to_bytes())
-}
-
-fn anchor_pubkey(key: SplPubkey) -> Pubkey {
-    Pubkey::new_from_array(key.to_bytes())
-}
-
-fn convert_instruction(
-    ix: SplInstruction,
-) -> anchor_lang::solana_program::instruction::Instruction {
-    anchor_lang::solana_program::instruction::Instruction {
-        program_id: anchor_pubkey(ix.program_id),
-        accounts: ix
-            .accounts
-            .into_iter()
-            .map(|meta| {
-                if meta.is_writable {
-                    anchor_lang::solana_program::instruction::AccountMeta::new(
-                        anchor_pubkey(meta.pubkey),
-                        meta.is_signer,
-                    )
-                } else {
-                    anchor_lang::solana_program::instruction::AccountMeta::new_readonly(
-                        anchor_pubkey(meta.pubkey),
-                        meta.is_signer,
-                    )
-                }
-            })
-            .collect(),
-        data: ix.data,
-    }
-}
-
 fn invoke_billing_transfer<'a, 'b, 'c, 'info>(
     ctx: &Context<'a, 'b, 'c, 'info, ExecutePull<'info>>,
     charge_amount: u64,
@@ -417,52 +381,34 @@ fn invoke_billing_transfer<'a, 'b, 'c, 'info>(
     let mint_info = ctx.accounts.wrapped_usdc_mint.to_account_info();
     let destination_info = ctx.accounts.merchant_wrapped_account.to_account_info();
     let authority_info = ctx.accounts.mandate.to_account_info();
-    let mut transfer_ix = spl_token_2022::instruction::transfer_checked(
-        &spl_pubkey(ctx.accounts.token_2022_program.key),
-        &spl_pubkey(source_info.key),
-        &spl_pubkey(mint_info.key),
-        &spl_pubkey(destination_info.key),
-        &spl_pubkey(authority_info.key),
-        &[],
+    let protocol_program_info = ctx.accounts.protocol_program.to_account_info();
+    let wrapping_vault_info = ctx.accounts.wrapping_vault.to_account_info();
+    let protocol_config_info = ctx.accounts.protocol_config.to_account_info();
+    let pull_approval_info = ctx.accounts.pull_approval.to_account_info();
+    let token_config_info = ctx.accounts.token_config.to_account_info();
+    let system_program_info = ctx.accounts.system_program.to_account_info();
+    let extra_account_meta_list_info = ctx.accounts.extra_account_meta_list.to_account_info();
+    let hook_program_info = ctx.accounts.hook_program.to_account_info();
+    let token_2022_program_info = ctx.accounts.token_2022_program.to_account_info();
+
+    invoke_transfer_checked_with_hook(
+        TransferCheckedWithHookAccounts {
+            source: &source_info,
+            mint: &mint_info,
+            destination: &destination_info,
+            authority: &authority_info,
+            protocol_program: &protocol_program_info,
+            wrapping_vault: &wrapping_vault_info,
+            protocol_config: &protocol_config_info,
+            pull_approval: &pull_approval_info,
+            token_config: &token_config_info,
+            system_program: &system_program_info,
+            extra_account_meta_list: &extra_account_meta_list_info,
+            hook_program: &hook_program_info,
+            token_2022_program: &token_2022_program_info,
+        },
         charge_amount,
         ctx.accounts.token_config.decimals,
+        signer_seed_groups,
     )
-    .map_err(map_spl_error)?;
-    transfer_ix.accounts.extend(vec![
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.protocol_program.key()), false),
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.wrapping_vault.key()), false),
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.protocol_config.key()), false),
-        SplAccountMeta::new(spl_pubkey(&ctx.accounts.pull_approval.key()), false),
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.token_config.key()), false),
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.system_program.key()), false),
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.system_program.key()), false),
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.system_program.key()), false),
-        SplAccountMeta::new_readonly(
-            spl_pubkey(&ctx.accounts.extra_account_meta_list.key()),
-            false,
-        ),
-        SplAccountMeta::new_readonly(spl_pubkey(&ctx.accounts.hook_program.key()), false),
-    ]);
-    let transfer_ix = convert_instruction(transfer_ix);
-    let transfer_account_infos = vec![
-        source_info.clone(),
-        mint_info.clone(),
-        destination_info.clone(),
-        authority_info,
-        ctx.accounts.protocol_program.to_account_info(),
-        ctx.accounts.wrapping_vault.to_account_info(),
-        ctx.accounts.protocol_config.to_account_info(),
-        ctx.accounts.pull_approval.to_account_info(),
-        ctx.accounts.token_config.to_account_info(),
-        ctx.accounts.system_program.to_account_info(),
-        ctx.accounts.system_program.to_account_info(),
-        ctx.accounts.system_program.to_account_info(),
-        ctx.accounts.extra_account_meta_list.to_account_info(),
-        ctx.accounts.hook_program.to_account_info(),
-    ];
-    invoke_signed(&transfer_ix, &transfer_account_infos, signer_seed_groups).map_err(Into::into)
-}
-
-fn map_spl_error(_error: SplProgramError) -> anchor_lang::error::Error {
-    anchor_lang::error::Error::from(anchor_lang::prelude::ProgramError::InvalidInstructionData)
 }

@@ -17,7 +17,7 @@ mod state {
     }
 }
 
-#[path = "../programs/vela-protocol/src/instructions/stream_account.rs"]
+#[path = "../programs/vela-protocol/src/instructions/accounts/stream_account.rs"]
 #[allow(dead_code)]
 mod stream_account;
 

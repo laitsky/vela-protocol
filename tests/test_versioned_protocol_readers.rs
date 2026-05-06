@@ -374,22 +374,24 @@ fn test_init_config_and_keeper_config_write_versioned_accounts() {
 
 #[test]
 fn test_initializer_admin_consumers_reference_compatibility_helpers() {
-    let init_config = include_str!("../programs/vela-protocol/src/instructions/init_config.rs");
+    let init_config =
+        include_str!("../programs/vela-protocol/src/instructions/config/init_config.rs");
     let init_keeper_config =
-        include_str!("../programs/vela-protocol/src/instructions/init_keeper_config.rs");
+        include_str!("../programs/vela-protocol/src/instructions/config/init_keeper_config.rs");
     let init_token_config =
-        include_str!("../programs/vela-protocol/src/instructions/init_token_config.rs");
+        include_str!("../programs/vela-protocol/src/instructions/config/init_token_config.rs");
     let update_keeper_config =
-        include_str!("../programs/vela-protocol/src/instructions/update_keeper_config.rs");
+        include_str!("../programs/vela-protocol/src/instructions/config/update_keeper_config.rs");
     let update_token_config =
-        include_str!("../programs/vela-protocol/src/instructions/update_token_config.rs");
+        include_str!("../programs/vela-protocol/src/instructions/config/update_token_config.rs");
     let init_wrapped_mint =
-        include_str!("../programs/vela-protocol/src/instructions/init_wrapped_mint.rs");
-    let admin_cancel = include_str!("../programs/vela-protocol/src/instructions/admin_cancel.rs");
+        include_str!("../programs/vela-protocol/src/instructions/token/init_wrapped_mint.rs");
+    let admin_cancel =
+        include_str!("../programs/vela-protocol/src/instructions/plans/admin_cancel.rs");
     let pause_protocol =
-        include_str!("../programs/vela-protocol/src/instructions/pause_protocol.rs");
+        include_str!("../programs/vela-protocol/src/instructions/config/pause_protocol.rs");
     let unpause_protocol =
-        include_str!("../programs/vela-protocol/src/instructions/unpause_protocol.rs");
+        include_str!("../programs/vela-protocol/src/instructions/config/unpause_protocol.rs");
 
     assert!(init_config.contains("load_protocol_config"));
     assert!(init_keeper_config.contains("load_protocol_config"));
@@ -405,21 +407,25 @@ fn test_initializer_admin_consumers_reference_compatibility_helpers() {
 
 #[test]
 fn test_runtime_request_callback_wrap_unwrap_readers_reference_compatibility_helpers() {
-    let execute_pull = include_str!("../programs/vela-protocol/src/instructions/execute_pull.rs");
+    let execute_pull =
+        include_str!("../programs/vela-protocol/src/instructions/billing/execute_pull.rs");
     let request_validation =
-        include_str!("../programs/vela-protocol/src/instructions/request_validation.rs");
-    let request_billing_record =
-        include_str!("../programs/vela-protocol/src/instructions/request_billing_record.rs");
-    let request_usage_computation =
-        include_str!("../programs/vela-protocol/src/instructions/request_usage_computation.rs");
+        include_str!("../programs/vela-protocol/src/instructions/billing/request_validation.rs");
+    let request_billing_record = include_str!(
+        "../programs/vela-protocol/src/instructions/billing/request_billing_record.rs"
+    );
+    let request_usage_computation = include_str!(
+        "../programs/vela-protocol/src/instructions/billing/request_usage_computation.rs"
+    );
     let validation_callback =
-        include_str!("../programs/vela-protocol/src/instructions/validation_callback.rs");
+        include_str!("../programs/vela-protocol/src/instructions/billing/validation_callback.rs");
     let billing_callback =
-        include_str!("../programs/vela-protocol/src/instructions/billing_callback.rs");
-    let usage_computation_callback =
-        include_str!("../programs/vela-protocol/src/instructions/usage_computation_callback.rs");
-    let wrap = include_str!("../programs/vela-protocol/src/instructions/wrap.rs");
-    let unwrap = include_str!("../programs/vela-protocol/src/instructions/unwrap.rs");
+        include_str!("../programs/vela-protocol/src/instructions/billing/billing_callback.rs");
+    let usage_computation_callback = include_str!(
+        "../programs/vela-protocol/src/instructions/billing/usage_computation_callback.rs"
+    );
+    let wrap = include_str!("../programs/vela-protocol/src/instructions/token/wrap.rs");
+    let unwrap = include_str!("../programs/vela-protocol/src/instructions/token/unwrap.rs");
 
     // execute_pull uses both load_keeper_config and load_protocol_config
     assert!(

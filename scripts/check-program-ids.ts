@@ -49,8 +49,21 @@ assertRustByteArray(
   hookBytes,
   "transfer hook bytes",
 );
-assertIncludes(resolve(protocolRoot, "scripts/deploy-devnet.sh"), 'ids["velaProtocol"]', "deploy script protocol manifest lookup");
-assertIncludes(resolve(protocolRoot, "scripts/deploy-devnet.sh"), 'ids["velaTransferHook"]', "deploy script transfer hook manifest lookup");
+assertIncludes(
+  resolve(protocolRoot, "scripts/deploy-devnet.sh"),
+  "read_devnet_program_ids",
+  "deploy script manifest lookup",
+);
+assertIncludes(
+  resolve(protocolRoot, "scripts/lib/program-ids.sh"),
+  'ids["velaProtocol"]',
+  "shell manifest helper protocol lookup",
+);
+assertIncludes(
+  resolve(protocolRoot, "scripts/lib/program-ids.sh"),
+  'ids["velaTransferHook"]',
+  "shell manifest helper transfer hook lookup",
+);
 assertIncludes(resolve(protocolRoot, "ts-tests/setup.ts"), "transferHookIdl.address", "ts test hook id");
 assertIncludes(resolve(protocolRoot, "README.md"), `| \`vela-protocol\` | \`${devnet.velaProtocol}\` |`, "README protocol id");
 assertIncludes(
