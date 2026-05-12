@@ -14,9 +14,9 @@ property transfer_hook_bound_to_protocol_config :
   state.hook_matches_protocol_config == 1
   preserved_by [transfer_hook_execute, execute_stream, cancel_stream]
 
-property usage_report_single_settlement :
+property usage_report_paid_only_after_settlement :
   state.usage_report_settled == 1 implies state.usage_report_matches_mandate == 1
-  preserved_by [request_usage_computation, usage_charge_callback]
+  preserved_by [request_usage_computation, usage_charge_callback, execute_pull]
 
 property usage_computation_uses_committed_ciphertext :
   state.usage_ciphertext_committed == 1

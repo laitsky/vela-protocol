@@ -60,11 +60,16 @@ describe("execute_pull", () => {
       fixture.mandate,
     );
     advanceClock(fixture.svm, BigInt(mandateBefore.nextPaymentDue.toString()));
+    const periodEnd = BigInt(mandateBefore.nextPaymentDue.toString());
+    const periodStart = periodEnd - BigInt(mandateBefore.frequency.toString());
     insertPullApproval({
       svm: fixture.svm,
       mandate: fixture.mandate,
-      validUntil: BigInt(mandateBefore.nextPaymentDue.toString()),
+      periodStart,
+      periodEnd,
+      validUntil: periodEnd + 3_600n,
       approvedAmount: fixture.amount,
+      createdAt: periodEnd,
     });
 
     fixture.svm.expireBlockhash();

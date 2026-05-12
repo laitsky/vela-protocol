@@ -70,12 +70,11 @@ handler usage_charge_callback : State.Active -> State.Active {
   requires state.usage_report_matches_mandate == 1 else BillingTypeMismatch
   requires state.usage_report_settled == 0 else UsageReportAlreadySettled
   requires state.computed_charge <= state.mandate_amount else AmountExceedsPlanAmount
-  modifies [usage_report_settled, arcium_request_pending]
+  modifies [arcium_request_pending]
   effect {
-    usage_report_settled := 1
     arcium_request_pending := 0
   }
-  ensures state.usage_report_settled == 1
+  ensures state.usage_report_settled == 0
   ensures state.arcium_request_pending == 0
 }
 

@@ -11,36 +11,63 @@ fn main() {
 
     println!("cargo:rerun-if-changed={}", build_dir.display());
 
-    let validate_params = load_inputs(&build_dir, "validate_mandate");
-    let validate_outputs = load_outputs(&build_dir, "validate_mandate");
-    let validate_weight = load_weight(&build_dir, "validate_mandate");
-
-    let billing_params = load_inputs(&build_dir, "record_billing_event");
-    let billing_outputs = load_outputs(&build_dir, "record_billing_event");
-    let billing_weight = load_weight(&build_dir, "record_billing_event");
+    let validate = load_circuit_metadata(&build_dir, "validate_mandate");
+    let usage_charge = load_circuit_metadata(&build_dir, "usage_charge");
+    let tiered_pricing = load_circuit_metadata(&build_dir, "tiered_pricing");
+    let billing = load_circuit_metadata(&build_dir, "record_billing_event");
 
     let generated = format!(
         "use arcium_client::idl::arcium::types::{{Output, Parameter}};\n\
          pub const VALIDATE_MANDATE_PARAMS: [Parameter; {validate_params_len}] = {validate_params};\n\
          pub const VALIDATE_MANDATE_OUTPUTS: [Output; {validate_outputs_len}] = {validate_outputs};\n\
          pub const VALIDATE_MANDATE_WEIGHT: u64 = {validate_weight};\n\
+         pub const USAGE_CHARGE_PARAMS: [Parameter; {usage_charge_params_len}] = {usage_charge_params};\n\
+         pub const USAGE_CHARGE_OUTPUTS: [Output; {usage_charge_outputs_len}] = {usage_charge_outputs};\n\
+         pub const USAGE_CHARGE_WEIGHT: u64 = {usage_charge_weight};\n\
+         pub const TIERED_PRICING_PARAMS: [Parameter; {tiered_pricing_params_len}] = {tiered_pricing_params};\n\
+         pub const TIERED_PRICING_OUTPUTS: [Output; {tiered_pricing_outputs_len}] = {tiered_pricing_outputs};\n\
+         pub const TIERED_PRICING_WEIGHT: u64 = {tiered_pricing_weight};\n\
          pub const RECORD_BILLING_EVENT_PARAMS: [Parameter; {billing_params_len}] = {billing_params};\n\
          pub const RECORD_BILLING_EVENT_OUTPUTS: [Output; {billing_outputs_len}] = {billing_outputs};\n\
          pub const RECORD_BILLING_EVENT_WEIGHT: u64 = {billing_weight};\n",
-        validate_params_len = validate_params.len(),
-        validate_params = rust_array(&validate_params),
-        validate_outputs_len = validate_outputs.len(),
-        validate_outputs = rust_array(&validate_outputs),
-        validate_weight = validate_weight,
-        billing_params_len = billing_params.len(),
-        billing_params = rust_array(&billing_params),
-        billing_outputs_len = billing_outputs.len(),
-        billing_outputs = rust_array(&billing_outputs),
-        billing_weight = billing_weight,
+        validate_params_len = validate.params.len(),
+        validate_params = rust_array(&validate.params),
+        validate_outputs_len = validate.outputs.len(),
+        validate_outputs = rust_array(&validate.outputs),
+        validate_weight = validate.weight,
+        usage_charge_params_len = usage_charge.params.len(),
+        usage_charge_params = rust_array(&usage_charge.params),
+        usage_charge_outputs_len = usage_charge.outputs.len(),
+        usage_charge_outputs = rust_array(&usage_charge.outputs),
+        usage_charge_weight = usage_charge.weight,
+        tiered_pricing_params_len = tiered_pricing.params.len(),
+        tiered_pricing_params = rust_array(&tiered_pricing.params),
+        tiered_pricing_outputs_len = tiered_pricing.outputs.len(),
+        tiered_pricing_outputs = rust_array(&tiered_pricing.outputs),
+        tiered_pricing_weight = tiered_pricing.weight,
+        billing_params_len = billing.params.len(),
+        billing_params = rust_array(&billing.params),
+        billing_outputs_len = billing.outputs.len(),
+        billing_outputs = rust_array(&billing.outputs),
+        billing_weight = billing.weight,
     );
 
     fs::write(out_dir.join("circuit_metadata.rs"), generated)
         .expect("failed to write generated circuit metadata");
+}
+
+struct CircuitMetadata {
+    params: Vec<String>,
+    outputs: Vec<String>,
+    weight: u64,
+}
+
+fn load_circuit_metadata(build_dir: &Path, circuit: &str) -> CircuitMetadata {
+    CircuitMetadata {
+        params: load_inputs(build_dir, circuit),
+        outputs: load_outputs(build_dir, circuit),
+        weight: load_weight(build_dir, circuit),
+    }
 }
 
 fn load_inputs(build_dir: &Path, circuit: &str) -> Vec<String> {
@@ -108,6 +135,7 @@ fn map_leaf_type(leaf_type: &str, kind: SchemaKind) -> String {
         (SchemaKind::Input, "arcis_x25519_pubkey") => "Parameter::ArcisX25519Pubkey".into(),
         (SchemaKind::Input, "u128") => "Parameter::PlaintextU128".into(),
         (SchemaKind::Input, "u64") => "Parameter::PlaintextU64".into(),
+        (SchemaKind::Input, "u8") => "Parameter::PlaintextU8".into(),
         (SchemaKind::Input, "i64") => "Parameter::PlaintextI64".into(),
         (SchemaKind::Input, "bool") => "Parameter::PlaintextBool".into(),
         (SchemaKind::Input, "ciphertext") => "Parameter::Ciphertext".into(),

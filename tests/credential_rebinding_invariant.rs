@@ -145,6 +145,10 @@ fn stream_rate_change_does_not_rebind_credential_address() {
     let (merchant_credential_mint, _) = harness.derive_merchant_credential_mint();
     let credential_before =
         harness.derive_credential_ata(&subscriber_pubkey, &merchant_credential_mint);
+    let stream_before: StreamMandate = harness.fetch_anchor_account(&stream_mandate);
+    harness.set_clock_timestamp(
+        stream_before.last_settled_ts + i64::from(stream_before.min_settle_interval) + 1,
+    );
 
     harness
         .send_update_stream_rate(

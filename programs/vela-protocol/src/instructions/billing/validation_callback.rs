@@ -3,9 +3,11 @@ use crate::instructions::arcium_accounts::{
     validate_static_callback_accounts,
 };
 use crate::{
+    constants::PULL_APPROVAL_TTL_SECONDS,
     errors::VelaError,
     instructions::{
         arcium_request_state::{complete_arcium_request, validate_pending_arcium_request},
+        mandate_account::mandate_billing_period,
         protocol_config_account::load_protocol_config,
     },
     state::{
@@ -17,7 +19,7 @@ use crate::{
 use anchor_lang::prelude::*;
 use arcium_anchor::{prelude::*, HasSize};
 
-const VALIDATE_MANDATE_CIRCUIT: &str = "validate_mandate";
+const VALIDATE_MANDATE_CIRCUIT: &str = "validate_mandate_v2";
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct ValidateMandateOutput {
@@ -37,14 +39,16 @@ pub fn validate_mandate_callback(
     ctx: Context<ValidateMandateCallback>,
     output: SignedComputationOutputs<ValidateMandateOutput>,
 ) -> Result<()> {
+    let loaded_config = load_protocol_config(&ctx.accounts.config.to_account_info())?;
+    let config = loaded_config.into_current();
+    validate_protocol_config(&config)?;
+    let mxe_program_id = config.effective_mxe_program_id();
     validate_static_callback_accounts(
         &ctx.accounts.mxe_account,
         &ctx.accounts.comp_def_account,
         VALIDATE_MANDATE_CIRCUIT,
+        &mxe_program_id,
     )?;
-    let loaded_config = load_protocol_config(&ctx.accounts.config.to_account_info())?;
-    let config = loaded_config.into_current();
-    validate_protocol_config(&config)?;
     validate_callback_binding(
         &config,
         &ctx.accounts.cluster_account,
@@ -72,9 +76,15 @@ pub fn validate_mandate_callback(
         VelaError::BillingTypeMismatch
     );
 
+    let now = Clock::get()?.unix_timestamp;
+    let (period_start, period_end) = mandate_billing_period(&ctx.accounts.mandate)?;
     let approval = &mut ctx.accounts.pull_approval;
     approval.mandate = ctx.accounts.mandate.key();
-    approval.valid_until = ctx.accounts.mandate.next_payment_due;
+    approval.period_start = period_start;
+    approval.period_end = period_end;
+    approval.valid_until = now
+        .checked_add(PULL_APPROVAL_TTL_SECONDS)
+        .ok_or(VelaError::Overflow)?;
     approval.approved = result;
     approval.approved_amount = match ctx.accounts.mandate.billing_type {
         BillingType::Flat => ctx.accounts.mandate.amount,
@@ -85,7 +95,6 @@ pub fn validate_mandate_callback(
             ctx.accounts.mandate.amount
         }
     };
-    let now = Clock::get()?.unix_timestamp;
     approval.created_at = now;
     approval.bump = ctx.bumps.pull_approval;
     complete_arcium_request(&mut ctx.accounts.request_state, now)?;

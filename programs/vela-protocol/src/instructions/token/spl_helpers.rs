@@ -2,6 +2,9 @@ use anchor_lang::{prelude::*, solana_program::program::invoke_signed};
 use solana_instruction::{AccountMeta as SplAccountMeta, Instruction as SplInstruction};
 use solana_program_error::ProgramError as SplProgramError;
 use solana_pubkey::Pubkey as SplPubkey;
+use spl_token_2022::{extension::StateWithExtensions, state::Account as Token2022Account};
+
+use crate::errors::VelaError;
 
 pub(crate) struct TransferCheckedWithHookAccounts<'a, 'info> {
     pub source: &'a AccountInfo<'info>,
@@ -71,27 +74,67 @@ pub(crate) fn map_spl_error_preserving_custom(error: SplProgramError) -> anchor_
 }
 
 pub(crate) fn transfer_hook_account_metas(
-    protocol_program: &Pubkey,
-    wrapping_vault: &Pubkey,
-    protocol_config: &Pubkey,
-    pull_approval: &Pubkey,
-    token_config: &Pubkey,
-    system_program: &Pubkey,
-    extra_account_meta_list: &Pubkey,
-    hook_program: &Pubkey,
+    accounts: &TransferCheckedWithHookAccounts<'_, '_>,
 ) -> [SplAccountMeta; 10] {
     [
-        SplAccountMeta::new_readonly(spl_pubkey(protocol_program), false),
-        SplAccountMeta::new_readonly(spl_pubkey(wrapping_vault), false),
-        SplAccountMeta::new_readonly(spl_pubkey(protocol_config), false),
-        SplAccountMeta::new(spl_pubkey(pull_approval), false),
-        SplAccountMeta::new_readonly(spl_pubkey(token_config), false),
-        SplAccountMeta::new_readonly(spl_pubkey(system_program), false),
-        SplAccountMeta::new_readonly(spl_pubkey(system_program), false),
-        SplAccountMeta::new_readonly(spl_pubkey(system_program), false),
-        SplAccountMeta::new_readonly(spl_pubkey(extra_account_meta_list), false),
-        SplAccountMeta::new_readonly(spl_pubkey(hook_program), false),
+        SplAccountMeta::new_readonly(spl_pubkey(accounts.protocol_program.key), false),
+        SplAccountMeta::new_readonly(spl_pubkey(accounts.wrapping_vault.key), false),
+        SplAccountMeta::new_readonly(spl_pubkey(accounts.protocol_config.key), false),
+        SplAccountMeta::new(spl_pubkey(accounts.pull_approval.key), false),
+        SplAccountMeta::new_readonly(spl_pubkey(accounts.token_config.key), false),
+        SplAccountMeta::new_readonly(spl_pubkey(accounts.system_program.key), false),
+        SplAccountMeta::new_readonly(spl_pubkey(accounts.system_program.key), false),
+        SplAccountMeta::new_readonly(spl_pubkey(accounts.system_program.key), false),
+        SplAccountMeta::new_readonly(spl_pubkey(accounts.extra_account_meta_list.key), false),
+        SplAccountMeta::new_readonly(spl_pubkey(accounts.hook_program.key), false),
     ]
+}
+
+pub(crate) fn validate_token_2022_transfer_accounts(
+    source: &AccountInfo<'_>,
+    destination: &AccountInfo<'_>,
+    mint: &Pubkey,
+    token_2022_program: &Pubkey,
+    expected_source_authority: &Pubkey,
+    expected_destination_owner: &Pubkey,
+) -> Result<()> {
+    require_keys_eq!(
+        *source.owner,
+        *token_2022_program,
+        VelaError::TransferNotAuthorized
+    );
+    require_keys_eq!(
+        *destination.owner,
+        *token_2022_program,
+        VelaError::TransferNotAuthorized
+    );
+
+    let source_data = source.try_borrow_data()?;
+    let source_account = StateWithExtensions::<Token2022Account>::unpack(&source_data)
+        .map_err(|_| error!(VelaError::TransferNotAuthorized))?;
+    let destination_data = destination.try_borrow_data()?;
+    let destination_account = StateWithExtensions::<Token2022Account>::unpack(&destination_data)
+        .map_err(|_| error!(VelaError::TransferNotAuthorized))?;
+
+    let source_mint = Pubkey::new_from_array(source_account.base.mint.to_bytes());
+    let destination_mint = Pubkey::new_from_array(destination_account.base.mint.to_bytes());
+    let source_owner = Pubkey::new_from_array(source_account.base.owner.to_bytes());
+    let destination_owner = Pubkey::new_from_array(destination_account.base.owner.to_bytes());
+
+    require_keys_eq!(source_mint, *mint, VelaError::UsdcMintMismatch);
+    require_keys_eq!(destination_mint, *mint, VelaError::UsdcMintMismatch);
+    require_keys_eq!(
+        source_owner,
+        *expected_source_authority,
+        VelaError::TransferNotAuthorized
+    );
+    require_keys_eq!(
+        destination_owner,
+        *expected_destination_owner,
+        VelaError::TransferNotAuthorized
+    );
+
+    Ok(())
 }
 
 pub(crate) fn invoke_transfer_checked_with_hook(
@@ -114,16 +157,7 @@ pub(crate) fn invoke_transfer_checked_with_hook(
 
     transfer_ix
         .accounts
-        .extend_from_slice(&transfer_hook_account_metas(
-            accounts.protocol_program.key,
-            accounts.wrapping_vault.key,
-            accounts.protocol_config.key,
-            accounts.pull_approval.key,
-            accounts.token_config.key,
-            accounts.system_program.key,
-            accounts.extra_account_meta_list.key,
-            accounts.hook_program.key,
-        ));
+        .extend_from_slice(&transfer_hook_account_metas(&accounts));
 
     let transfer_ix = convert_instruction(transfer_ix);
     let transfer_account_infos = [

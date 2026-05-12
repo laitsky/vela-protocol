@@ -18,7 +18,7 @@ use arcium_client::idl::arcium::{
     cpi::accounts::QueueComputation as ArciumQueueComputation, types::CallbackAccount,
 };
 
-const RECORD_BILLING_EVENT_CIRCUIT: &str = "record_billing_event";
+const RECORD_BILLING_EVENT_CIRCUIT: &str = "record_billing_event_v2";
 const RECORD_BILLING_EVENT_CALLBACK_DISCRIMINATOR: [u8; 8] = [123, 164, 16, 122, 130, 206, 223, 55];
 
 pub fn request_billing_record(
@@ -46,6 +46,7 @@ pub fn request_billing_record(
     );
     let config = load_protocol_config(&ctx.accounts.config.to_account_info())?.into_current();
     validate_protocol_config(&config)?;
+    let mxe_program_id = config.effective_mxe_program_id();
 
     let mandate_key = ctx.accounts.mandate.key();
     let next_request_nonce = mandate
@@ -76,6 +77,7 @@ pub fn request_billing_record(
         config.cluster_offset,
         computation_offset,
         RECORD_BILLING_EVENT_CIRCUIT,
+        &mxe_program_id,
     )?;
 
     let frequency = i64::try_from(ctx.accounts.plan.frequency).map_err(|_| VelaError::Overflow)?;
@@ -139,6 +141,7 @@ pub fn request_billing_record(
             computation_offset,
             config.cluster_offset,
             RECORD_BILLING_EVENT_CIRCUIT,
+            &mxe_program_id,
             &[
                 CallbackAccount {
                     pubkey: ctx.accounts.request_state.key(),
@@ -291,7 +294,9 @@ impl<'info> QueueCompAccs<'info> for RequestBillingRecord<'info> {
     }
 
     fn mxe_program(&self) -> Pubkey {
-        ID
+        load_protocol_config(&self.config.to_account_info())
+            .map(|config| config.into_current().effective_mxe_program_id())
+            .unwrap_or(ID)
     }
 
     fn signer_pda_bump(&self) -> u8 {

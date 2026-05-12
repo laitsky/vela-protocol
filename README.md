@@ -91,6 +91,8 @@ Arcium calls record_billing_event_callback -> BillingEvent stored (immutable)
 | `init_keeper_config` | Configure keeper authority and mode (Centralized / TukTuk) |
 | `update_keeper_config` | Update keeper settings |
 | `init_validate_mandate_comp_def` | Register Arcium computation definition for mandate validation |
+| `init_usage_charge_comp_def` | Register Arcium computation definition for single-tier usage pricing |
+| `init_tiered_pricing_comp_def` | Register Arcium computation definition for tiered usage pricing |
 | `init_record_billing_comp_def` | Register Arcium computation definition for billing event |
 
 ### vela-transfer-hook
@@ -111,7 +113,7 @@ Arcium calls record_billing_event_callback -> BillingEvent stored (immutable)
 | `VelaPlan` | `[b"plan", merchant, plan_id]` | Flat-rate subscription template with billing mint |
 | `UsagePlan` | `[b"usage_plan", merchant, plan_id]` | Usage-based pricing template (up to 5 tiers) |
 | `VelaMandate` | `[b"mandate", subscriber, plan]` | Active subscription: tracks pull count, next due, billing type |
-| `PullApproval` | `[b"approval", mandate]` | Per-period approval from Arcium; `valid_until = mandate.next_payment_due` |
+| `PullApproval` | `[b"approval", mandate]` | Per-period approval from Arcium; `valid_until` is a short approval expiry |
 | `UsageReport` | `[b"usage_report", mandate, period_start]` | Encrypted usage data submitted by merchant |
 | `BillingEvent` | `[b"billing", mandate, pulls_executed]` | Encrypted audit record, no close authority |
 

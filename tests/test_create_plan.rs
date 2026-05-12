@@ -70,6 +70,23 @@ fn test_create_plan_rejects_low_frequency() {
 }
 
 #[test]
+fn test_create_plan_rejects_zero_amount() {
+    let mut harness = TestHarness::new();
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+    let error = harness
+        .send_create_plan(0, MIN_FREQUENCY_SECONDS, 0, 4, 0)
+        .expect_err("create_plan should reject zero amount");
+
+    assert!(
+        format!("{:?}", error.err).contains("Custom(6057)"),
+        "expected InvalidAmount custom error, got {:?}",
+        error.err,
+    );
+}
+
+#[test]
 fn test_create_plan_rejects_zero_max_pulls() {
     let mut harness = TestHarness::new();
     let error = harness

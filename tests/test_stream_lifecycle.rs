@@ -14,7 +14,10 @@ use spl_token::state::Account as SplTokenAccount;
 use spl_token_2022::extension::{
     transfer_hook::TransferHookAccount, BaseStateWithExtensions, StateWithExtensions,
 };
-use vela_protocol::state::{MerchantState, StreamMandate, StreamStatus, VelaMandate};
+use vela_protocol::{
+    errors::VelaError,
+    state::{MerchantState, StreamMandate, StreamStatus, VelaMandate},
+};
 
 struct StreamFixture {
     harness: TestHarness,
@@ -297,6 +300,76 @@ fn test_execute_stream_clamped() {
 }
 
 #[test]
+fn execute_stream_rejects_non_merchant_destination_owner() {
+    let mut fixture = setup_stream_fixture(10, 10, None, 60, 5_000);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 100);
+    let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
+    let attacker = fixture.harness.create_wallet();
+    let attacker_pubkey = Pubkey::new_from_array(attacker.pubkey().to_bytes());
+    let admin = fixture.harness.merchant.insecure_clone();
+    let attacker_wrapped =
+        fixture
+            .harness
+            .create_token_2022_ata(&admin, &attacker_pubkey, &fixture.wrapped_mint);
+    let stream_before: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
+    let merchant_before = fixture
+        .harness
+        .fetch_spl_token_account(&fixture.merchant_wrapped)
+        .amount;
+    let attacker_before = fixture
+        .harness
+        .fetch_spl_token_account(&attacker_wrapped)
+        .amount;
+
+    let err = fixture
+        .harness
+        .send_execute_stream(
+            &fixture.subscriber,
+            &subscriber,
+            &fixture.stream_mandate,
+            &fixture.subscriber_wrapped,
+            &attacker_wrapped,
+            &fixture.wrapped_mint,
+        )
+        .expect_err("execute_stream must reject attacker-owned destination accounts");
+
+    let transfer_not_authorized = format!(
+        "Custom({})",
+        anchor_lang::error::ERROR_CODE_OFFSET + VelaError::TransferNotAuthorized as u32
+    );
+    assert!(
+        error_has(&err, &transfer_not_authorized) || error_has(&err, "TransferNotAuthorized"),
+        "expected TransferNotAuthorized, got err={:?}, logs={:?}",
+        err.err,
+        err.meta.logs
+    );
+
+    let stream_after: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
+    assert_eq!(stream_after.total_streamed, stream_before.total_streamed);
+    assert_eq!(stream_after.last_settled_ts, stream_before.last_settled_ts);
+    assert_eq!(
+        fixture
+            .harness
+            .fetch_spl_token_account(&fixture.merchant_wrapped)
+            .amount,
+        merchant_before
+    );
+    assert_eq!(
+        fixture
+            .harness
+            .fetch_spl_token_account(&attacker_wrapped)
+            .amount,
+        attacker_before
+    );
+}
+
+#[test]
 fn test_execute_stream_cap_clamp() {
     let mut fixture = setup_stream_fixture(10, 10, Some(500), 60, 5_000);
     fixture
@@ -430,6 +503,71 @@ fn test_pause_requires_active() {
         .expect_err("second pause should fail once mandate is paused");
 
     assert!(error_has(&err, "6701") || error_has(&err, "StreamAlreadyPaused"));
+}
+
+#[test]
+fn pause_stream_rejects_non_merchant_destination_owner_when_settling() {
+    let mut fixture = setup_stream_fixture(10, 10, None, 60, 5_000);
+    fixture
+        .harness
+        .set_clock_timestamp(fixture.created_at + 100);
+    let attacker = fixture.harness.create_wallet();
+    let attacker_pubkey = Pubkey::new_from_array(attacker.pubkey().to_bytes());
+    let admin = fixture.harness.merchant.insecure_clone();
+    let attacker_wrapped =
+        fixture
+            .harness
+            .create_token_2022_ata(&admin, &attacker_pubkey, &fixture.wrapped_mint);
+    let stream_before: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
+    let merchant_before = fixture
+        .harness
+        .fetch_spl_token_account(&fixture.merchant_wrapped)
+        .amount;
+
+    let err = fixture
+        .harness
+        .send_pause_stream(
+            &fixture.subscriber,
+            &fixture.stream_mandate,
+            &fixture.subscriber_wrapped,
+            &attacker_wrapped,
+            &fixture.wrapped_mint,
+        )
+        .expect_err("pause_stream must reject attacker-owned destination accounts");
+
+    let transfer_not_authorized = format!(
+        "Custom({})",
+        anchor_lang::error::ERROR_CODE_OFFSET + VelaError::TransferNotAuthorized as u32
+    );
+    assert!(
+        error_has(&err, &transfer_not_authorized) || error_has(&err, "TransferNotAuthorized"),
+        "expected TransferNotAuthorized, got err={:?}, logs={:?}",
+        err.err,
+        err.meta.logs
+    );
+
+    let stream_after: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
+    assert_eq!(stream_after.total_streamed, stream_before.total_streamed);
+    assert_eq!(stream_after.last_settled_ts, stream_before.last_settled_ts);
+    assert_eq!(stream_after.status, StreamStatus::Active);
+    assert_eq!(
+        fixture
+            .harness
+            .fetch_spl_token_account(&fixture.merchant_wrapped)
+            .amount,
+        merchant_before
+    );
+    assert_eq!(
+        fixture
+            .harness
+            .fetch_spl_token_account(&attacker_wrapped)
+            .amount,
+        0
+    );
 }
 
 #[test]

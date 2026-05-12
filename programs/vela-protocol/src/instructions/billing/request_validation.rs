@@ -6,7 +6,10 @@ use crate::{
     errors::VelaError,
     instructions::{
         arcium_request_state::{start_arcium_request, StartArciumRequestArgs},
-        mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
+        mandate_account::{
+            load_mandate_account, mandate_billing_period, validate_loaded_mandate_address,
+            write_mandate,
+        },
         plan_account::{load_plan_account, require_plan_billing_type},
         protocol_config_account::load_protocol_config,
     },
@@ -22,7 +25,7 @@ use arcium_client::idl::arcium::{
     cpi::accounts::QueueComputation as ArciumQueueComputation, types::CallbackAccount,
 };
 
-const VALIDATE_MANDATE_CIRCUIT: &str = "validate_mandate";
+const VALIDATE_MANDATE_CIRCUIT: &str = "validate_mandate_v2";
 const VALIDATE_MANDATE_CALLBACK_DISCRIMINATOR: [u8; 8] = [18, 21, 173, 122, 11, 126, 79, 200];
 
 pub fn request_validation(
@@ -81,6 +84,7 @@ pub fn request_validation(
     require!(ciphertext.len() == 8, VelaError::InvalidCiphertextInput);
     let config = load_protocol_config(&ctx.accounts.config.to_account_info())?.into_current();
     validate_protocol_config(&config)?;
+    let mxe_program_id = config.effective_mxe_program_id();
 
     let next_request_nonce = mandate
         .validation_request_nonce
@@ -113,9 +117,14 @@ pub fn request_validation(
         config.cluster_offset,
         computation_offset,
         VALIDATE_MANDATE_CIRCUIT,
+        &mxe_program_id,
     )?;
 
+    let (period_start, period_end) = mandate_billing_period(&mandate)?;
     if ctx.accounts.pull_approval.approved
+        && ctx.accounts.pull_approval.mandate == ctx.accounts.mandate.key()
+        && ctx.accounts.pull_approval.period_start == period_start
+        && ctx.accounts.pull_approval.period_end == period_end
         && clock.unix_timestamp <= ctx.accounts.pull_approval.valid_until
     {
         return Err(VelaError::ApprovalAlreadyExists.into());
@@ -136,6 +145,8 @@ pub fn request_validation(
 
     let approval = &mut ctx.accounts.pull_approval;
     approval.mandate = Pubkey::default();
+    approval.period_start = 0;
+    approval.period_end = 0;
     approval.valid_until = 0;
     approval.approved = false;
     approval.approved_amount = 0;
@@ -172,6 +183,7 @@ pub fn request_validation(
             computation_offset,
             config.cluster_offset,
             VALIDATE_MANDATE_CIRCUIT,
+            &mxe_program_id,
             &[
                 CallbackAccount {
                     pubkey: ctx.accounts.request_state.key(),
@@ -309,7 +321,9 @@ impl<'info> QueueCompAccs<'info> for RequestValidation<'info> {
     }
 
     fn mxe_program(&self) -> Pubkey {
-        ID
+        load_protocol_config(&self.config.to_account_info())
+            .map(|config| config.into_current().effective_mxe_program_id())
+            .unwrap_or(ID)
     }
 
     fn signer_pda_bump(&self) -> u8 {

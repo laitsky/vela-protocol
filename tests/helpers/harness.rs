@@ -14,7 +14,10 @@ use super::pda::{derive_mandate_v2_pda, derive_token_config_pda};
 use std::path::{Path, PathBuf};
 
 use anchor_lang::{
-    prelude::Pubkey, AccountDeserialize, AccountSerialize, InstructionData, ToAccountMetas,
+    prelude::Pubkey,
+    solana_program::bpf_loader_upgradeable::{self, UpgradeableLoaderState},
+    AccountDeserialize, AccountSerialize, AnchorDeserialize, Discriminator, InstructionData,
+    ToAccountMetas,
 };
 use litesvm::{
     types::{FailedTransactionMetadata, TransactionMetadata},
@@ -35,7 +38,8 @@ use spl_associated_token_account::get_associated_token_address_with_program_id;
 use spl_token::state::{Account as SplTokenAccount, Mint as SplMint};
 use vela_protocol::{
     constants::{EXTRA_ACCOUNT_METAS_SEED, MINT_AUTHORITY_SEED},
-    instructions::arcium_accounts::derive_cluster_pubkey,
+    instructions::arcium_accounts::{derive_cluster_pubkey, derive_mxe_pubkey},
+    instructions::mandate_account::VelaMandateV1,
     state::{
         AgentMandate, BillingEvent, BillingRail, ClusterType, KeeperConfig, KeeperMode,
         MerchantState, PricingTier, ProtocolConfig, PullApproval, StreamMandate, UsagePlan,
@@ -523,8 +527,13 @@ impl TestHarness {
         if self.svm.get_account(&to_address(config)).is_some() {
             return config;
         }
+        self.set_protocol_program_upgrade_authority(&to_anchor_pubkey(admin.pubkey()));
+        let program_data = self.derive_protocol_program_data_address();
         let accounts = vela_protocol::accounts::InitConfig {
             admin: to_anchor_pubkey(admin.pubkey()),
+            program: vela_protocol::ID,
+            program_data,
+            mxe_account: derive_mxe_pubkey(&vela_protocol::ID),
             config,
             system_program: anchor_lang::system_program::ID,
         };
@@ -540,6 +549,7 @@ impl TestHarness {
                     cluster_pubkey: derive_cluster_pubkey(456),
                     cluster_type: ClusterType::Cerberus,
                     cluster_offset: 456,
+                    mxe_program_id: vela_protocol::ID,
                 },
             }
             .data(),
@@ -547,6 +557,37 @@ impl TestHarness {
         self.send_instruction(&instruction, &[admin], Some(&admin.pubkey()))
             .expect("init_config should succeed");
         config
+    }
+
+    pub fn derive_protocol_program_data_address(&self) -> Pubkey {
+        Pubkey::find_program_address(&[vela_protocol::ID.as_ref()], &bpf_loader_upgradeable::ID).0
+    }
+
+    pub fn set_protocol_program_upgrade_authority(&mut self, authority: &Pubkey) {
+        let program_data = self.derive_protocol_program_data_address();
+        let program_data_address = to_address(program_data);
+        let mut account = self
+            .svm
+            .get_account(&program_data_address)
+            .expect("protocol program data account should exist");
+        let metadata_len = UpgradeableLoaderState::size_of_programdata_metadata();
+        let existing_state: UpgradeableLoaderState =
+            bincode::deserialize(&account.data[..metadata_len])
+                .expect("program data metadata should deserialize");
+        let slot = match existing_state {
+            UpgradeableLoaderState::ProgramData { slot, .. } => slot,
+            _ => panic!("expected program data metadata"),
+        };
+        let state = UpgradeableLoaderState::ProgramData {
+            slot,
+            upgrade_authority_address: Some(*authority),
+        };
+        let mut metadata_slice: &mut [u8] = &mut account.data[..metadata_len];
+        bincode::serialize_into(&mut metadata_slice, &state)
+            .expect("program data metadata should serialize");
+        self.svm
+            .set_account(program_data_address, account)
+            .expect("program data authority should update");
     }
 
     pub fn init_wrapped_mint(
@@ -1088,6 +1129,57 @@ impl TestHarness {
         )
     }
 
+    pub fn send_execute_usage_pull(
+        &mut self,
+        payer: &Keypair,
+        subscriber: &Pubkey,
+        usage_plan: &Pubkey,
+        mandate: &Pubkey,
+        usage_report: Option<&Pubkey>,
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let config = self.derive_config();
+        let config_account: ProtocolConfig = self.fetch_anchor_account(&config);
+        let wrapped_usdc_mint = config_account.wrapped_usdc_mint;
+        let (extra_account_meta_list, _) = self.derive_extra_account_meta_list(&wrapped_usdc_mint);
+        let pull_approval = self.derive_pull_approval_address(mandate);
+        let keeper_config = self.ensure_keeper_config(payer);
+        let accounts = vela_protocol::accounts::ExecutePull {
+            payer: to_anchor_pubkey(payer.pubkey()),
+            subscriber: *subscriber,
+            merchant: self.merchant_pubkey(),
+            keeper_config,
+            plan: *usage_plan,
+            mandate: *mandate,
+            subscriber_wrapped_account: *subscriber,
+            merchant_wrapped_account: self.merchant_pubkey(),
+            wrapped_usdc_mint,
+            pull_approval,
+            token_config: self.derive_token_config_address(&wrapped_usdc_mint),
+            protocol_config: config,
+            wrapping_vault: config_account.wrapping_vault,
+            hook_program: Pubkey::new_from_array(vela_transfer_hook::ID.to_bytes()),
+            extra_account_meta_list,
+            protocol_program: vela_protocol::ID,
+            token_2022_program: token_2022_anchor_id(),
+            system_program: anchor_lang::system_program::ID,
+        };
+
+        let mut metas: Vec<AccountMeta> = accounts
+            .to_account_metas(None)
+            .into_iter()
+            .map(convert_account_meta)
+            .collect();
+        if let Some(report) = usage_report {
+            metas.push(AccountMeta::new(to_address(*report), false));
+        }
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts: metas,
+            data: vela_protocol::instruction::ExecutePull {}.data(),
+        };
+        self.send_instruction(&instruction, &[payer], Some(&payer.pubkey()))
+    }
+
     pub fn send_create_stream_mandate(
         &mut self,
         subscriber: &Keypair,
@@ -1451,9 +1543,31 @@ impl TestHarness {
         approved: bool,
         approved_amount: u64,
     ) -> Pubkey {
+        let (period_start, period_end) = self.current_mandate_period(mandate);
+        self.create_pull_approval_with_period_and_amount(
+            mandate,
+            period_start,
+            period_end,
+            valid_until,
+            approved,
+            approved_amount,
+        )
+    }
+
+    pub fn create_pull_approval_with_period_and_amount(
+        &mut self,
+        mandate: &Pubkey,
+        period_start: i64,
+        period_end: i64,
+        valid_until: i64,
+        approved: bool,
+        approved_amount: u64,
+    ) -> Pubkey {
         let approval_pda = self.derive_pull_approval_address(mandate);
         let approval = PullApproval {
             mandate: *mandate,
+            period_start,
+            period_end,
             valid_until,
             approved,
             approved_amount,
@@ -1477,6 +1591,29 @@ impl TestHarness {
             )
             .expect("approval account should be created");
         approval_pda
+    }
+
+    fn current_mandate_period(&self, mandate: &Pubkey) -> (i64, i64) {
+        let Some(account) = self.svm.get_account(&to_address(*mandate)) else {
+            return (0, 0);
+        };
+        if account.data.len() < VelaMandate::DISCRIMINATOR.len()
+            || !account.data.starts_with(VelaMandate::DISCRIMINATOR)
+        {
+            return (0, 0);
+        }
+
+        let mut current_slice: &[u8] = &account.data;
+        if let Ok(current) = VelaMandate::try_deserialize(&mut current_slice) {
+            return billing_period(current.next_payment_due, current.frequency).unwrap_or((0, 0));
+        }
+
+        let mut legacy_slice: &[u8] = &account.data[VelaMandate::DISCRIMINATOR.len()..];
+        if let Ok(legacy) = VelaMandateV1::deserialize(&mut legacy_slice) {
+            return billing_period(legacy.next_payment_due, legacy.frequency).unwrap_or((0, 0));
+        }
+
+        (0, 0)
     }
 
     pub fn create_billing_event(
@@ -2225,9 +2362,33 @@ impl TestHarness {
         nonce: u128,
         pub_key: [u8; 32],
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        let merchant = self.merchant.insecure_clone();
+        self.send_submit_usage_report_as(
+            &merchant,
+            mandate,
+            usage_plan,
+            period_start,
+            period_end,
+            computation_ciphertext,
+            nonce,
+            pub_key,
+        )
+    }
+
+    pub fn send_submit_usage_report_as(
+        &mut self,
+        signer: &Keypair,
+        mandate: &Pubkey,
+        usage_plan: &Pubkey,
+        period_start: i64,
+        period_end: i64,
+        computation_ciphertext: Vec<[u8; 32]>,
+        nonce: u128,
+        pub_key: [u8; 32],
+    ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
         let usage_report = self.derive_usage_report_address(mandate, period_start);
         let accounts = vela_protocol::accounts::SubmitUsageReport {
-            merchant: self.merchant_pubkey(),
+            merchant: to_anchor_pubkey(signer.pubkey()),
             mandate: *mandate,
             usage_plan: *usage_plan,
             usage_report,
@@ -2250,8 +2411,7 @@ impl TestHarness {
             }
             .data(),
         };
-        let merchant = self.merchant.insecure_clone();
-        self.send_instruction(&instruction, &[&merchant], Some(&merchant.pubkey()))
+        self.send_instruction(&instruction, &[signer], Some(&signer.pubkey()))
     }
 
     /// Derives the merchant credential mint PDA: seeds = ["merchant-credential", merchant].
@@ -2486,6 +2646,12 @@ impl TestHarness {
 
 fn token_2022_anchor_id() -> Pubkey {
     Pubkey::new_from_array(spl_token_2022::id().to_bytes())
+}
+
+fn billing_period(next_payment_due: i64, frequency: u64) -> Option<(i64, i64)> {
+    let frequency = i64::try_from(frequency).ok()?;
+    let period_start = next_payment_due.checked_sub(frequency)?;
+    Some((period_start, next_payment_due))
 }
 
 fn to_solana_pubkey(key: Pubkey) -> solana_pubkey::Pubkey {

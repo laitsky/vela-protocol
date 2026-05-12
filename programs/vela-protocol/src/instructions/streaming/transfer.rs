@@ -4,7 +4,10 @@ use crate::{
     errors::VelaError,
     instructions::{
         protocol_config_account::load_protocol_config,
-        spl_helpers::{invoke_transfer_checked_with_hook, TransferCheckedWithHookAccounts},
+        spl_helpers::{
+            invoke_transfer_checked_with_hook, validate_token_2022_transfer_accounts,
+            TransferCheckedWithHookAccounts,
+        },
     },
     state::TokenConfig,
 };
@@ -23,6 +26,8 @@ pub(crate) struct StreamTransferAccounts<'a, 'info> {
     pub extra_account_meta_list: &'a AccountInfo<'info>,
     pub hook_program: &'a AccountInfo<'info>,
     pub token_2022_program: &'a AccountInfo<'info>,
+    pub expected_source_authority: Pubkey,
+    pub expected_destination_owner: Pubkey,
 }
 
 pub(crate) fn validate_stream_transfer_accounts(
@@ -56,6 +61,15 @@ pub(crate) fn invoke_stream_transfer(
     amount: u64,
     signer_seed_groups: &[&[&[u8]]],
 ) -> Result<()> {
+    validate_token_2022_transfer_accounts(
+        accounts.source,
+        accounts.destination,
+        accounts.mint.key,
+        accounts.token_2022_program.key,
+        &accounts.expected_source_authority,
+        &accounts.expected_destination_owner,
+    )?;
+
     let decimals = {
         let data = accounts.token_config.try_borrow_data()?;
         let mut slice: &[u8] = &data;

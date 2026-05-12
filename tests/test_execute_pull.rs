@@ -3,11 +3,13 @@ mod helpers;
 
 use anchor_lang::prelude::Pubkey;
 use helpers::{SubscriptionFixture, TestHarness};
+use litesvm::types::FailedTransactionMetadata;
 use solana_program_pack::Pack;
 use solana_signer::Signer;
 use spl_token_2022::state::Account as Token2022Account;
 use vela_protocol::{
     constants::MIN_FREQUENCY_SECONDS,
+    errors::VelaError,
     state::{BillingEvent, MandateStatus, PullApproval, UsageReport, VelaMandate, VelaPlan},
 };
 
@@ -72,6 +74,11 @@ fn setup_fixture() -> (
     )
 }
 
+fn error_has(failure: &FailedTransactionMetadata, needle: &str) -> bool {
+    format!("{:?}", failure.err).contains(needle)
+        || failure.meta.logs.iter().any(|log| log.contains(needle))
+}
+
 #[test]
 fn test_execute_pull_success() {
     let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) =
@@ -106,6 +113,106 @@ fn test_execute_pull_success() {
         mandate_before.next_payment_due + plan.frequency as i64
     );
     assert!(matches!(mandate_after.status, MandateStatus::Active));
+}
+
+#[test]
+fn execute_pull_rejects_non_merchant_destination_owner() {
+    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) =
+        setup_fixture();
+    let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
+    let attacker = harness.create_wallet();
+    let attacker_pubkey = Pubkey::new_from_array(attacker.pubkey().to_bytes());
+    let admin = harness.merchant.insecure_clone();
+    let attacker_wrapped = harness.create_token_2022_ata(&admin, &attacker_pubkey, &wrapped_mint);
+
+    harness.set_clock_timestamp(mandate_before.next_payment_due);
+    harness.create_pull_approval_with_amount(
+        &fixture.mandate,
+        mandate_before.next_payment_due,
+        true,
+        plan.amount,
+    );
+
+    let merchant_before = harness.fetch_spl_token_account(&merch_wrapped).amount;
+    let attacker_before = harness.fetch_spl_token_account(&attacker_wrapped).amount;
+    let err = harness
+        .send_execute_pull(
+            &fixture.subscriber,
+            &subscriber,
+            plan.plan_id,
+            &sub_wrapped,
+            &attacker_wrapped,
+            &wrapped_mint,
+        )
+        .expect_err("execute_pull must reject attacker-owned destination accounts");
+
+    let transfer_not_authorized = format!(
+        "Custom({})",
+        anchor_lang::error::ERROR_CODE_OFFSET + VelaError::TransferNotAuthorized as u32
+    );
+    assert!(
+        error_has(&err, &transfer_not_authorized) || error_has(&err, "TransferNotAuthorized"),
+        "expected TransferNotAuthorized, got err={:?}, logs={:?}",
+        err.err,
+        err.meta.logs
+    );
+
+    let mandate_after: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
+    assert_eq!(mandate_after.pulls_executed, mandate_before.pulls_executed);
+    assert_eq!(
+        mandate_after.next_payment_due,
+        mandate_before.next_payment_due
+    );
+    assert_eq!(
+        harness.fetch_spl_token_account(&merch_wrapped).amount,
+        merchant_before
+    );
+    assert_eq!(
+        harness.fetch_spl_token_account(&attacker_wrapped).amount,
+        attacker_before
+    );
+}
+
+#[test]
+fn execute_pull_rejects_wrong_period_approval() {
+    let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) =
+        setup_fixture();
+    let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
+
+    harness.set_clock_timestamp(mandate_before.next_payment_due);
+    harness.create_pull_approval_with_period_and_amount(
+        &fixture.mandate,
+        mandate_before.next_payment_due - mandate_before.frequency as i64 - 1,
+        mandate_before.next_payment_due,
+        mandate_before.next_payment_due + 600,
+        true,
+        plan.amount,
+    );
+
+    let err = harness
+        .send_execute_pull(
+            &fixture.subscriber,
+            &subscriber,
+            plan.plan_id,
+            &sub_wrapped,
+            &merch_wrapped,
+            &wrapped_mint,
+        )
+        .expect_err("execute_pull must reject approvals for a stale or wrong period");
+
+    assert!(
+        error_has(&err, "PeriodMismatch") || format!("{:?}", err.err).contains("Custom(6056)"),
+        "expected PeriodMismatch, got err={:?}, logs={:?}",
+        err.err,
+        err.meta.logs
+    );
+
+    let mandate_after: VelaMandate = harness.fetch_anchor_account(&fixture.mandate);
+    assert_eq!(mandate_after.pulls_executed, mandate_before.pulls_executed);
+    assert_eq!(
+        mandate_after.next_payment_due,
+        mandate_before.next_payment_due
+    );
 }
 
 #[test]

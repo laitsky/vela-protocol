@@ -1970,6 +1970,7 @@ version = "0.1.0"
 dependencies = [
  "arcis",
  "blake3",
+ "proptest",
 ]
 
 [[package]]
@@ -7796,6 +7797,7 @@ dependencies = [
  "arcium-anchor",
  "arcium-client",
  "arcium-macros",
+ "bincode",
  "litesvm",
  "litesvm-token",
  "proptest",
@@ -7804,6 +7806,7 @@ dependencies = [
  "solana-address 2.5.0",
  "solana-clock 3.0.0",
  "solana-instruction 3.3.0",
+ "solana-keccak-hasher 3.1.0",
  "solana-keypair",
  "solana-message 3.1.0",
  "solana-program-error 3.0.1",

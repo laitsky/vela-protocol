@@ -3,22 +3,24 @@ use crate::instructions::arcium_accounts::{
     validate_static_callback_accounts,
 };
 use crate::{
+    constants::PULL_APPROVAL_TTL_SECONDS,
     errors::VelaError,
     instructions::{
         arcium_request_state::{complete_arcium_request, validate_pending_arcium_request},
+        mandate_account::mandate_billing_period,
         protocol_config_account::load_protocol_config,
     },
     state::{
-        ArciumRequestFlow, ArciumRequestState, ProtocolConfig, PullApproval, UsageReport,
-        VelaMandate,
+        ArciumRequestFlow, ArciumRequestState, BillingType, MandateStatus, ProtocolConfig,
+        PullApproval, UsageReport, VelaMandate,
     },
     validate_callback_ixs,
 };
 use anchor_lang::prelude::*;
 use arcium_anchor::{prelude::*, HasSize};
 
-const USAGE_CHARGE_CIRCUIT: &str = "usage_charge";
-const TIERED_PRICING_CIRCUIT: &str = "tiered_pricing";
+const USAGE_CHARGE_CIRCUIT: &str = "usage_charge_v2";
+const TIERED_PRICING_CIRCUIT: &str = "tiered_pricing_v2";
 
 /// Output struct for both usage_charge and tiered_pricing circuits.
 /// Both circuits return a single u64 plaintext value (the computed charge amount).
@@ -45,10 +47,15 @@ pub fn usage_charge_callback(
     ctx: Context<UsageComputationCallback>,
     output: SignedComputationOutputs<UsageChargeOutput>,
 ) -> Result<()> {
-    validate_usage_callback_accounts(&ctx.accounts.mxe_account, &ctx.accounts.comp_def_account)?;
     let loaded_config = load_protocol_config(&ctx.accounts.config.to_account_info())?;
     let config = loaded_config.into_current();
     validate_protocol_config(&config)?;
+    let mxe_program_id = config.effective_mxe_program_id();
+    validate_usage_callback_accounts(
+        &ctx.accounts.mxe_account,
+        &ctx.accounts.comp_def_account,
+        &mxe_program_id,
+    )?;
     validate_callback_binding(
         &config,
         &ctx.accounts.cluster_account,
@@ -72,28 +79,48 @@ pub fn usage_charge_callback(
         ctx.accounts.mandate.key(),
         VelaError::BillingTypeMismatch
     );
+    require_keys_eq!(
+        ctx.accounts.usage_report.merchant,
+        ctx.accounts.mandate.merchant,
+        VelaError::BillingTypeMismatch
+    );
+    require!(
+        ctx.accounts.mandate.status == MandateStatus::Active,
+        VelaError::MandateNotActive
+    );
+    require!(
+        ctx.accounts.mandate.billing_type == BillingType::Usage,
+        VelaError::BillingTypeMismatch
+    );
     require!(
         !ctx.accounts.usage_report.settled,
         VelaError::UsageReportAlreadySettled
+    );
+    let (period_start, period_end) = mandate_billing_period(&ctx.accounts.mandate)?;
+    require!(
+        ctx.accounts.usage_report.period_start == period_start
+            && ctx.accounts.usage_report.period_end == period_end,
+        VelaError::PeriodMismatch
     );
     require!(
         computed_charge <= ctx.accounts.mandate.amount,
         VelaError::AmountExceedsPlanAmount
     );
 
+    let now = Clock::get()?.unix_timestamp;
     // Write PullApproval with the Arcium-computed charge amount (not mandate.amount)
     let approval = &mut ctx.accounts.pull_approval;
     approval.mandate = ctx.accounts.mandate.key();
-    approval.valid_until = ctx.accounts.mandate.next_payment_due;
+    approval.period_start = period_start;
+    approval.period_end = period_end;
+    approval.valid_until = now
+        .checked_add(PULL_APPROVAL_TTL_SECONDS)
+        .ok_or(VelaError::Overflow)?;
     approval.approved = true; // successful usage computation means approval
     approval.approved_amount = computed_charge;
-    let now = Clock::get()?.unix_timestamp;
     approval.created_at = now;
     approval.bump = ctx.bumps.pull_approval;
     complete_arcium_request(&mut ctx.accounts.request_state, now)?;
-
-    // Mark usage report as settled
-    ctx.accounts.usage_report.settled = true;
 
     emit!(UsageComputationCompleteEvent {
         mandate: ctx.accounts.mandate.key(),
@@ -107,12 +134,22 @@ pub fn usage_charge_callback(
 fn validate_usage_callback_accounts(
     mxe_account: &UncheckedAccount<'_>,
     comp_def_account: &UncheckedAccount<'_>,
+    mxe_program_id: &Pubkey,
 ) -> Result<()> {
-    validate_static_callback_accounts(mxe_account, comp_def_account, USAGE_CHARGE_CIRCUIT).or_else(
-        |_| {
-            validate_static_callback_accounts(mxe_account, comp_def_account, TIERED_PRICING_CIRCUIT)
-        },
+    validate_static_callback_accounts(
+        mxe_account,
+        comp_def_account,
+        USAGE_CHARGE_CIRCUIT,
+        mxe_program_id,
     )
+    .or_else(|_| {
+        validate_static_callback_accounts(
+            mxe_account,
+            comp_def_account,
+            TIERED_PRICING_CIRCUIT,
+            mxe_program_id,
+        )
+    })
 }
 
 #[derive(Accounts)]

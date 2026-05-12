@@ -16,7 +16,7 @@ use crate::{
 use anchor_lang::prelude::*;
 use arcium_anchor::{prelude::*, HasSize, MXEEncryptedStruct};
 
-const RECORD_BILLING_EVENT_CIRCUIT: &str = "record_billing_event";
+const RECORD_BILLING_EVENT_CIRCUIT: &str = "record_billing_event_v2";
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct RecordBillingEventOutput {
@@ -36,14 +36,16 @@ pub fn record_billing_event_callback(
     ctx: Context<RecordBillingEventCallback>,
     output: SignedComputationOutputs<RecordBillingEventOutput>,
 ) -> Result<()> {
+    let loaded_config = load_protocol_config(&ctx.accounts.config.to_account_info())?;
+    let config = loaded_config.into_current();
+    validate_protocol_config(&config)?;
+    let mxe_program_id = config.effective_mxe_program_id();
     validate_static_callback_accounts(
         &ctx.accounts.mxe_account,
         &ctx.accounts.comp_def_account,
         RECORD_BILLING_EVENT_CIRCUIT,
+        &mxe_program_id,
     )?;
-    let loaded_config = load_protocol_config(&ctx.accounts.config.to_account_info())?;
-    let config = loaded_config.into_current();
-    validate_protocol_config(&config)?;
     validate_callback_binding(
         &config,
         &ctx.accounts.cluster_account,

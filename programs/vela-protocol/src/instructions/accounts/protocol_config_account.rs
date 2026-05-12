@@ -7,7 +7,7 @@ use anchor_lang::{
 use crate::{
     constants::TRANSFER_HOOK_PROGRAM_ID,
     errors::VelaError,
-    state::{ClusterType, ProtocolConfig, CURRENT_ACCOUNT_VERSION, PROTOCOL_CONFIG_RESERVED_BYTES},
+    state::{ClusterType, ProtocolConfig, CURRENT_ACCOUNT_VERSION},
 };
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
@@ -97,9 +97,9 @@ impl LoadedProtocolConfig {
                 paused: legacy.paused,
                 paused_at: legacy.paused_at,
                 transfer_hook_program_id: TRANSFER_HOOK_PROGRAM_ID,
+                mxe_program_id: Pubkey::default(),
                 bump: legacy.bump,
                 version: CURRENT_ACCOUNT_VERSION,
-                _reserved: [0; PROTOCOL_CONFIG_RESERVED_BYTES],
             },
             Self::Current(current) => current,
         }
@@ -150,7 +150,6 @@ pub fn upgrade_protocol_config<'info>(
         config.transfer_hook_program_id = TRANSFER_HOOK_PROGRAM_ID;
     }
     config.version = CURRENT_ACCOUNT_VERSION;
-    config._reserved = [0; PROTOCOL_CONFIG_RESERVED_BYTES];
     write_protocol_config(config_info, &config)?;
 
     Ok(config)
@@ -226,8 +225,8 @@ mod tests {
         assert_eq!(upgraded.admin, legacy.admin);
         assert_eq!(upgraded.cluster_pubkey, legacy.cluster_pubkey);
         assert_eq!(upgraded.transfer_hook_program_id, TRANSFER_HOOK_PROGRAM_ID);
+        assert_eq!(upgraded.effective_mxe_program_id(), crate::ID);
         assert_eq!(upgraded.version, CURRENT_ACCOUNT_VERSION);
-        assert_eq!(upgraded._reserved, [0; PROTOCOL_CONFIG_RESERVED_BYTES]);
     }
 
     #[test]
@@ -243,9 +242,9 @@ mod tests {
             paused: false,
             paused_at: 0,
             transfer_hook_program_id,
+            mxe_program_id: Pubkey::new_unique(),
             bump: 1,
             version: CURRENT_ACCOUNT_VERSION,
-            _reserved: [0; PROTOCOL_CONFIG_RESERVED_BYTES],
         });
 
         assert_eq!(loaded.transfer_hook_program_id(), transfer_hook_program_id);

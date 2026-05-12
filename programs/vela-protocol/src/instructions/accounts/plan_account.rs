@@ -1,4 +1,5 @@
 use anchor_lang::{prelude::*, AccountDeserialize, AccountSerialize, Discriminator};
+use solana_keccak_hasher::hash;
 
 use crate::{
     errors::VelaError,
@@ -120,6 +121,30 @@ impl LoadedPlanAccount {
             Self::Usage(plan) => Some(plan.tier_count),
             Self::LegacyUsage(plan) => Some(plan.tier_count),
             Self::Flat(_) | Self::LegacyFlat(_) => None,
+        }
+    }
+
+    pub fn usage_terms_hash(&self, plan_key: &Pubkey) -> Result<[u8; 32]> {
+        match self {
+            Self::Usage(plan) => Ok(usage_plan_terms_hash_from_parts(
+                plan_key,
+                &plan.merchant,
+                plan.plan_id,
+                &plan.tiers,
+                plan.tier_count,
+                plan.max_charge_per_period,
+                plan.settlement_frequency,
+            )),
+            Self::LegacyUsage(plan) => Ok(usage_plan_terms_hash_from_parts(
+                plan_key,
+                &plan.merchant,
+                plan.plan_id,
+                &plan.tiers,
+                plan.tier_count,
+                plan.max_charge_per_period,
+                plan.settlement_frequency,
+            )),
+            Self::Flat(_) | Self::LegacyFlat(_) => Err(VelaError::BillingTypeMismatch.into()),
         }
     }
 
@@ -305,6 +330,31 @@ pub fn require_plan_billing_type(plan: &LoadedPlanAccount, expected: &BillingTyp
         VelaError::BillingTypeMismatch
     );
     Ok(())
+}
+
+pub fn usage_plan_terms_hash_from_parts(
+    plan_key: &Pubkey,
+    merchant: &Pubkey,
+    plan_id: u64,
+    tiers: &[PricingTier; 5],
+    tier_count: u8,
+    max_charge_per_period: u64,
+    settlement_frequency: u64,
+) -> [u8; 32] {
+    let mut bytes = Vec::with_capacity(1 + 32 + 32 + 8 + 1 + 8 + 8 + 5 * 16);
+    bytes.extend_from_slice(b"vela-usage-plan-terms-v1");
+    bytes.extend_from_slice(plan_key.as_ref());
+    bytes.extend_from_slice(merchant.as_ref());
+    bytes.extend_from_slice(&plan_id.to_le_bytes());
+    bytes.push(tier_count);
+    bytes.extend_from_slice(&max_charge_per_period.to_le_bytes());
+    bytes.extend_from_slice(&settlement_frequency.to_le_bytes());
+    for tier in tiers {
+        bytes.extend_from_slice(&tier.up_to.to_le_bytes());
+        bytes.extend_from_slice(&tier.rate_per_unit.to_le_bytes());
+    }
+
+    hash(&bytes).to_bytes()
 }
 
 pub fn write_plan(plan_info: &AccountInfo<'_>, plan: &VelaPlan) -> Result<()> {

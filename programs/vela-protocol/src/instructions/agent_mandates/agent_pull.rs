@@ -196,6 +196,8 @@ pub fn handler<'a, 'b, 'c, 'info>(
 
     let approval = &mut ctx.accounts.pull_approval;
     approval.mandate = ctx.accounts.agent_mandate.key();
+    approval.period_start = 0;
+    approval.period_end = 0;
     approval.valid_until = now
         .checked_add(AGENT_PULL_APPROVAL_TTL_SECONDS)
         .ok_or(VelaError::Overflow)?;

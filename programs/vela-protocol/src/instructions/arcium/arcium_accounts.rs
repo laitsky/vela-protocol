@@ -3,7 +3,7 @@ use crate::state::ProtocolConfig;
 use crate::ID;
 use anchor_lang::{prelude::*, AccountDeserialize};
 use arcium_anchor::{
-    comp_def_offset, derive_mxe_pda, ARCIUM_CLOCK_ACCOUNT_ADDRESS, ARCIUM_FEE_POOL_ACCOUNT_ADDRESS,
+    comp_def_offset, ARCIUM_CLOCK_ACCOUNT_ADDRESS, ARCIUM_FEE_POOL_ACCOUNT_ADDRESS,
     CLUSTER_PDA_SEED, COMP_DEF_PDA_SEED, COMP_PDA_SEED, EXECPOOL_PDA_SEED, MEMPOOL_PDA_SEED,
     MXE_PDA_SEED,
 };
@@ -72,12 +72,24 @@ pub fn derive_computation_pubkey(cluster_id: u32, computation_offset: u64) -> Pu
 }
 
 pub fn derive_comp_def_pubkey(circuit_name: &str) -> Pubkey {
+    derive_comp_def_pubkey_for_mxe(circuit_name, &ID)
+}
+
+pub fn derive_comp_def_pubkey_for_mxe(circuit_name: &str, mxe_program_id: &Pubkey) -> Pubkey {
     let offset = comp_def_offset(circuit_name);
     Pubkey::find_program_address(
-        &[COMP_DEF_PDA_SEED, ID.as_ref(), &offset.to_le_bytes()],
+        &[
+            COMP_DEF_PDA_SEED,
+            mxe_program_id.as_ref(),
+            &offset.to_le_bytes(),
+        ],
         &ARCIUM_PROG_ID,
     )
     .0
+}
+
+pub fn derive_mxe_pubkey(mxe_program_id: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(&[MXE_PDA_SEED, mxe_program_id.as_ref()], &ARCIUM_PROG_ID).0
 }
 
 pub fn derive_validation_computation_offset(
@@ -144,12 +156,13 @@ pub fn validate_queue_accounts(
     cluster_offset: u64,
     computation_offset: u64,
     circuit_name: &str,
+    mxe_program_id: &Pubkey,
 ) -> Result<()> {
     let cluster_id = cluster_id_from_offset(cluster_offset)?;
 
     require_keys_eq!(
         mxe_account.key(),
-        derive_mxe_pda!(),
+        derive_mxe_pubkey(mxe_program_id),
         VelaError::InvalidArciumAccount
     );
     require_keys_eq!(
@@ -169,7 +182,7 @@ pub fn validate_queue_accounts(
     );
     require_keys_eq!(
         comp_def_account.key(),
-        derive_comp_def_pubkey(circuit_name),
+        derive_comp_def_pubkey_for_mxe(circuit_name, mxe_program_id),
         VelaError::InvalidArciumAccount
     );
     require_keys_eq!(
@@ -195,15 +208,16 @@ pub fn validate_static_callback_accounts(
     mxe_account: &UncheckedAccount,
     comp_def_account: &UncheckedAccount,
     circuit_name: &str,
+    mxe_program_id: &Pubkey,
 ) -> Result<()> {
     require_keys_eq!(
         mxe_account.key(),
-        derive_mxe_pda!(),
+        derive_mxe_pubkey(mxe_program_id),
         VelaError::InvalidArciumAccount
     );
     require_keys_eq!(
         comp_def_account.key(),
-        derive_comp_def_pubkey(circuit_name),
+        derive_comp_def_pubkey_for_mxe(circuit_name, mxe_program_id),
         VelaError::InvalidArciumAccount
     );
     Ok(())
@@ -249,6 +263,7 @@ pub fn build_callback_instruction(
     computation_offset: u64,
     cluster_offset: u64,
     circuit_name: &str,
+    mxe_program_id: &Pubkey,
     extra_accs: &[CallbackAccount],
 ) -> Result<CallbackInstruction> {
     let cluster_id = cluster_id_from_offset(cluster_offset)?;
@@ -258,11 +273,11 @@ pub fn build_callback_instruction(
         is_writable: false,
     });
     accounts.push(CallbackAccount {
-        pubkey: derive_comp_def_pubkey(circuit_name),
+        pubkey: derive_comp_def_pubkey_for_mxe(circuit_name, mxe_program_id),
         is_writable: false,
     });
     accounts.push(CallbackAccount {
-        pubkey: derive_mxe_pda!(),
+        pubkey: derive_mxe_pubkey(mxe_program_id),
         is_writable: false,
     });
     accounts.push(CallbackAccount {

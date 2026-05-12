@@ -14,9 +14,7 @@ use vela_protocol::{
     instructions::{
         keeper_config_account::load_keeper_config, protocol_config_account::load_protocol_config,
     },
-    state::{
-        ClusterType, KeeperConfig, KeeperMode, ProtocolConfig, PROTOCOL_CONFIG_RESERVED_BYTES,
-    },
+    state::{ClusterType, KeeperConfig, KeeperMode, ProtocolConfig},
 };
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -246,7 +244,7 @@ fn test_protocol_and_keeper_loaders_accept_legacy_singletons() {
     assert_eq!(protocol.admin, admin);
     assert_eq!(protocol.cluster_offset, 456);
     assert_eq!(protocol.version, 1);
-    assert_eq!(protocol._reserved, [0u8; PROTOCOL_CONFIG_RESERVED_BYTES]);
+    assert_eq!(protocol.effective_mxe_program_id(), vela_protocol::ID);
     assert_eq!(keeper.admin, admin);
     assert_eq!(keeper.keeper_authority, keeper_authority);
     assert_eq!(keeper.version, 1);
@@ -261,6 +259,7 @@ fn test_config_loaders_reject_unsupported_v2_versions() {
         Pubkey::new_unique(),
         ClusterType::Cerberus,
         456,
+        Pubkey::default(),
         protocol_config_address().1,
     ));
     let mut keeper_bytes = serialize_keeper_config(&KeeperConfig::new(
@@ -271,7 +270,7 @@ fn test_config_loaders_reject_unsupported_v2_versions() {
         keeper_config_address().1,
     ));
 
-    let protocol_version_offset = protocol_bytes.len() - 1 - PROTOCOL_CONFIG_RESERVED_BYTES;
+    let protocol_version_offset = 187;
     protocol_bytes[protocol_version_offset] = 9;
     let keeper_version_offset = keeper_bytes.len() - 1 - 64;
     keeper_bytes[keeper_version_offset] = 9;
@@ -497,5 +496,39 @@ fn test_runtime_request_callback_wrap_unwrap_readers_reference_compatibility_hel
     assert!(
         unwrap.contains("load_protocol_config"),
         "unwrap must use load_protocol_config"
+    );
+}
+
+#[test]
+fn request_usage_computation_uses_onchain_plan_terms_not_report_pricing() {
+    let source = include_str!(
+        "../programs/vela-protocol/src/instructions/billing/request_usage_computation.rs"
+    );
+
+    assert!(
+        source.contains("usage_plan_terms_hash_from_parts")
+            && source.contains("usage_report.computation_ciphertext[0]")
+            && source.contains(".plaintext_u64(usage_plan.tiers[0].rate_per_unit)")
+            && source.contains(".plaintext_u64(usage_plan.max_charge_per_period)")
+            && source.contains(".plaintext_u8(usage_plan.tier_count)"),
+        "request_usage_computation must queue encrypted usage units plus plaintext on-chain plan terms"
+    );
+    assert!(
+        !source.contains(".take(expected_ciphertext_len)")
+            && !source.contains("expected_ciphertext_len"),
+        "request_usage_computation must not replay merchant-submitted pricing ciphertexts"
+    );
+}
+
+#[test]
+fn request_usage_computation_rejects_report_plan_terms_hash_mismatch() {
+    let source = include_str!(
+        "../programs/vela-protocol/src/instructions/billing/request_usage_computation.rs"
+    );
+
+    assert!(
+        source.contains("usage_report.computation_ciphertext[1] == expected_terms_hash")
+            && source.contains("VelaError::InvalidCiphertextInput"),
+        "request_usage_computation must reject reports whose stored plan-terms hash differs from the supplied on-chain plan"
     );
 }

@@ -184,7 +184,7 @@ fn test_insufficient_balance_errors() {
 }
 
 #[test]
-fn test_min_settle_interval_violation() {
+fn execute_stream_rejects_before_min_settle_interval_in_protocol() {
     let mut fixture = setup_stream_fixture(10, 10, None, 60, 5_000);
     fixture.harness.set_clock_timestamp(fixture.created_at + 30);
     let subscriber = Pubkey::new_from_array(fixture.subscriber.pubkey().to_bytes());
@@ -202,6 +202,36 @@ fn test_min_settle_interval_violation() {
         .expect_err("execute_stream should reject settlements before min_settle_interval");
 
     assert_anchor_error_code(&err, VelaError::MinSettleIntervalViolation as u32);
+}
+
+#[test]
+fn update_stream_rate_rejects_before_min_settle_interval_in_protocol() {
+    let mut fixture = setup_stream_fixture(10, 10, None, 60, 5_000);
+    fixture.harness.set_clock_timestamp(fixture.created_at + 30);
+    let before: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
+
+    let err = fixture
+        .harness
+        .send_update_stream_rate(
+            &fixture.subscriber,
+            &fixture.stream_mandate,
+            &fixture.subscriber_wrapped,
+            &fixture.merchant_wrapped,
+            &fixture.wrapped_mint,
+            Some(before.rate_per_second + 1),
+            None,
+        )
+        .expect_err("update_stream_rate should reject settlements before min_settle_interval");
+
+    assert_anchor_error_code(&err, VelaError::MinSettleIntervalViolation as u32);
+    let after: StreamMandate = fixture
+        .harness
+        .fetch_anchor_account(&fixture.stream_mandate);
+    assert_eq!(after.total_streamed, before.total_streamed);
+    assert_eq!(after.last_settled_ts, before.last_settled_ts);
+    assert_eq!(after.rate_per_second, before.rate_per_second);
 }
 
 #[test]

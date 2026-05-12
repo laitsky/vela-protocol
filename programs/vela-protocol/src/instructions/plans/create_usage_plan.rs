@@ -72,31 +72,12 @@ pub fn handler(
     max_charge_per_period: u64,
     settlement_frequency: u64,
 ) -> Result<()> {
-    // Validate tier count: must be 1-5
-    require!(
-        !tiers.is_empty() && tiers.len() <= 5,
-        VelaError::InvalidTierCount
-    );
+    validate_usage_tier_boundaries(&tiers)?;
 
     // Validate max charge and settlement frequency
     require!(max_charge_per_period > 0, VelaError::InvalidAmount);
     require!(settlement_frequency > 0, VelaError::InvalidFrequency);
     validate_usage_pricing_bounds(&tiers, max_charge_per_period)?;
-
-    // Validate tier boundaries are monotonically increasing (except last which can be 0 = unlimited)
-    for i in 1..tiers.len() {
-        let prev = &tiers[i - 1];
-        let curr = &tiers[i];
-        // Intermediate tiers must have non-zero up_to, and each must be greater than the previous
-        if i < tiers.len() - 1 {
-            require!(curr.up_to > prev.up_to, VelaError::InvalidTierBoundary);
-        } else {
-            // Last tier: up_to == 0 means unlimited; if non-zero, must be > previous
-            if curr.up_to != 0 {
-                require!(curr.up_to > prev.up_to, VelaError::InvalidTierBoundary);
-            }
-        }
-    }
 
     let token_2022_program_id = spl_token_2022::id();
     require_keys_eq!(
@@ -180,6 +161,29 @@ pub(crate) fn validate_usage_pricing_bounds(
             require!(
                 tier.up_to <= MAX_SAFE_USAGE_UNITS,
                 VelaError::UsagePricingOverflowRisk
+            );
+        }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn validate_usage_tier_boundaries(tiers: &[PricingTier]) -> Result<()> {
+    require!(
+        !tiers.is_empty() && tiers.len() <= 5,
+        VelaError::InvalidTierCount
+    );
+
+    let last_index = tiers.len() - 1;
+    for (index, tier) in tiers.iter().enumerate() {
+        if tier.up_to == 0 {
+            require!(index == last_index, VelaError::InvalidTierBoundary);
+            continue;
+        }
+        if index > 0 {
+            require!(
+                tier.up_to > tiers[index - 1].up_to,
+                VelaError::InvalidTierBoundary
             );
         }
     }

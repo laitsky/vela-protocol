@@ -12,15 +12,16 @@ use crate::instructions::{
     init_config::{InitConfigIx, UpdateConfigIx},
     AdjustAgentMandate, AdminCancel, AgentPull, Cancel, CancelPlanChange, CancelStream,
     CloseMandate, CreateAgentMandate, CreatePlan, CreateStreamMandate, CreateUsagePlan,
-    DemoApprovePull, DrainAgentMandate, ExecutePull, ExecuteStream, InitConfig, InitKeeperConfig,
-    InitMerchantCredential, InitRecordBillingCompDef, InitTokenConfig, InitTokenConfigIx,
-    InitValidateMandateCompDef, InitWrappedMint, MigrateMandate, MigratePlan, PauseAgentMandate,
-    PauseProtocol, PauseStream, RecordBillingEventCallback, RequestBillingRecord,
-    RequestUsageComputation, RequestValidation, ResumeAgentMandate, ResumeStream,
-    RevokeAgentMandate, SchedulePlanChange, ServiceLimitInput, SubmitUsageReport, Subscribe,
-    UnpauseProtocol, Unwrap, UpdateConfig, UpdateKeeperConfig, UpdateMandate, UpdateMandatePlan,
-    UpdatePlan, UpdateStreamRate, UpdateTokenConfig, UpdateTokenConfigIx, UpdateUsagePlan,
-    UsageChargeOutput, UsageComputationCallback, ValidateMandateCallback, Wrap,
+    DrainAgentMandate, ExecutePull, ExecuteStream, InitConfig, InitKeeperConfig,
+    InitMerchantCredential, InitRecordBillingCompDef, InitTieredPricingCompDef, InitTokenConfig,
+    InitTokenConfigIx, InitUsageChargeCompDef, InitValidateMandateCompDef, InitWrappedMint,
+    MigrateMandate, MigratePlan, PauseAgentMandate, PauseProtocol, PauseStream,
+    RecordBillingEventCallback, RequestBillingRecord, RequestUsageComputation, RequestValidation,
+    ResumeAgentMandate, ResumeStream, RevokeAgentMandate, SchedulePlanChange, ServiceLimitInput,
+    SubmitUsageReport, Subscribe, UnpauseProtocol, Unwrap, UpdateConfig, UpdateKeeperConfig,
+    UpdateMandate, UpdateMandatePlan, UpdatePlan, UpdateStreamRate, UpdateTokenConfig,
+    UpdateTokenConfigIx, UpdateUsagePlan, UsageChargeOutput, UsageComputationCallback,
+    ValidateMandateCallback, Wrap,
 };
 use crate::state::{KeeperMode, PricingTier};
 use arcium_anchor::prelude::SignedComputationOutputs;
@@ -47,10 +48,6 @@ mod __client_accounts_unpause_protocol {
 
 mod __client_accounts_create_usage_plan {
     pub use crate::instructions::__client_accounts_create_usage_plan::*;
-}
-
-mod __client_accounts_demo_approve_pull {
-    pub use crate::instructions::__client_accounts_demo_approve_pull::*;
 }
 
 mod __client_accounts_submit_usage_report {
@@ -143,6 +140,14 @@ mod __client_accounts_init_validate_mandate_comp_def {
 
 mod __client_accounts_init_record_billing_comp_def {
     pub use crate::instructions::__client_accounts_init_record_billing_comp_def::*;
+}
+
+mod __client_accounts_init_usage_charge_comp_def {
+    pub use crate::instructions::__client_accounts_init_usage_charge_comp_def::*;
+}
+
+mod __client_accounts_init_tiered_pricing_comp_def {
+    pub use crate::instructions::__client_accounts_init_tiered_pricing_comp_def::*;
 }
 
 mod __client_accounts_request_validation {
@@ -376,14 +381,6 @@ pub mod vela_protocol {
         instructions::execute_pull::handler(ctx)
     }
 
-    pub fn demo_approve_pull(
-        ctx: Context<DemoApprovePull>,
-        approved_amount: u64,
-        ttl_seconds: i64,
-    ) -> Result<()> {
-        instructions::demo_approve_pull::handler(ctx, approved_amount, ttl_seconds)
-    }
-
     pub fn execute_stream<'a, 'b, 'c, 'info>(
         ctx: Context<'a, 'b, 'c, 'info, ExecuteStream<'info>>,
     ) -> Result<()> {
@@ -408,6 +405,14 @@ pub mod vela_protocol {
 
     pub fn init_record_billing_comp_def(ctx: Context<InitRecordBillingCompDef>) -> Result<()> {
         instructions::init_comp_defs::init_record_billing_comp_def(ctx)
+    }
+
+    pub fn init_usage_charge_comp_def(ctx: Context<InitUsageChargeCompDef>) -> Result<()> {
+        instructions::init_comp_defs::init_usage_charge_comp_def(ctx)
+    }
+
+    pub fn init_tiered_pricing_comp_def(ctx: Context<InitTieredPricingCompDef>) -> Result<()> {
+        instructions::init_comp_defs::init_tiered_pricing_comp_def(ctx)
     }
 
     pub fn subscribe(ctx: Context<Subscribe>) -> Result<()> {

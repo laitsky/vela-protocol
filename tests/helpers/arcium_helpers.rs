@@ -7,7 +7,7 @@ use anchor_lang::{prelude::Pubkey, AccountSerialize};
 use litesvm::LiteSVM;
 use solana_account::Account;
 use solana_address::Address;
-use vela_protocol::state::{ClusterType, ProtocolConfig, PROTOCOL_CONFIG_RESERVED_BYTES};
+use vela_protocol::state::{ClusterType, ProtocolConfig};
 
 /// Derives the ProtocolConfig PDA address from seeds [b"config"] and program_id.
 pub fn derive_config_pda(program_id: &Pubkey) -> Pubkey {
@@ -38,9 +38,9 @@ pub fn create_mock_protocol_config(
         paused: false,
         paused_at: 0,
         transfer_hook_program_id: Pubkey::default(),
+        mxe_program_id: Pubkey::default(),
         bump: 255, // Mock bump; the actual bump would be derived
         version: vela_protocol::state::CURRENT_ACCOUNT_VERSION,
-        _reserved: [0; PROTOCOL_CONFIG_RESERVED_BYTES],
     };
 
     let mut data = Vec::new();

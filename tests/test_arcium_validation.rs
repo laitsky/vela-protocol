@@ -16,7 +16,7 @@ use solana_message::{Message, VersionedMessage};
 use solana_signer::Signer;
 use solana_transaction::versioned::VersionedTransaction;
 use vela_protocol::instruction::{InitConfig, InitValidateMandateCompDef, UpdateConfig};
-use vela_protocol::instructions::arcium_accounts::derive_cluster_pubkey;
+use vela_protocol::instructions::arcium_accounts::{derive_cluster_pubkey, derive_mxe_pubkey};
 use vela_protocol::state::ClusterType;
 
 /// ARCM-01: Test that the init_validate_mandate_comp_def instruction can be invoked.
@@ -57,10 +57,15 @@ fn test_config_init() {
 
     // Derive the config PDA
     let config_pda = derive_config_pda(&program_id);
+    harness.set_protocol_program_upgrade_authority(&to_anchor_pubkey(admin.pubkey()));
+    let program_data = harness.derive_protocol_program_data_address();
 
     // Build init_config instruction
     let accounts = vela_protocol::accounts::InitConfig {
         admin: to_anchor_pubkey(admin.pubkey()),
+        program: vela_protocol::ID,
+        program_data,
+        mxe_account: derive_mxe_pubkey(&vela_protocol::ID),
         config: config_pda,
         system_program: anchor_lang::system_program::ID,
     };
@@ -71,6 +76,7 @@ fn test_config_init() {
             cluster_pubkey,
             cluster_type: ClusterType::Cerberus,
             cluster_offset,
+            mxe_program_id: vela_protocol::ID,
         },
     }
     .data();
@@ -117,6 +123,107 @@ fn test_config_init() {
     println!("test_config_init passed: ProtocolConfig initialized correctly");
 }
 
+#[test]
+fn init_config_rejects_non_upgrade_authority() {
+    let mut harness = TestHarness::new();
+    let upgrade_authority = harness.create_wallet();
+    let attacker = harness.create_wallet();
+    let program_id = to_anchor_pubkey(harness.program_id);
+    let config_pda = derive_config_pda(&program_id);
+    harness.set_protocol_program_upgrade_authority(&to_anchor_pubkey(upgrade_authority.pubkey()));
+    let program_data = harness.derive_protocol_program_data_address();
+
+    let accounts = vela_protocol::accounts::InitConfig {
+        admin: to_anchor_pubkey(attacker.pubkey()),
+        program: vela_protocol::ID,
+        program_data,
+        mxe_account: derive_mxe_pubkey(&vela_protocol::ID),
+        config: config_pda,
+        system_program: anchor_lang::system_program::ID,
+    };
+    let instruction = Instruction {
+        program_id: harness.program_id,
+        accounts: accounts_to_meta(accounts.to_account_metas(None)),
+        data: InitConfig {
+            ix: vela_protocol::instructions::init_config::InitConfigIx {
+                cluster_pubkey: derive_cluster_pubkey(456),
+                cluster_type: ClusterType::Cerberus,
+                cluster_offset: 456,
+                mxe_program_id: vela_protocol::ID,
+            },
+        }
+        .data(),
+    };
+
+    let blockhash = harness.svm.latest_blockhash();
+    let message = Message::new_with_blockhash(&[instruction], Some(&attacker.pubkey()), &blockhash);
+    let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&attacker])
+        .expect("transaction should sign");
+    let result = harness.svm.send_transaction(tx);
+
+    assert!(
+        result.is_err(),
+        "non-upgrade authority must not initialize config"
+    );
+    assert!(
+        harness.svm.get_account(&to_address(config_pda)).is_none(),
+        "failed takeover attempt must not create ProtocolConfig"
+    );
+}
+
+#[test]
+fn init_config_rejects_wrong_program_data() {
+    let mut harness = TestHarness::new();
+    let admin = harness.create_wallet();
+    let program_id = to_anchor_pubkey(harness.program_id);
+    let config_pda = derive_config_pda(&program_id);
+    harness.set_protocol_program_upgrade_authority(&to_anchor_pubkey(admin.pubkey()));
+
+    let accounts = vela_protocol::accounts::InitConfig {
+        admin: to_anchor_pubkey(admin.pubkey()),
+        program: vela_protocol::ID,
+        program_data: vela_protocol::ID,
+        mxe_account: derive_mxe_pubkey(&vela_protocol::ID),
+        config: config_pda,
+        system_program: anchor_lang::system_program::ID,
+    };
+    let instruction = Instruction {
+        program_id: harness.program_id,
+        accounts: accounts_to_meta(accounts.to_account_metas(None)),
+        data: InitConfig {
+            ix: vela_protocol::instructions::init_config::InitConfigIx {
+                cluster_pubkey: derive_cluster_pubkey(456),
+                cluster_type: ClusterType::Cerberus,
+                cluster_offset: 456,
+                mxe_program_id: vela_protocol::ID,
+            },
+        }
+        .data(),
+    };
+
+    let blockhash = harness.svm.latest_blockhash();
+    let message = Message::new_with_blockhash(&[instruction], Some(&admin.pubkey()), &blockhash);
+    let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&admin])
+        .expect("transaction should sign");
+    let result = harness.svm.send_transaction(tx);
+
+    assert!(result.is_err(), "wrong program-data account must fail");
+    assert!(
+        harness.svm.get_account(&to_address(config_pda)).is_none(),
+        "failed init must not create ProtocolConfig"
+    );
+}
+
+#[test]
+fn init_config_records_upgrade_authority_as_admin() {
+    let mut harness = TestHarness::new();
+    let admin = harness.create_wallet();
+    let config_pda = harness.init_protocol_config(&admin);
+
+    let config: vela_protocol::state::ProtocolConfig = harness.fetch_anchor_account(&config_pda);
+    assert_eq!(config.admin, to_anchor_pubkey(admin.pubkey()));
+}
+
 /// ARCM-02: Test that admin can update the ProtocolConfig.
 #[test]
 fn test_config_update_by_admin() {
@@ -127,10 +234,15 @@ fn test_config_update_by_admin() {
     // First initialize the config
     let cluster_pubkey_initial = derive_cluster_pubkey(456);
     let config_pda = derive_config_pda(&program_id);
+    harness.set_protocol_program_upgrade_authority(&to_anchor_pubkey(admin.pubkey()));
+    let program_data = harness.derive_protocol_program_data_address();
 
     // Initialize
     let init_accounts = vela_protocol::accounts::InitConfig {
         admin: to_anchor_pubkey(admin.pubkey()),
+        program: vela_protocol::ID,
+        program_data,
+        mxe_account: derive_mxe_pubkey(&vela_protocol::ID),
         config: config_pda,
         system_program: anchor_lang::system_program::ID,
     };
@@ -140,6 +252,7 @@ fn test_config_update_by_admin() {
             cluster_pubkey: cluster_pubkey_initial,
             cluster_type: ClusterType::Cerberus,
             cluster_offset: 456,
+            mxe_program_id: vela_protocol::ID,
         },
     }
     .data();
@@ -167,6 +280,7 @@ fn test_config_update_by_admin() {
     let update_accounts = vela_protocol::accounts::UpdateConfig {
         admin: to_anchor_pubkey(admin.pubkey()),
         config: config_pda,
+        mxe_account: derive_mxe_pubkey(&vela_protocol::ID),
         system_program: anchor_lang::system_program::ID,
     };
 
@@ -175,6 +289,7 @@ fn test_config_update_by_admin() {
             cluster_pubkey: new_cluster_pubkey,
             cluster_type: ClusterType::Manticore,
             cluster_offset: new_cluster_offset,
+            mxe_program_id: vela_protocol::ID,
         },
     }
     .data();
@@ -215,6 +330,97 @@ fn test_config_update_by_admin() {
     println!("test_config_update_by_admin passed: ProtocolConfig updated correctly");
 }
 
+#[test]
+fn update_config_records_external_mxe_program_id() {
+    let mut harness = TestHarness::new();
+    let admin = harness.create_wallet();
+    let config_pda = harness.init_protocol_config(&admin);
+    let external_mxe_program = Pubkey::new_unique();
+    let new_cluster_offset = 69420;
+    let new_cluster_pubkey = derive_cluster_pubkey(new_cluster_offset as u32);
+
+    let update_accounts = vela_protocol::accounts::UpdateConfig {
+        admin: to_anchor_pubkey(admin.pubkey()),
+        config: config_pda,
+        mxe_account: derive_mxe_pubkey(&external_mxe_program),
+        system_program: anchor_lang::system_program::ID,
+    };
+    let update_instruction_data = UpdateConfig {
+        ix: vela_protocol::instructions::init_config::UpdateConfigIx {
+            cluster_pubkey: new_cluster_pubkey,
+            cluster_type: ClusterType::Cerberus,
+            cluster_offset: new_cluster_offset,
+            mxe_program_id: external_mxe_program,
+        },
+    }
+    .data();
+    let update_instruction = Instruction {
+        program_id: harness.program_id,
+        accounts: accounts_to_meta(update_accounts.to_account_metas(None)),
+        data: update_instruction_data,
+    };
+
+    harness.svm.expire_blockhash();
+    let blockhash = harness.svm.latest_blockhash();
+    let message =
+        Message::new_with_blockhash(&[update_instruction], Some(&admin.pubkey()), &blockhash);
+    let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&admin])
+        .expect("transaction should sign");
+    harness
+        .svm
+        .send_transaction(tx)
+        .expect("update_config should accept matching external MXE PDA");
+
+    let config: vela_protocol::state::ProtocolConfig = harness.fetch_anchor_account(&config_pda);
+    assert_eq!(config.mxe_program_id, external_mxe_program);
+    assert_eq!(config.effective_mxe_program_id(), external_mxe_program);
+    assert_eq!(config.cluster_offset, new_cluster_offset);
+    assert_eq!(config.cluster_pubkey, new_cluster_pubkey);
+}
+
+#[test]
+fn update_config_rejects_wrong_mxe_account() {
+    let mut harness = TestHarness::new();
+    let admin = harness.create_wallet();
+    let config_pda = harness.init_protocol_config(&admin);
+    let external_mxe_program = Pubkey::new_unique();
+    let new_cluster_offset = 69420;
+
+    let update_accounts = vela_protocol::accounts::UpdateConfig {
+        admin: to_anchor_pubkey(admin.pubkey()),
+        config: config_pda,
+        mxe_account: derive_mxe_pubkey(&vela_protocol::ID),
+        system_program: anchor_lang::system_program::ID,
+    };
+    let update_instruction_data = UpdateConfig {
+        ix: vela_protocol::instructions::init_config::UpdateConfigIx {
+            cluster_pubkey: derive_cluster_pubkey(new_cluster_offset as u32),
+            cluster_type: ClusterType::Cerberus,
+            cluster_offset: new_cluster_offset,
+            mxe_program_id: external_mxe_program,
+        },
+    }
+    .data();
+    let update_instruction = Instruction {
+        program_id: harness.program_id,
+        accounts: accounts_to_meta(update_accounts.to_account_metas(None)),
+        data: update_instruction_data,
+    };
+
+    harness.svm.expire_blockhash();
+    let blockhash = harness.svm.latest_blockhash();
+    let message =
+        Message::new_with_blockhash(&[update_instruction], Some(&admin.pubkey()), &blockhash);
+    let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[&admin])
+        .expect("transaction should sign");
+    let result = harness.svm.send_transaction(tx);
+
+    assert!(
+        result.is_err(),
+        "update_config must reject an MXE account derived from the wrong program id"
+    );
+}
+
 /// ARCM-02: Test that non-admin cannot update the ProtocolConfig.
 #[test]
 fn test_config_update_by_non_admin_fails() {
@@ -225,9 +431,14 @@ fn test_config_update_by_non_admin_fails() {
 
     // First initialize the config with admin
     let config_pda = derive_config_pda(&program_id);
+    harness.set_protocol_program_upgrade_authority(&to_anchor_pubkey(admin.pubkey()));
+    let program_data = harness.derive_protocol_program_data_address();
 
     let init_accounts = vela_protocol::accounts::InitConfig {
         admin: to_anchor_pubkey(admin.pubkey()),
+        program: vela_protocol::ID,
+        program_data,
+        mxe_account: derive_mxe_pubkey(&vela_protocol::ID),
         config: config_pda,
         system_program: anchor_lang::system_program::ID,
     };
@@ -237,6 +448,7 @@ fn test_config_update_by_non_admin_fails() {
             cluster_pubkey: derive_cluster_pubkey(456),
             cluster_type: ClusterType::Cerberus,
             cluster_offset: 456,
+            mxe_program_id: vela_protocol::ID,
         },
     }
     .data();
@@ -261,6 +473,7 @@ fn test_config_update_by_non_admin_fails() {
     let update_accounts = vela_protocol::accounts::UpdateConfig {
         admin: to_anchor_pubkey(non_admin.pubkey()),
         config: config_pda,
+        mxe_account: derive_mxe_pubkey(&vela_protocol::ID),
         system_program: anchor_lang::system_program::ID,
     };
 
@@ -269,6 +482,7 @@ fn test_config_update_by_non_admin_fails() {
             cluster_pubkey: derive_cluster_pubkey(999),
             cluster_type: ClusterType::Manticore,
             cluster_offset: 999,
+            mxe_program_id: vela_protocol::ID,
         },
     }
     .data();
@@ -301,9 +515,14 @@ fn test_config_init_rejects_mismatched_cluster_pubkey() {
     let admin = harness.create_wallet();
     let program_id = to_anchor_pubkey(harness.program_id);
     let config_pda = derive_config_pda(&program_id);
+    harness.set_protocol_program_upgrade_authority(&to_anchor_pubkey(admin.pubkey()));
+    let program_data = harness.derive_protocol_program_data_address();
 
     let accounts = vela_protocol::accounts::InitConfig {
         admin: to_anchor_pubkey(admin.pubkey()),
+        program: vela_protocol::ID,
+        program_data,
+        mxe_account: derive_mxe_pubkey(&vela_protocol::ID),
         config: config_pda,
         system_program: anchor_lang::system_program::ID,
     };
@@ -316,6 +535,7 @@ fn test_config_init_rejects_mismatched_cluster_pubkey() {
             cluster_pubkey: bad_cluster_pubkey,
             cluster_type: ClusterType::Cerberus,
             cluster_offset: 456,
+            mxe_program_id: vela_protocol::ID,
         },
     }
     .data();

@@ -30,8 +30,6 @@ pub mod create_plan;
 pub mod create_stream_mandate;
 #[path = "plans/create_usage_plan.rs"]
 pub mod create_usage_plan;
-#[path = "billing/demo_approve_pull.rs"]
-pub mod demo_approve_pull;
 #[path = "agent_mandates/drain_agent_mandate.rs"]
 pub mod drain_agent_mandate;
 #[path = "billing/execute_pull.rs"]
@@ -176,10 +174,6 @@ pub mod __client_accounts_create_usage_plan {
     pub use super::create_usage_plan::__client_accounts_create_usage_plan::*;
 }
 
-pub mod __client_accounts_demo_approve_pull {
-    pub use super::demo_approve_pull::__client_accounts_demo_approve_pull::*;
-}
-
 pub mod __client_accounts_submit_usage_report {
     pub use super::submit_usage_report::__client_accounts_submit_usage_report::*;
 }
@@ -254,6 +248,14 @@ pub mod __client_accounts_init_validate_mandate_comp_def {
 
 pub mod __client_accounts_init_record_billing_comp_def {
     pub use super::init_comp_defs::__client_accounts_init_record_billing_comp_def::*;
+}
+
+pub mod __client_accounts_init_usage_charge_comp_def {
+    pub use super::init_comp_defs::__client_accounts_init_usage_charge_comp_def::*;
+}
+
+pub mod __client_accounts_init_tiered_pricing_comp_def {
+    pub use super::init_comp_defs::__client_accounts_init_tiered_pricing_comp_def::*;
 }
 
 pub mod __client_accounts_init_config {
@@ -332,11 +334,13 @@ pub use create_agent_mandate::{CreateAgentMandate, ServiceLimitInput};
 pub use create_plan::CreatePlan;
 pub use create_stream_mandate::CreateStreamMandate;
 pub use create_usage_plan::CreateUsagePlan;
-pub use demo_approve_pull::DemoApprovePull;
 pub use drain_agent_mandate::DrainAgentMandate;
 pub use execute_pull::ExecutePull;
 pub use execute_stream::ExecuteStream;
-pub use init_comp_defs::{InitRecordBillingCompDef, InitValidateMandateCompDef};
+pub use init_comp_defs::{
+    InitRecordBillingCompDef, InitTieredPricingCompDef, InitUsageChargeCompDef,
+    InitValidateMandateCompDef,
+};
 pub use init_config::{InitConfig, InitConfigIx, UpdateConfig, UpdateConfigIx};
 pub use init_keeper_config::InitKeeperConfig;
 pub use init_merchant_credential::InitMerchantCredential;

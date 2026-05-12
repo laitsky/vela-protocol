@@ -37,11 +37,13 @@ spl-transfer-hook-interface = "=2.0.0"
 spl-discriminator = "=0.5.2"
 spl-tlv-account-resolution = "0.11.1"
 solana-instruction = "=3.3.0"
+solana-keccak-hasher = "=3.1.0"
 solana-program-error = "=3.0.1"
 solana-pubkey = "=3.0.0"
 spl-math = { version = "0.3.0", features = ["no-entrypoint"] }
 
 [dev-dependencies]
+bincode = "1.3"
 litesvm = "0.10.0"
 litesvm-token = "*"
 proptest = { workspace = true }

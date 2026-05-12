@@ -36,28 +36,50 @@ fn setup_update_fixture() -> (TestHarness, solana_keypair::Keypair, Pubkey, Pubk
 }
 
 #[test]
-fn test_update_mandate_merchant_only_and_plan_switch_keeps_address() {
+fn update_mandate_rejects_active_amount_frequency_max_pulls_plan_mutation() {
     let (mut harness, _subscriber, mandate, _plan_0, plan_1) = setup_update_fixture();
-    let updated_amount = 33_000_000;
-    let updated_frequency = MIN_FREQUENCY_SECONDS * 3;
-    let updated_max_pulls = 9;
+    let before: VelaMandate = harness.fetch_anchor_account(&mandate);
 
-    harness
+    let plan_err = harness
+        .send_update_mandate(&mandate, Some(plan_1), None, None, None, None)
+        .expect_err("update_mandate must reject direct active plan changes");
+    assert!(
+        format!("{:?}", plan_err.err).contains("Custom("),
+        "expected custom error for direct plan mutation, got {:?}",
+        plan_err.err
+    );
+
+    let amount_err = harness
+        .send_update_mandate(&mandate, None, Some(before.amount + 1), None, None, None)
+        .expect_err("update_mandate must reject direct active amount changes");
+    assert!(
+        format!("{:?}", amount_err.err).contains("Custom("),
+        "expected custom error for direct amount mutation, got {:?}",
+        amount_err.err
+    );
+
+    let cadence_err = harness
         .send_update_mandate(
             &mandate,
-            Some(plan_1),
-            Some(updated_amount),
-            Some(updated_frequency),
-            Some(updated_max_pulls),
-            Some(BillingType::Flat),
+            None,
+            None,
+            Some(before.frequency + MIN_FREQUENCY_SECONDS),
+            Some(before.max_pulls + 1),
+            Some(BillingType::Usage),
         )
-        .expect("update_mandate should succeed for merchant");
+        .expect_err("update_mandate must reject direct active cadence/cap/type changes");
+    assert!(
+        format!("{:?}", cadence_err.err).contains("Custom("),
+        "expected custom error for direct cadence mutation, got {:?}",
+        cadence_err.err
+    );
 
-    let mandate_after: VelaMandate = harness.fetch_anchor_account(&mandate);
-    assert_eq!(mandate_after.plan, plan_1);
-    assert_eq!(mandate_after.amount, updated_amount);
-    assert_eq!(mandate_after.frequency, updated_frequency);
-    assert_eq!(mandate_after.max_pulls, updated_max_pulls);
+    let after: VelaMandate = harness.fetch_anchor_account(&mandate);
+    assert_eq!(after.plan, before.plan);
+    assert_eq!(after.amount, before.amount);
+    assert_eq!(after.frequency, before.frequency);
+    assert_eq!(after.max_pulls, before.max_pulls);
+    assert!(after.billing_type == before.billing_type);
 }
 
 #[test]
@@ -108,9 +130,10 @@ fn test_update_mandate_realloc_tail_compatibility() {
     assert!(grown_len > original_len);
 
     harness
-        .send_update_mandate(&mandate, None, Some(before.amount + 7), None, None, None)
-        .expect("update_mandate should succeed after tail realloc growth");
+        .send_update_mandate(&mandate, None, Some(before.amount), None, None, None)
+        .expect("no-op update_mandate should succeed after tail realloc growth");
 
     let after: VelaMandate = harness.fetch_anchor_account(&mandate);
-    assert_eq!(after.amount, before.amount + 7);
+    assert_eq!(after.amount, before.amount);
+    assert_eq!(after.plan, before.plan);
 }

@@ -161,6 +161,8 @@ pub fn handler(
                 extra_account_meta_list: &extra_account_meta_list_info,
                 hook_program: &hook_program_info,
                 token_2022_program: &token_2022_program_info,
+                expected_source_authority: ctx.accounts.mandate.key(),
+                expected_destination_owner: mandate.merchant,
             },
             settle_amount,
             &[signer_seeds],

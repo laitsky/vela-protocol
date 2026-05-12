@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use crate::{
     errors::VelaError,
     instructions::{
-        create_usage_plan::validate_usage_pricing_bounds,
+        create_usage_plan::{validate_usage_pricing_bounds, validate_usage_tier_boundaries},
         plan_account::{load_plan_account, write_usage_plan, LoadedPlanAccount},
     },
     state::{PricingTier, UsagePlan},
@@ -86,22 +86,7 @@ pub fn handler(
     let next_max_charge = max_charge_per_period.unwrap_or(plan.max_charge_per_period);
 
     if let Some(new_tiers) = tiers {
-        require!(
-            !new_tiers.is_empty() && new_tiers.len() <= 5,
-            VelaError::InvalidTierCount,
-        );
-
-        // Validate tier boundaries
-        for i in 1..new_tiers.len() {
-            let prev = &new_tiers[i - 1];
-            let curr = &new_tiers[i];
-            if i < new_tiers.len() - 1 {
-                require!(curr.up_to > prev.up_to, VelaError::InvalidTierBoundary);
-            } else if curr.up_to != 0 {
-                require!(curr.up_to > prev.up_to, VelaError::InvalidTierBoundary);
-            }
-        }
-
+        validate_usage_tier_boundaries(&new_tiers)?;
         validate_usage_pricing_bounds(&new_tiers, next_max_charge)?;
 
         let mut tiers_array = [PricingTier::default(); 5];

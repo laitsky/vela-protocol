@@ -27,6 +27,7 @@ pub const TRANSFER_FEE_MAXIMUM: u64 = 0;
 pub const AGENT_MANDATE_SEED: &[u8] = b"agent-mandate";
 pub const AGENT_MANDATE_MAX_SERVICES: usize = 8;
 pub const AGENT_PULL_APPROVAL_TTL_SECONDS: i64 = 60;
+pub const PULL_APPROVAL_TTL_SECONDS: i64 = 3600;
 pub const AGENT_DAILY_RESET_WINDOW_SECONDS: i64 = 86_400;
 /// Maximum metered usage units accepted by the v1 encrypted usage-pricing model.
 /// Client/keeper integrations must not submit encrypted usage reports above this envelope.

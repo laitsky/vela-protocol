@@ -75,7 +75,13 @@ pub(crate) fn settle_accrued_in_place(mandate: &mut StreamMandate, clock_now: i6
         .ok_or(VelaError::ClockRegression)?;
     require!(elapsed_i64 >= 0, VelaError::ClockRegression);
 
-    let elapsed = u128::from(u64::try_from(elapsed_i64).map_err(|_| VelaError::Overflow)?);
+    let elapsed_u64 = u64::try_from(elapsed_i64).map_err(|_| VelaError::Overflow)?;
+    require!(
+        elapsed_u64 >= u64::from(mandate.min_settle_interval),
+        VelaError::MinSettleIntervalViolation
+    );
+
+    let elapsed = u128::from(elapsed_u64);
     let gross = elapsed
         .checked_mul(u128::from(mandate.rate_per_second))
         .ok_or(VelaError::Overflow)?;
@@ -113,7 +119,7 @@ mod tests {
             total_streamed: 0,
             max_streamed: cap,
             paused_at: None,
-            min_settle_interval: 60,
+            min_settle_interval: 0,
             status: StreamStatus::Active,
             mandate_index: 0,
             bump: 255,

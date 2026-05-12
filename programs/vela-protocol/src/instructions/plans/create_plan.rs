@@ -55,11 +55,7 @@ pub fn handler(
     trial_period: u64,
     max_pulls: u64,
 ) -> Result<()> {
-    require!(
-        frequency >= MIN_FREQUENCY_SECONDS,
-        VelaError::FrequencyTooLow
-    );
-    require!(max_pulls > 0, VelaError::MaxPullsTooLow);
+    validate_flat_plan_terms(amount, frequency, max_pulls)?;
     require!(ctx.accounts.token_config.enabled, VelaError::TokenDisabled);
     require!(
         ctx.accounts.token_config.billing_rail == BillingRail::TransferHook,
@@ -171,5 +167,15 @@ pub fn handler(
         .ok_or(VelaError::Overflow)?;
     write_merchant_state(&merchant_state_info, &merchant_state)?;
 
+    Ok(())
+}
+
+pub fn validate_flat_plan_terms(amount: u64, frequency: u64, max_pulls: u64) -> Result<()> {
+    require!(amount > 0, VelaError::InvalidAmount);
+    require!(
+        frequency >= MIN_FREQUENCY_SECONDS,
+        VelaError::FrequencyTooLow
+    );
+    require!(max_pulls > 0, VelaError::MaxPullsTooLow);
     Ok(())
 }

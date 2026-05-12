@@ -479,6 +479,63 @@ fn test_hook_handler_validates_approval_directly() {
 }
 
 #[test]
+fn test_hook_handler_rejects_wrong_period_approval_directly() {
+    let (
+        mut harness,
+        fixture,
+        plan,
+        mandate,
+        subscriber_wrapped_pubkey,
+        merchant_wrapped_pubkey,
+        wrapped_mint_pubkey,
+    ) = setup_subscription_with_t22(25_000_000, 2);
+    let config = harness.derive_config();
+    let config_account: vela_protocol::state::ProtocolConfig =
+        harness.fetch_anchor_account(&config);
+    let wrapping_vault = config_account.wrapping_vault;
+    let token_config = harness.derive_token_config_address(&wrapped_mint_pubkey);
+
+    harness.set_clock_timestamp(mandate.next_payment_due);
+    let approval_pda = harness.create_pull_approval_with_period_and_amount(
+        &fixture.mandate,
+        mandate.next_payment_due - mandate.frequency as i64 - 1,
+        mandate.next_payment_due,
+        mandate.next_payment_due + 600,
+        true,
+        plan.amount,
+    );
+
+    let owner = fixture.mandate;
+    let caller = harness.create_wallet();
+    let error = call_transfer_hook_directly(
+        &mut harness,
+        &subscriber_wrapped_pubkey,
+        &wrapped_mint_pubkey,
+        &merchant_wrapped_pubkey,
+        &owner,
+        &wrapping_vault,
+        &config,
+        &approval_pda,
+        &token_config,
+        plan.amount,
+        &caller,
+    )
+    .expect_err("standalone transfer-hook validation must reject wrong-period approvals");
+
+    let err_str = format!("{:?}", error.err);
+    assert!(
+        err_str.contains("Custom(6026)")
+            || error
+                .meta
+                .logs
+                .iter()
+                .any(|log| log.contains("TransferNotAuthorized")),
+        "expected TransferNotAuthorized for wrong-period approval, got {:?}",
+        error.err,
+    );
+}
+
+#[test]
 fn test_hook_handler_rejects_no_approval_directly() {
     // Call the transfer hook instruction directly with NO approval account.
     let (

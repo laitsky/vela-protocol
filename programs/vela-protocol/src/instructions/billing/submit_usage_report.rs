@@ -5,11 +5,15 @@ use crate::{
     errors::VelaError,
     instructions::{
         create_usage_plan::validate_usage_pricing_bounds,
-        mandate_account::{load_mandate_account, validate_loaded_mandate_address},
+        mandate_account::{
+            load_mandate_account, mandate_billing_period, validate_loaded_mandate_address,
+        },
         plan_account::{load_plan_account, require_plan_billing_type, LoadedPlanAccount},
     },
     state::{BillingType, MandateStatus, PlanStatus, UsageReport},
 };
+
+const USAGE_UNITS_CIPHERTEXT_COUNT: usize = 1;
 
 #[derive(Accounts)]
 #[instruction(period_start: i64)]
@@ -51,12 +55,11 @@ pub fn handler(
     validate_loaded_mandate_address(&ctx.accounts.mandate.key(), &loaded)?;
     let mandate = loaded.into_current();
 
-    // The production path is merchant-reported usage. The devnet demo also
-    // allows the subscriber to submit their own sample usage report so judges
-    // can run the full flow from a single connected wallet.
+    // Production usage reports are merchant-authored. The report PDA is keyed only by
+    // mandate and period, so allowing subscribers here would let them preempt the
+    // merchant's canonical report for the billing period.
     require!(
-        ctx.accounts.merchant.key() == mandate.merchant
-            || ctx.accounts.merchant.key() == mandate.subscriber,
+        ctx.accounts.merchant.key() == mandate.merchant,
         VelaError::UnauthorizedKeeper
     );
 
@@ -97,26 +100,23 @@ pub fn handler(
         VelaError::InvalidTierCount
     );
     validate_loaded_usage_pricing_bounds(&plan)?;
-    let expected_ciphertext_len = if tier_count == 1 { 3 } else { 13 };
     require!(
-        computation_ciphertext.len() == expected_ciphertext_len,
+        computation_ciphertext.len() == USAGE_UNITS_CIPHERTEXT_COUNT,
         VelaError::InvalidCiphertextInput
     );
 
-    // Validate period boundaries
+    let (expected_period_start, expected_period_end) = mandate_billing_period(&mandate)?;
     require!(period_start < period_end, VelaError::InvalidPeriod);
-
-    // Validate period_start aligns with mandate.next_payment_due (Pitfall 5)
     require!(
-        period_start == mandate.next_payment_due,
+        period_start == expected_period_start && period_end == expected_period_end,
         VelaError::PeriodMismatch
     );
 
     let clock = Clock::get()?;
+    require!(clock.unix_timestamp >= period_end, VelaError::PullTooEarly);
     let mut ciphertext_array = [[0u8; 32]; MAX_USAGE_COMPUTATION_CIPHERTEXTS];
-    for (index, ciphertext) in computation_ciphertext.iter().enumerate() {
-        ciphertext_array[index] = *ciphertext;
-    }
+    ciphertext_array[0] = computation_ciphertext[0];
+    ciphertext_array[1] = plan.usage_terms_hash(&ctx.accounts.usage_plan.key())?;
 
     ctx.accounts.usage_report.set_inner(UsageReport {
         mandate: ctx.accounts.mandate.key(),
@@ -124,7 +124,7 @@ pub fn handler(
         period_start,
         period_end,
         computation_ciphertext: ciphertext_array,
-        ciphertext_count: computation_ciphertext.len() as u8,
+        ciphertext_count: USAGE_UNITS_CIPHERTEXT_COUNT as u8,
         nonce,
         pub_key,
         settled: false,

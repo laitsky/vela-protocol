@@ -4,8 +4,6 @@ use crate::constants::TRANSFER_HOOK_PROGRAM_ID;
 
 use super::CURRENT_ACCOUNT_VERSION;
 
-pub const PROTOCOL_CONFIG_RESERVED_BYTES: usize = 32;
-
 #[account]
 pub struct ProtocolConfig {
     pub admin: Pubkey,                    // 32 - upgrade authority
@@ -19,22 +17,22 @@ pub struct ProtocolConfig {
     pub transfer_hook_program_id: Pubkey, // 32 - dynamic transfer hook program ID
     pub bump: u8,                  // 1
     pub version: u8,               // 1 - schema version
-    pub _reserved: [u8; PROTOCOL_CONFIG_RESERVED_BYTES],
+    pub mxe_program_id: Pubkey, // 32 - Arcium MXE program ID, default/zero falls back to crate::ID
 }
 
 impl ProtocolConfig {
     pub const SEED_PREFIX: &'static [u8] = b"config";
     // Seeds: [b"config"]
     // Singleton PDA -- one per program deployment
-    // SIZE = 8 + 32 + 32 + 1 + 8 + 32 + 32 + 1 + 8 + 32 + 1 + 1 + 32 = 220 bytes
-    pub const SIZE: usize =
-        8 + 32 + 32 + 1 + 8 + 32 + 32 + 1 + 8 + 32 + 1 + 1 + PROTOCOL_CONFIG_RESERVED_BYTES;
+    // SIZE = 8 + 32 + 32 + 1 + 8 + 32 + 32 + 1 + 8 + 32 + 32 + 1 + 1 = 220 bytes
+    pub const SIZE: usize = 8 + 32 + 32 + 1 + 8 + 32 + 32 + 1 + 8 + 32 + 32 + 1 + 1;
 
     pub fn new(
         admin: Pubkey,
         cluster_pubkey: Pubkey,
         cluster_type: ClusterType,
         cluster_offset: u64,
+        mxe_program_id: Pubkey,
         bump: u8,
     ) -> Self {
         Self {
@@ -49,7 +47,15 @@ impl ProtocolConfig {
             transfer_hook_program_id: TRANSFER_HOOK_PROGRAM_ID,
             bump,
             version: CURRENT_ACCOUNT_VERSION,
-            _reserved: [0; PROTOCOL_CONFIG_RESERVED_BYTES],
+            mxe_program_id,
+        }
+    }
+
+    pub fn effective_mxe_program_id(&self) -> Pubkey {
+        if self.mxe_program_id == Pubkey::default() {
+            crate::ID
+        } else {
+            self.mxe_program_id
         }
     }
 }
@@ -76,10 +82,51 @@ mod tests {
             Pubkey::new_unique(),
             ClusterType::Cerberus,
             456,
+            Pubkey::default(),
             1,
         );
 
         assert_eq!(config.transfer_hook_program_id, TRANSFER_HOOK_PROGRAM_ID);
-        assert_eq!(config._reserved, [0; PROTOCOL_CONFIG_RESERVED_BYTES]);
+        assert_eq!(config.effective_mxe_program_id(), crate::ID);
+    }
+
+    #[test]
+    fn non_default_mxe_program_id_is_effective() {
+        let mxe_program_id = Pubkey::new_unique();
+        let config = ProtocolConfig::new(
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+            ClusterType::Cerberus,
+            456,
+            mxe_program_id,
+            1,
+        );
+
+        assert_eq!(config.effective_mxe_program_id(), mxe_program_id);
+    }
+
+    #[test]
+    fn mxe_program_id_replaces_trailing_reserved_bytes() {
+        let bump = 254;
+        let mxe_program_id = Pubkey::new_unique();
+        let config = ProtocolConfig::new(
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+            ClusterType::Cerberus,
+            456,
+            mxe_program_id,
+            bump,
+        );
+
+        let mut data = Vec::new();
+        config.try_serialize(&mut data).unwrap();
+
+        let bump_offset = 8 + 32 + 32 + 1 + 8 + 32 + 32 + 1 + 8 + 32;
+        let version_offset = bump_offset + 1;
+        let mxe_offset = version_offset + 1;
+        assert_eq!(data[bump_offset], bump);
+        assert_eq!(data[version_offset], CURRENT_ACCOUNT_VERSION);
+        assert_eq!(&data[mxe_offset..mxe_offset + 32], mxe_program_id.as_ref());
+        assert_eq!(data.len(), ProtocolConfig::SIZE);
     }
 }

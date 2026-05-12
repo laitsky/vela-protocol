@@ -5,8 +5,12 @@ use crate::{
     constants::{event_token_symbol, EXTRA_ACCOUNT_METAS_SEED},
     errors::VelaError,
     instructions::{
+        account_close::close_program_account,
         compute_proration,
-        mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
+        mandate_account::{
+            load_mandate_account, mandate_billing_period, validate_loaded_mandate_address,
+            write_mandate,
+        },
         plan_account::load_plan_account,
         protocol_config_account::load_protocol_config,
         stream_transfer::{invoke_stream_transfer, StreamTransferAccounts},
@@ -179,7 +183,7 @@ pub fn handler(ctx: Context<UpdateMandatePlan>) -> Result<()> {
     if signed_delta > 0 {
         let charge_amount =
             u64::try_from(signed_delta).map_err(|_| error!(VelaError::MathOverflow))?;
-        validate_pull_approval(&ctx, charge_amount, clock_now)?;
+        validate_pull_approval(&ctx, &mandate, charge_amount, clock_now)?;
 
         let mandate_index_bytes = mandate.mandate_index.to_le_bytes();
         let mandate_bump = [mandate.bump];
@@ -218,10 +222,14 @@ pub fn handler(ctx: Context<UpdateMandatePlan>) -> Result<()> {
                 extra_account_meta_list: &extra_account_meta_list_info,
                 hook_program: &hook_program_info,
                 token_2022_program: &token_2022_program_info,
+                expected_source_authority: ctx.accounts.mandate.key(),
+                expected_destination_owner: mandate.merchant,
             },
             charge_amount,
             &[signer_seeds],
         )?;
+        let refund_info = ctx.accounts.authority.to_account_info();
+        close_program_account(&pull_approval_info, &refund_info)?;
     } else if signed_delta < 0 {
         let credit_amount =
             u64::try_from(-signed_delta).map_err(|_| error!(VelaError::MathOverflow))?;
@@ -294,6 +302,7 @@ fn elapsed_in_period(mandate: &VelaMandate, clock_now: i64) -> Result<u64> {
 
 fn validate_pull_approval(
     ctx: &Context<UpdateMandatePlan>,
+    mandate: &VelaMandate,
     charge_amount: u64,
     clock_now: i64,
 ) -> Result<()> {
@@ -323,6 +332,16 @@ fn validate_pull_approval(
     };
 
     require!(approval.approved, VelaError::ApprovalNotGranted);
+    require_keys_eq!(
+        approval.mandate,
+        ctx.accounts.mandate.key(),
+        VelaError::ApprovalNotGranted
+    );
+    let (period_start, period_end) = mandate_billing_period(mandate)?;
+    require!(
+        approval.period_start == period_start && approval.period_end == period_end,
+        VelaError::PeriodMismatch
+    );
     require!(
         clock_now <= approval.valid_until,
         VelaError::ApprovalExpired

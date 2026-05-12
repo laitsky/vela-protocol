@@ -160,3 +160,78 @@ fn test_update_flat_plan_partial_update() {
         "max_pulls should be unchanged"
     );
 }
+
+#[test]
+fn update_plan_rejects_zero_amount() {
+    let mut harness = TestHarness::new();
+    let addresses = harness.derive_plan_addresses(0);
+
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+    harness
+        .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
+        .expect("create_plan should succeed");
+
+    let err = harness
+        .send_update_plan(0, Some(0), None, None, None)
+        .expect_err("update_plan must reject zero amount");
+
+    assert!(
+        format!("{:?}", err.err).contains("Custom(6057)"),
+        "expected InvalidAmount, got {:?}",
+        err.err
+    );
+    let unchanged: VelaPlan = harness.fetch_anchor_account(&addresses.plan);
+    assert_eq!(unchanged.amount, 25_000_000);
+}
+
+#[test]
+fn update_plan_rejects_frequency_below_minimum() {
+    let mut harness = TestHarness::new();
+    let addresses = harness.derive_plan_addresses(0);
+
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+    harness
+        .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
+        .expect("create_plan should succeed");
+
+    let err = harness
+        .send_update_plan(0, None, Some(MIN_FREQUENCY_SECONDS - 1), None, None)
+        .expect_err("update_plan must reject sub-minimum frequency");
+
+    assert!(
+        format!("{:?}", err.err).contains("Custom(6005)"),
+        "expected FrequencyTooLow, got {:?}",
+        err.err
+    );
+    let unchanged: VelaPlan = harness.fetch_anchor_account(&addresses.plan);
+    assert_eq!(unchanged.frequency, MIN_FREQUENCY_SECONDS);
+}
+
+#[test]
+fn update_plan_rejects_zero_max_pulls() {
+    let mut harness = TestHarness::new();
+    let addresses = harness.derive_plan_addresses(0);
+
+    harness
+        .send_init_merchant_credential()
+        .expect("init_merchant_credential should succeed");
+    harness
+        .send_create_plan(25_000_000, MIN_FREQUENCY_SECONDS, 0, 4, 0)
+        .expect("create_plan should succeed");
+
+    let err = harness
+        .send_update_plan(0, None, None, None, Some(0))
+        .expect_err("update_plan must reject zero max_pulls");
+
+    assert!(
+        format!("{:?}", err.err).contains("Custom(6010)"),
+        "expected MaxPullsTooLow, got {:?}",
+        err.err
+    );
+    let unchanged: VelaPlan = harness.fetch_anchor_account(&addresses.plan);
+    assert_eq!(unchanged.max_pulls, 4);
+}

@@ -2,7 +2,10 @@ use anchor_lang::prelude::*;
 
 use crate::{
     errors::VelaError,
-    instructions::plan_account::{load_plan_account, write_plan, LoadedPlanAccount},
+    instructions::{
+        create_plan::validate_flat_plan_terms,
+        plan_account::{load_plan_account, write_plan, LoadedPlanAccount},
+    },
     state::VelaPlan,
 };
 
@@ -95,6 +98,7 @@ pub fn handler(
     if let Some(m) = max_pulls {
         plan.max_pulls = m;
     }
+    validate_flat_plan_terms(plan.amount, plan.frequency, plan.max_pulls)?;
 
     // Ensure account has enough space for V2
     let required_size = VelaPlan::SIZE;

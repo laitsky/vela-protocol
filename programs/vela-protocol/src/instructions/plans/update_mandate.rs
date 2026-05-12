@@ -46,7 +46,7 @@ pub fn handler(
     );
 
     let merchant_key = ctx.accounts.merchant.key();
-    let mut mandate = load_mandate_account(&ctx.accounts.mandate.to_account_info())?;
+    let mandate = load_mandate_account(&ctx.accounts.mandate.to_account_info())?;
     validate_loaded_mandate_address(&ctx.accounts.mandate.key(), &mandate)?;
     require_keys_eq!(
         mandate.merchant(),
@@ -82,32 +82,44 @@ pub fn handler(
         &ctx.accounts.system_program.to_account_info(),
     )?;
 
+    // Active economic mutation is intentionally blocked here. This instruction remains as a
+    // compatibility/realloc path; plan, price, cadence, cap, and billing-type changes for active
+    // mandates must use update_mandate_plan so subscriber approval and proration rules apply.
     if let Some(next_amount) = amount {
-        require!(next_amount > 0, VelaError::InvalidAmount);
-        mandate.set_amount(next_amount);
+        require!(
+            next_amount == mandate.amount(),
+            VelaError::UnauthorizedUpgrade
+        );
     }
     if let Some(next_frequency) = frequency {
-        require!(next_frequency > 0, VelaError::InvalidFrequency);
-        mandate.set_frequency(next_frequency);
+        require!(
+            next_frequency == mandate.frequency(),
+            VelaError::UnauthorizedUpgrade
+        );
     }
     if let Some(next_max_pulls) = max_pulls {
-        require!(next_max_pulls > 0, VelaError::MaxPullsTooLow);
-        mandate.set_max_pulls(next_max_pulls);
+        require!(
+            next_max_pulls == mandate.max_pulls(),
+            VelaError::UnauthorizedUpgrade
+        );
     }
     if plan.is_some() {
-        mandate.set_plan(target_plan_key);
+        require_keys_eq!(
+            target_plan_key,
+            mandate.plan(),
+            VelaError::UnauthorizedUpgrade
+        );
     }
 
     if let Some(next_billing_type) = billing_type {
-        if plan.is_some() {
-            require!(
-                next_billing_type == target_plan.billing_type(),
-                VelaError::BillingTypeMismatch
-            );
-        }
-        mandate.set_billing_type(next_billing_type);
-    } else if plan.is_some() {
-        mandate.set_billing_type(target_plan.billing_type());
+        require!(
+            next_billing_type == mandate.billing_type(),
+            VelaError::UnauthorizedUpgrade
+        );
+        require!(
+            next_billing_type == target_plan.billing_type(),
+            VelaError::BillingTypeMismatch
+        );
     }
 
     write_mandate_account(&ctx.accounts.mandate.to_account_info(), &mandate)?;

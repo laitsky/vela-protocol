@@ -7,14 +7,20 @@ use crate::{
     instructions::{
         account_close::close_program_account,
         keeper_config_account::load_keeper_config,
-        mandate_account::{load_mandate_account, validate_loaded_mandate_address, write_mandate},
+        mandate_account::{
+            load_mandate_account, mandate_billing_period, validate_loaded_mandate_address,
+            write_mandate,
+        },
         plan_account::{load_plan_account, require_plan_billing_type, LoadedPlanAccount},
         protocol_config_account::load_protocol_config,
-        spl_helpers::{invoke_transfer_checked_with_hook, TransferCheckedWithHookAccounts},
+        spl_helpers::{
+            invoke_transfer_checked_with_hook, validate_token_2022_transfer_accounts,
+            TransferCheckedWithHookAccounts,
+        },
     },
     state::{
         BillingType, KeeperConfig, MandateStatus, MandateUpgradeFinalized, PlanStatus,
-        ProtocolConfig, PullApproval, TokenConfig, VelaMandate,
+        ProtocolConfig, PullApproval, TokenConfig, UsageReport, VelaMandate,
     },
 };
 
@@ -175,19 +181,28 @@ pub fn handler<'a, 'b, 'c, 'info>(
         mandate.pulls_executed < mandate.max_pulls,
         VelaError::MaxPullsExceeded
     );
-    if mandate.billing_type != BillingType::Usage {
-        require!(
-            clock.unix_timestamp >= mandate.next_payment_due,
-            VelaError::PullTooEarly
-        );
-    }
+    require!(
+        clock.unix_timestamp >= mandate.next_payment_due,
+        VelaError::PullTooEarly
+    );
+    let (approval_period_start, approval_period_end) = mandate_billing_period(&mandate)?;
+    let usage_report_info = if mandate.billing_type == BillingType::Usage {
+        Some(
+            ctx.remaining_accounts
+                .first()
+                .ok_or(VelaError::PeriodMismatch)?,
+        )
+    } else {
+        None
+    };
+    let pending_plan_index = usize::from(usage_report_info.is_some());
 
     let mut active_plan = current_plan;
     let mut auto_applied_change: Option<(Pubkey, Pubkey, i64)> = None;
     if mandate.pending_change_type == 2 && clock.unix_timestamp >= mandate.pending_effective_at {
         let pending_plan_info = ctx
             .remaining_accounts
-            .first()
+            .get(pending_plan_index)
             .ok_or(VelaError::PendingPlanAccountMissing)?;
         require_keys_eq!(
             pending_plan_info.key(),
@@ -264,10 +279,29 @@ pub fn handler<'a, 'b, 'c, 'info>(
     };
 
     require!(approval.approved, VelaError::ApprovalNotGranted);
+    require_keys_eq!(
+        approval.mandate,
+        ctx.accounts.mandate.key(),
+        VelaError::ApprovalNotGranted
+    );
+    require!(
+        approval.period_start == approval_period_start
+            && approval.period_end == approval_period_end,
+        VelaError::PeriodMismatch
+    );
     require!(
         clock.unix_timestamp <= approval.valid_until,
         VelaError::ApprovalExpired
     );
+    if let Some(report_info) = usage_report_info {
+        validate_usage_report_for_settlement(
+            report_info,
+            &ctx.accounts.mandate.key(),
+            &mandate.merchant,
+            approval.period_start,
+            approval.period_end,
+        )?;
+    }
     let base_charge_amount = match active_plan.as_ref() {
         LoadedPlanAccount::Flat(_) | LoadedPlanAccount::LegacyFlat(_) => {
             require!(
@@ -302,7 +336,7 @@ pub fn handler<'a, 'b, 'c, 'info>(
                 plan_key.as_ref(),
                 &mandate_bump,
             ];
-            invoke_billing_transfer(&ctx, charge_amount, &[legacy_seeds])?;
+            invoke_billing_transfer(&ctx, charge_amount, &[legacy_seeds], &mandate.merchant)?;
         } else {
             let merchant_key = mandate.merchant;
             let mandate_index_bytes = mandate.mandate_index.to_le_bytes();
@@ -313,7 +347,7 @@ pub fn handler<'a, 'b, 'c, 'info>(
                 mandate_index_bytes.as_ref(),
                 &mandate_bump,
             ];
-            invoke_billing_transfer(&ctx, charge_amount, &[current_seeds])?;
+            invoke_billing_transfer(&ctx, charge_amount, &[current_seeds], &mandate.merchant)?;
         }
     }
 
@@ -339,6 +373,9 @@ pub fn handler<'a, 'b, 'c, 'info>(
         &mandate,
         legacy_layout,
     )?;
+    if let Some(report_info) = usage_report_info {
+        mark_usage_report_settled(report_info)?;
+    }
 
     if let Some((old_plan, new_plan, applied_at)) = auto_applied_change {
         emit!(MandateUpgradeFinalized {
@@ -372,10 +409,67 @@ pub struct ArciumUnavailableEvent {
     pub timestamp: i64,
 }
 
+fn validate_usage_report_for_settlement(
+    report_info: &AccountInfo<'_>,
+    mandate: &Pubkey,
+    merchant: &Pubkey,
+    period_start: i64,
+    period_end: i64,
+) -> Result<()> {
+    require_keys_eq!(
+        *report_info.owner,
+        crate::ID,
+        VelaError::BillingTypeMismatch
+    );
+    let (expected_report, _) = Pubkey::find_program_address(
+        &[
+            UsageReport::SEED_PREFIX,
+            mandate.as_ref(),
+            period_start.to_le_bytes().as_ref(),
+        ],
+        &crate::ID,
+    );
+    require_keys_eq!(
+        report_info.key(),
+        expected_report,
+        VelaError::PeriodMismatch
+    );
+    let report = {
+        let data = report_info.try_borrow_data()?;
+        let mut slice: &[u8] = &data;
+        UsageReport::try_deserialize(&mut slice).map_err(|_| VelaError::PeriodMismatch)?
+    };
+    require_keys_eq!(report.mandate, *mandate, VelaError::BillingTypeMismatch);
+    require_keys_eq!(report.merchant, *merchant, VelaError::BillingTypeMismatch);
+    require!(
+        report.period_start == period_start && report.period_end == period_end,
+        VelaError::PeriodMismatch
+    );
+    require!(!report.settled, VelaError::UsageReportAlreadySettled);
+    Ok(())
+}
+
+fn mark_usage_report_settled(report_info: &AccountInfo<'_>) -> Result<()> {
+    const SETTLED_OFFSET: usize = 8
+        + 32
+        + 32
+        + 8
+        + 8
+        + (32 * crate::constants::MAX_USAGE_COMPUTATION_CIPHERTEXTS)
+        + 1
+        + 16
+        + 32;
+    let mut data = report_info.try_borrow_mut_data()?;
+    require!(data.len() > SETTLED_OFFSET, VelaError::PeriodMismatch);
+    data[SETTLED_OFFSET] = 1;
+    Ok(())
+}
+
 fn invoke_billing_transfer<'a, 'b, 'c, 'info>(
     ctx: &Context<'a, 'b, 'c, 'info, ExecutePull<'info>>,
     charge_amount: u64,
     signer_seed_groups: &[&[&[u8]]],
+    expected_destination_owner: &Pubkey,
 ) -> Result<()> {
     let source_info = ctx.accounts.subscriber_wrapped_account.to_account_info();
     let mint_info = ctx.accounts.wrapped_usdc_mint.to_account_info();
@@ -390,6 +484,15 @@ fn invoke_billing_transfer<'a, 'b, 'c, 'info>(
     let extra_account_meta_list_info = ctx.accounts.extra_account_meta_list.to_account_info();
     let hook_program_info = ctx.accounts.hook_program.to_account_info();
     let token_2022_program_info = ctx.accounts.token_2022_program.to_account_info();
+
+    validate_token_2022_transfer_accounts(
+        &source_info,
+        &destination_info,
+        mint_info.key,
+        token_2022_program_info.key,
+        authority_info.key,
+        expected_destination_owner,
+    )?;
 
     invoke_transfer_checked_with_hook(
         TransferCheckedWithHookAccounts {

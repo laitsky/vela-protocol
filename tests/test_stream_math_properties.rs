@@ -35,7 +35,7 @@ fn fresh_mandate(rate: u64, last: i64, cap: Option<u64>) -> StreamMandate {
         total_streamed: 0,
         max_streamed: cap,
         paused_at: None,
-        min_settle_interval: 60,
+        min_settle_interval: 0,
         status: StreamStatus::Active,
         mandate_index: 0,
         bump: 255,

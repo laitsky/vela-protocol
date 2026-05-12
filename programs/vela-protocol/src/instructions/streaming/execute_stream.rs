@@ -100,6 +100,11 @@ pub fn handler<'a, 'b, 'c, 'info>(
     validate_stream_mandate_address(&ctx.accounts.stream_mandate.key(), &stream)?;
     require_keys_eq!(ctx.accounts.subscriber.key(), stream.subscriber);
     require_keys_eq!(ctx.accounts.merchant.key(), stream.merchant);
+    require_keys_eq!(
+        ctx.accounts.wrapped_usdc_mint.key(),
+        stream.mint,
+        VelaError::UsdcMintMismatch
+    );
 
     let payer_key = ctx.accounts.payer.key();
     let is_keeper = payer_key == keeper_config.keeper_authority();
@@ -179,6 +184,8 @@ pub fn handler<'a, 'b, 'c, 'info>(
             extra_account_meta_list: &extra_account_meta_list_info,
             hook_program: &hook_program_info,
             token_2022_program: &token_2022_program_info,
+            expected_source_authority: ctx.accounts.stream_mandate.key(),
+            expected_destination_owner: stream.merchant,
         },
         settle_amount,
         &[signer_seeds],

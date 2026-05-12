@@ -8,3 +8,6 @@ repository.workspace = true
 [dependencies]
 arcis = "0.9.7"
 blake3 = "=1.8.2"
+
+[dev-dependencies]
+proptest = { workspace = true }

@@ -51,7 +51,7 @@ const APPROVAL_SEED = Buffer.from("approval");
 const EMPTY_PUBKEY = new PublicKey(new Uint8Array(32));
 const PROTOCOL_CONFIG_SIZE = 220;
 const KEEPER_CONFIG_SIZE = 268;
-const PULL_APPROVAL_SIZE = 66;
+const PULL_APPROVAL_SIZE = 82;
 const TOKEN_CONFIG_SIZE = 213;
 
 type VelaProgram = Program<any>;
@@ -118,6 +118,7 @@ function serializeProtocolConfig(
   (args.transferHookProgramId ?? EMPTY_PUBKEY).toBuffer().copy(data, 154);
   data.writeUInt8(bump, 186);
   data.writeUInt8(1, 187);
+  EMPTY_PUBKEY.toBuffer().copy(data, 188);
   return data;
 }
 
@@ -161,6 +162,8 @@ function serializeTokenConfig(args: {
 
 function serializePullApproval(args: {
   mandate: PublicKey;
+  periodStart: bigint;
+  periodEnd: bigint;
   validUntil: bigint;
   approved: boolean;
   approvedAmount: bigint;
@@ -170,11 +173,13 @@ function serializePullApproval(args: {
   const data = Buffer.alloc(PULL_APPROVAL_SIZE);
   discriminator("account", "PullApproval").copy(data, 0);
   args.mandate.toBuffer().copy(data, 8);
-  data.writeBigInt64LE(args.validUntil, 40);
-  data.writeUInt8(args.approved ? 1 : 0, 48);
-  data.writeBigUInt64LE(args.approvedAmount, 49);
-  data.writeBigInt64LE(args.createdAt, 57);
-  data.writeUInt8(args.bump, 65);
+  data.writeBigInt64LE(args.periodStart, 40);
+  data.writeBigInt64LE(args.periodEnd, 48);
+  data.writeBigInt64LE(args.validUntil, 56);
+  data.writeUInt8(args.approved ? 1 : 0, 64);
+  data.writeBigUInt64LE(args.approvedAmount, 65);
+  data.writeBigInt64LE(args.createdAt, 73);
+  data.writeUInt8(args.bump, 81);
   return data;
 }
 
@@ -511,12 +516,16 @@ export async function installPhase7AdminState(args: {
 export function insertPullApproval(args: {
   svm: LiteSVM;
   mandate: PublicKey;
+  periodStart?: bigint;
+  periodEnd?: bigint;
   validUntil: bigint;
   approvedAmount: bigint;
   approved?: boolean;
   createdAt?: bigint;
 }): PublicKey {
   const { svm, mandate, validUntil, approvedAmount, approved = true } = args;
+  const periodEnd = args.periodEnd ?? validUntil;
+  const periodStart = args.periodStart ?? periodEnd;
   const createdAt = args.createdAt ?? validUntil;
   const [approval, bump] = derivePullApprovalAddress(mandate);
   svm.setAccount(approval, {
@@ -525,6 +534,8 @@ export function insertPullApproval(args: {
     ),
     data: serializePullApproval({
       mandate,
+      periodStart,
+      periodEnd,
       validUntil,
       approved,
       approvedAmount,

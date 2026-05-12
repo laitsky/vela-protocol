@@ -1,6 +1,9 @@
 use anchor_lang::{prelude::*, AccountDeserialize, AccountSerialize, Discriminator};
 
-use crate::state::{BillingType, MandateStatus, VelaMandate, CURRENT_ACCOUNT_VERSION};
+use crate::{
+    errors::VelaError,
+    state::{BillingType, MandateStatus, VelaMandate, CURRENT_ACCOUNT_VERSION},
+};
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct VelaMandateV1 {
@@ -230,6 +233,15 @@ pub fn validate_loaded_mandate_address(
         }
     }
     Ok(())
+}
+
+pub fn mandate_billing_period(mandate: &VelaMandate) -> Result<(i64, i64)> {
+    let frequency = i64::try_from(mandate.frequency).map_err(|_| VelaError::Overflow)?;
+    let period_start = mandate
+        .next_payment_due
+        .checked_sub(frequency)
+        .ok_or(VelaError::Overflow)?;
+    Ok((period_start, mandate.next_payment_due))
 }
 
 pub fn write_mandate(

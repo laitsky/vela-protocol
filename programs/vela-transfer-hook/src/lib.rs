@@ -9,7 +9,11 @@ use spl_transfer_hook_interface::instruction::{ExecuteInstruction, TransferHookI
 use vela_protocol::{
     constants::EXTRA_ACCOUNT_METAS_SEED,
     errors::VelaError,
-    state::{BillingRail, ProtocolConfig, PullApproval, StreamMandate, StreamStatus, TokenConfig},
+    instructions::mandate_account::mandate_billing_period,
+    state::{
+        BillingRail, ProtocolConfig, PullApproval, StreamMandate, StreamStatus, TokenConfig,
+        VelaMandate,
+    },
 };
 
 declare_id!("3agVoFp4NZFuKbVqCV8HbjSZn1xW4Utk4U1Wir3TKjZ9");
@@ -284,6 +288,7 @@ fn handler_transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> 
         }
     }
 
+    let mut expected_approval_period: Option<(i64, i64)> = None;
     if ctx.accounts.owner.owner == &vela_protocol::ID && !ctx.accounts.owner.data_is_empty() {
         let owner_data = ctx.accounts.owner.try_borrow_data()?;
         if owner_data.len() < 8 {
@@ -324,6 +329,12 @@ fn handler_transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> 
             }
             return Ok(());
         }
+        if &owner_data[..8] == VelaMandate::DISCRIMINATOR {
+            let mut mandate_slice: &[u8] = &owner_data;
+            let mandate = VelaMandate::try_deserialize(&mut mandate_slice)
+                .map_err(|_| VelaError::WrongAccountType)?;
+            expected_approval_period = Some(mandate_billing_period(&mandate)?);
+        }
     }
 
     let (expected_approval, _) = Pubkey::find_program_address(
@@ -358,6 +369,12 @@ fn handler_transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> 
             Clock::get()?.unix_timestamp <= approval.valid_until,
             VelaError::ApprovalExpired
         );
+        if let Some((period_start, period_end)) = expected_approval_period {
+            require!(
+                approval.period_start == period_start && approval.period_end == period_end,
+                VelaError::TransferNotAuthorized
+            );
+        }
         require!(
             amount <= approval.approved_amount,
             VelaError::AmountExceedsPlanAmount
