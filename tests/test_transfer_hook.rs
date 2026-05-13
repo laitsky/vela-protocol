@@ -584,6 +584,43 @@ fn test_hook_handler_rejects_no_approval_directly() {
 }
 
 #[test]
+fn test_hook_handler_allows_signed_wallet_funding_without_approval() {
+    let (
+        mut harness,
+        _fixture,
+        plan,
+        _mandate,
+        mandate_wrapped_pubkey,
+        merchant_wrapped_pubkey,
+        wrapped_mint_pubkey,
+    ) = setup_subscription_with_t22(25_000_000, 2);
+    let config = harness.derive_config();
+    let config_account: vela_protocol::state::ProtocolConfig =
+        harness.fetch_anchor_account(&config);
+    let wrapping_vault = config_account.wrapping_vault;
+    let token_config = harness.derive_token_config_address(&wrapped_mint_pubkey);
+
+    let merchant = harness.merchant_pubkey();
+    let caller = harness.merchant.insecure_clone();
+    let fake_approval_pubkey = helpers::to_anchor_pubkey(Keypair::new().pubkey());
+
+    call_transfer_hook_directly(
+        &mut harness,
+        &merchant_wrapped_pubkey,
+        &wrapped_mint_pubkey,
+        &mandate_wrapped_pubkey,
+        &merchant,
+        &wrapping_vault,
+        &config,
+        &fake_approval_pubkey,
+        &token_config,
+        plan.amount,
+        &caller,
+    )
+    .expect("wallet-signed funding transfers should not require PullApproval");
+}
+
+#[test]
 fn test_mandate_status_after_all_pulls_expired() {
     // Test that mandate transitions to Expired after all max_pulls are consumed.
     let (mut harness, fixture, plan, mandate_before, sub_wrapped, merch_wrapped, wrapped_mint) =

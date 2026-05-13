@@ -288,6 +288,13 @@ fn handler_transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> 
         }
     }
 
+    // A wallet-owned source account is an explicit, signed user transfer. The
+    // PullApproval gate is only needed when Vela protocol-owned authorities
+    // move funds on behalf of the user.
+    if ctx.accounts.owner.owner != &vela_protocol::ID {
+        return Ok(());
+    }
+
     let mut expected_approval_period: Option<(i64, i64)> = None;
     if ctx.accounts.owner.owner == &vela_protocol::ID && !ctx.accounts.owner.data_is_empty() {
         let owner_data = ctx.accounts.owner.try_borrow_data()?;
