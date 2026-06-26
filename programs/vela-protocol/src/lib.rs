@@ -298,8 +298,8 @@ pub mod vela_protocol {
         )
     }
 
-    pub fn agent_pull<'a, 'b, 'c, 'info>(
-        ctx: Context<'a, 'b, 'c, 'info, AgentPull<'info>>,
+    pub fn agent_pull(
+        ctx: Context<AgentPull>,
         amount: u64,
     ) -> Result<()> {
         instructions::agent_pull::handler(ctx, amount)
@@ -375,14 +375,14 @@ pub mod vela_protocol {
         )
     }
 
-    pub fn execute_pull<'a, 'b, 'c, 'info>(
-        ctx: Context<'a, 'b, 'c, 'info, ExecutePull<'info>>,
+    pub fn execute_pull(
+        ctx: Context<ExecutePull>,
     ) -> Result<()> {
         instructions::execute_pull::handler(ctx)
     }
 
-    pub fn execute_stream<'a, 'b, 'c, 'info>(
-        ctx: Context<'a, 'b, 'c, 'info, ExecuteStream<'info>>,
+    pub fn execute_stream(
+        ctx: Context<ExecuteStream>,
     ) -> Result<()> {
         instructions::execute_stream::handler(ctx)
     }

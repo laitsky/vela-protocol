@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BN } from "@coral-xyz/anchor";
+import { BN } from "@anchor-lang/core";
 import { getAccount } from "@solana/spl-token";
 import { Keypair, LAMPORTS_PER_SOL, SystemProgram } from "@solana/web3.js";
 import {

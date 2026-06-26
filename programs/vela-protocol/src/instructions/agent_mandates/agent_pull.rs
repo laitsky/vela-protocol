@@ -100,8 +100,8 @@ pub struct AgentPull<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler<'a, 'b, 'c, 'info>(
-    ctx: Context<'a, 'b, 'c, 'info, AgentPull<'info>>,
+pub fn handler(
+    ctx: Context<AgentPull>,
     amount: u64,
 ) -> Result<()> {
     let mandate_info = ctx.accounts.agent_mandate.to_account_info();

@@ -1,11 +1,10 @@
 /* biome-ignore-all lint/suspicious/noExplicitAny: Anchor program methods are IDL-generated. */
 
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { AnchorProvider, BN, Program, Wallet } from "@coral-xyz/anchor";
+import { AnchorProvider, BN, Program, Wallet } from "@anchor-lang/core";
 import {
   AddressLookupTableProgram,
   Connection,
@@ -20,6 +19,8 @@ import {
   getCompDefAccAddress,
   getLookupTableAddress,
   getMXEAccAddress,
+  getMXEArcisEd25519VerifyingKey,
+  getMXEPublicKey,
   getRawCircuitAccAddress,
 } from "@arcium-hq/client";
 
@@ -109,17 +110,17 @@ function protocolConfigAddress(programId: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync([Buffer.from("config")], programId)[0];
 }
 
-function assertMxeKeysReady(mxeProgramId: PublicKey) {
+async function assertMxeKeysReady(provider: AnchorProvider, mxeProgramId: PublicKey) {
   if (!REQUIRE_MXE_KEYS) {
     console.log("MXE key finalization preflight skipped by ARCIUM_REQUIRE_MXE_KEYS=0");
     return;
   }
 
-  const output = execFileSync("arcium", ["mxe-keys", mxeProgramId.toBase58(), "-u", "devnet"], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  if (output.includes("MXE keys not yet set")) {
+  const [mxePublicKey, mxeVerifyingKey] = await Promise.all([
+    getMXEPublicKey(provider, mxeProgramId),
+    getMXEArcisEd25519VerifyingKey(provider, mxeProgramId),
+  ]);
+  if (!mxePublicKey || !mxeVerifyingKey) {
     throw new Error(
       `MXE keys are not finalized for ${mxeProgramId.toBase58()}. ` +
         "Refusing to initialize/upload comp defs because callbacks would remain unavailable.",
@@ -500,7 +501,7 @@ async function main() {
   console.log(`MXE account: ${mxeAccount.toBase58()}`);
   console.log(`MXE LUT slot: ${mxe.lutOffsetSlot.toString()}`);
   console.log(`MXE LUT: ${addressLookupTable.toBase58()}`);
-  assertMxeKeysReady(mxeProgramId);
+  await assertMxeKeysReady(provider, mxeProgramId);
 
   const lutInfo = await connection.getAccountInfo(addressLookupTable, "confirmed");
   if (!lutInfo) {

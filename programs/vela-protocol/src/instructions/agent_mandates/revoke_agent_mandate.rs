@@ -112,7 +112,7 @@ pub fn handler(ctx: Context<RevokeAgentMandate>) -> Result<()> {
     let amount = ctx.accounts.mandate_wrapped_account.amount;
     if amount > 0 {
         let burn_ctx = CpiContext::new_with_signer(
-            ctx.accounts.token_2022_program.to_account_info(),
+            ctx.accounts.token_2022_program.key(),
             Burn {
                 mint: ctx.accounts.wrapped_usdc_mint.to_account_info(),
                 from: ctx.accounts.mandate_wrapped_account.to_account_info(),
@@ -126,7 +126,7 @@ pub fn handler(ctx: Context<RevokeAgentMandate>) -> Result<()> {
         let mint_authority_signer_seeds: &[&[u8]] = &[MINT_AUTHORITY_SEED, &[mint_authority_bump]];
         let mint_authority_signer_seed_groups = [mint_authority_signer_seeds];
         let transfer_ctx = CpiContext::new_with_signer(
-            ctx.accounts.spl_token_program.to_account_info(),
+            ctx.accounts.spl_token_program.key(),
             TransferChecked {
                 from: ctx.accounts.wrapping_vault.to_account_info(),
                 mint: ctx.accounts.spl_usdc_mint.to_account_info(),

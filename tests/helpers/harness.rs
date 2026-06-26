@@ -492,7 +492,7 @@ impl TestHarness {
             token_config,
             system_program: anchor_lang::system_program::ID,
             token_2022_program: token_2022_anchor_id(),
-            rent: anchor_lang::solana_program::sysvar::rent::ID,
+            rent: solana_sdk::sysvar::rent::ID,
         };
 
         let instruction = Instruction {
@@ -623,7 +623,7 @@ impl TestHarness {
                 spl_associated_token_account::id().to_bytes(),
             ),
             system_program: anchor_lang::system_program::ID,
-            rent: anchor_lang::solana_program::sysvar::rent::ID,
+            rent: solana_sdk::sysvar::rent::ID,
         };
 
         let instruction = Instruction {
@@ -971,7 +971,7 @@ impl TestHarness {
                 spl_associated_token_account::id().to_bytes(),
             ),
             system_program: anchor_lang::system_program::ID,
-            rent: anchor_lang::solana_program::sysvar::rent::ID,
+            rent: solana_sdk::sysvar::rent::ID,
         };
 
         let instruction = Instruction {
@@ -2444,7 +2444,7 @@ impl TestHarness {
             credential_mint,
             system_program: anchor_lang::system_program::ID,
             token_2022_program: token_2022_anchor_id(),
-            rent: anchor_lang::solana_program::sysvar::rent::ID,
+            rent: solana_sdk::sysvar::rent::ID,
         };
 
         let instruction = Instruction {
@@ -2491,7 +2491,7 @@ impl TestHarness {
             credential_mint,
             system_program: anchor_lang::system_program::ID,
             token_2022_program: token_2022_anchor_id(),
-            rent: anchor_lang::solana_program::sysvar::rent::ID,
+            rent: solana_sdk::sysvar::rent::ID,
         };
 
         let instruction = Instruction {
@@ -2514,7 +2514,7 @@ impl TestHarness {
             admin: self.merchant_pubkey(),
             plan: *plan,
             system_program: anchor_lang::system_program::ID,
-            rent: anchor_lang::solana_program::sysvar::rent::ID,
+            rent: solana_sdk::sysvar::rent::ID,
         };
 
         let instruction = Instruction {
@@ -2588,7 +2588,7 @@ impl TestHarness {
                 AccountMeta::new(to_address(*migrated_mandate), false),
                 AccountMeta::new_readonly(to_address(anchor_lang::system_program::ID), false),
                 AccountMeta::new_readonly(
-                    to_address(anchor_lang::solana_program::sysvar::rent::ID),
+                    to_address(solana_sdk::sysvar::rent::ID),
                     false,
                 ),
             ],
@@ -2618,7 +2618,7 @@ impl TestHarness {
             token_config: self.derive_token_config_address(&billing_mint),
             system_program: anchor_lang::system_program::ID,
             token_2022_program: token_2022_anchor_id(),
-            rent: anchor_lang::solana_program::sysvar::rent::ID,
+            rent: solana_sdk::sysvar::rent::ID,
         };
         let metas = accounts
             .to_account_metas(None)

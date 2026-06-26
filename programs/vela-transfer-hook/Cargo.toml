@@ -22,8 +22,8 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = { version = "=0.32.1", features = ["interface-instructions"] }
-anchor-spl = "=0.32.1"
+anchor-lang = "=1.0.2"
+anchor-spl = "=1.0.2"
 vela-protocol = { path = "../vela-protocol", features = ["no-entrypoint"] }
 spl-discriminator = "=0.5.2"
 spl-transfer-hook-interface = "=2.0.0"

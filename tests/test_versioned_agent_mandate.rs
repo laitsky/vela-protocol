@@ -7,8 +7,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use anchor_lang::{
-    prelude::{borsh, Pubkey},
-    AnchorDeserialize, AnchorSerialize, Discriminator, InstructionData, ToAccountMetas,
+    prelude::Pubkey, AnchorDeserialize, AnchorSerialize, Discriminator, InstructionData,
+    ToAccountMetas,
 };
 use helpers::TestHarness;
 use solana_instruction::Instruction;
@@ -49,7 +49,6 @@ fn legacy_agent_mandate_info<'a>(
         bytes.as_mut_slice(),
         owner,
         false,
-        0,
     )
 }
 

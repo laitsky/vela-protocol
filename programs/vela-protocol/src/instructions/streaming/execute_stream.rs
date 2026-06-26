@@ -84,8 +84,8 @@ pub struct ExecuteStream<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler<'a, 'b, 'c, 'info>(
-    ctx: Context<'a, 'b, 'c, 'info, ExecuteStream<'info>>,
+pub fn handler(
+    ctx: Context<ExecuteStream>,
 ) -> Result<()> {
     let keeper_config = load_keeper_config(&ctx.accounts.keeper_config.to_account_info())?;
     validate_stream_transfer_accounts(

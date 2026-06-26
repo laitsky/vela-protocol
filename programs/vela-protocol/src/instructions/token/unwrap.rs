@@ -79,7 +79,7 @@ pub fn handler(ctx: Context<Unwrap>, amount: u64) -> Result<()> {
     // Step 1: Burn wrapped USDC from user's Token-2022 account.
     // User is the authority for their own token account.
     let burn_ctx = CpiContext::new(
-        ctx.accounts.token_2022_program.to_account_info(),
+        ctx.accounts.token_2022_program.key(),
         Burn {
             mint: ctx.accounts.wrapped_usdc_mint.to_account_info(),
             from: ctx.accounts.user_wrapped_account.to_account_info(),
@@ -95,7 +95,7 @@ pub fn handler(ctx: Context<Unwrap>, amount: u64) -> Result<()> {
     let signer_seed_groups = [signer_seeds];
 
     let transfer_ctx = CpiContext::new_with_signer(
-        ctx.accounts.spl_token_program.to_account_info(),
+        ctx.accounts.spl_token_program.key(),
         TransferChecked {
             from: ctx.accounts.wrapping_vault.to_account_info(),
             mint: ctx.accounts.spl_usdc_mint.to_account_info(),

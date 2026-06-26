@@ -176,7 +176,7 @@ fn map_interface_error(error: SplProgramError) -> anchor_lang::error::Error {
         SplProgramError::AccountBorrowFailed => ProgramError::AccountBorrowFailed,
         SplProgramError::MaxSeedLengthExceeded => ProgramError::MaxSeedLengthExceeded,
         SplProgramError::InvalidSeeds => ProgramError::InvalidSeeds,
-        SplProgramError::BorshIoError => ProgramError::BorshIoError("borsh io error".into()),
+        SplProgramError::BorshIoError => ProgramError::BorshIoError,
         SplProgramError::AccountNotRentExempt => ProgramError::AccountNotRentExempt,
         SplProgramError::UnsupportedSysvar => ProgramError::UnsupportedSysvar,
         SplProgramError::IllegalOwner => ProgramError::IllegalOwner,

@@ -36,9 +36,9 @@ pub mod vela_transfer_hook {
     }
 
     pub fn fallback<'info>(
-        program_id: &Pubkey,
+        program_id: &'info Pubkey,
         accounts: &'info [AccountInfo<'info>],
-        data: &[u8],
+        data: &'info [u8],
     ) -> Result<()> {
         let instruction = TransferHookInstruction::unpack(data).map_err(|_| {
             anchor_lang::error::Error::from(
@@ -46,10 +46,12 @@ pub mod vela_transfer_hook {
             )
         })?;
         match instruction {
-            TransferHookInstruction::Execute { amount } => {
-                let amount_bytes = amount.to_le_bytes();
-                __private::__global::transfer_hook(program_id, accounts, &amount_bytes)
-            }
+            TransferHookInstruction::Execute { .. } => __private::__global::transfer_hook(
+                program_id,
+                accounts,
+                data.get(ExecuteInstruction::SPL_DISCRIMINATOR_SLICE.len()..)
+                    .ok_or(anchor_lang::prelude::ProgramError::InvalidInstructionData)?,
+            ),
             _ => Err(anchor_lang::error::Error::from(
                 anchor_lang::prelude::ProgramError::InvalidInstructionData,
             )),

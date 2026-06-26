@@ -101,8 +101,8 @@ pub struct ExecutePull<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler<'a, 'b, 'c, 'info>(
-    ctx: Context<'a, 'b, 'c, 'info, ExecutePull<'info>>,
+pub fn handler(
+    ctx: Context<ExecutePull>,
 ) -> Result<()> {
     let keeper_config = load_keeper_config(&ctx.accounts.keeper_config.to_account_info())?;
     let protocol_config = load_protocol_config(&ctx.accounts.protocol_config.to_account_info())?;
@@ -465,8 +465,8 @@ fn mark_usage_report_settled(report_info: &AccountInfo<'_>) -> Result<()> {
     Ok(())
 }
 
-fn invoke_billing_transfer<'a, 'b, 'c, 'info>(
-    ctx: &Context<'a, 'b, 'c, 'info, ExecutePull<'info>>,
+fn invoke_billing_transfer(
+    ctx: &Context<ExecutePull>,
     charge_amount: u64,
     signer_seed_groups: &[&[&[u8]]],
     expected_destination_owner: &Pubkey,

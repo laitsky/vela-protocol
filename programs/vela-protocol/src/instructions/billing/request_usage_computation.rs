@@ -251,6 +251,7 @@ pub fn request_usage_computation(
         )?],
         1,
         0,
+        0,
     )?;
 
     Ok(())
@@ -385,8 +386,8 @@ impl<'info> QueueCompAccs<'info> for RequestUsageComputation<'info> {
         }
     }
 
-    fn arcium_program(&self) -> AccountInfo<'info> {
-        self.arcium_program.to_account_info()
+    fn arcium_program(&self) -> Pubkey {
+        self.arcium_program.key()
     }
 
     fn mxe_program(&self) -> Pubkey {

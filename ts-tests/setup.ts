@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { BN, Program, Wallet } from "@coral-xyz/anchor";
+import { BN, Program, Wallet } from "@anchor-lang/core";
 import { LiteSVMProvider } from "anchor-litesvm";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,

@@ -124,7 +124,7 @@ pub fn handler(ctx: Context<Cancel>) -> Result<()> {
         && !ctx.accounts.subscriber_token_account.data_is_empty()
     {
         let revoke_ctx = CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
+            ctx.accounts.token_program.key(),
             Revoke {
                 source: ctx.accounts.subscriber_token_account.to_account_info(),
                 authority: ctx.accounts.authority.to_account_info(),

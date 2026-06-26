@@ -24,11 +24,11 @@ custom-panic = []
 
 
 [dependencies]
-anchor-lang = { version = "=0.32.1", features = ["init-if-needed", "interface-instructions"] }
-anchor-spl = "=0.32.1"
-arcium-anchor = "0.9.7"
-arcium-macros = "0.9.7"
-arcium-client = { version = "0.9.7", default-features = false }
+anchor-lang = { version = "=1.0.2", features = ["init-if-needed"] }
+anchor-spl = "=1.0.2"
+arcium-anchor = "0.11.0"
+arcium-macros = "0.11.0"
+arcium-client = { version = "0.11.0", default-features = false }
 spl-token-2022 = { version = "10.0.0", features = ["no-entrypoint"] }
 spl-token-metadata-interface = "0.8.0"
 spl-pod = "=0.7.1"
@@ -50,10 +50,10 @@ proptest = { workspace = true }
 solana-sdk = "*"
 solana-address = "=2.5.0"
 solana-account = "=3.4.0"
-solana-clock = "=3.0.0"
+solana-clock = "=3.0.1"
 solana-keypair = "=3.1.0"
 solana-message = "=3.1.0"
-solana-program-pack = "=3.0.0"
+solana-program-pack = "=3.1.0"
 solana-signer = "=3.0.0"
 solana-system-interface = { version = "=2.0.0", features = ["bincode"] }
 solana-transaction = { version = "=3.1.0", features = ["verify"] }

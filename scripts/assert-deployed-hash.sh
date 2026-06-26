@@ -54,26 +54,48 @@ compare_idl() {
   local name="$1"
   local program_id="$2"
   local local_idl="$3"
-  local fetched_idl="$TMP_DIR/${name}.idl.json"
 
-  echo "==> Fetching ${name} IDL from ${CLUSTER}"
-  anchor idl fetch --provider.cluster "$CLUSTER" "$program_id" > "$fetched_idl"
+  echo "==> Fetching ${name} PMP IDL from ${CLUSTER}"
 
-  python3 - "$local_idl" "$fetched_idl" "$name" <<'PY'
-import json
-import sys
-from pathlib import Path
+  node - "$program_id" "$local_idl" "$name" "$RPC_URL" <<'NODE'
+const { readFileSync } = require("fs");
+const { inflateSync } = require("zlib");
+const { Connection, PublicKey } = require("@solana/web3.js");
 
-local_path, fetched_path, name = sys.argv[1:4]
-local = json.loads(Path(local_path).read_text())
-fetched = json.loads(Path(fetched_path).read_text())
+const [programId, localPath, name, rpcUrl] = process.argv.slice(2);
+const PROGRAM_METADATA_PROGRAM_ID = new PublicKey("ProgM6JCCvbYkfKqJYHePx4xxSUSqJp7rh8Lyv7nk7S");
+const IDL_SEED = Buffer.concat([Buffer.from("idl"), Buffer.alloc(13)]);
+const HEADER_LENGTH = 96;
 
-if local != fetched:
-    print(f"ABORT: on-chain {name} IDL does not match local IDL.", file=sys.stderr)
-    sys.exit(1)
+(async () => {
+  const local = JSON.parse(readFileSync(localPath, "utf8"));
+  const [metadata] = PublicKey.findProgramAddressSync(
+    [new PublicKey(programId).toBuffer(), IDL_SEED],
+    PROGRAM_METADATA_PROGRAM_ID,
+  );
+  const account = await new Connection(rpcUrl, "confirmed").getAccountInfo(metadata);
 
-print(f"    PASS {name} IDL")
-PY
+  if (!account) {
+    throw new Error(`ABORT: on-chain ${name} PMP IDL account does not exist (${metadata.toBase58()}).`);
+  }
+  if (!account.owner.equals(PROGRAM_METADATA_PROGRAM_ID)) {
+    throw new Error(`ABORT: on-chain ${name} PMP IDL account has unexpected owner.`);
+  }
+
+  const payload = account.data.subarray(HEADER_LENGTH);
+  const trimmed = payload.subarray(0, payload.findLastIndex((byte) => byte !== 0) + 1);
+  const fetched = JSON.parse(inflateSync(trimmed).toString("utf8"));
+
+  if (JSON.stringify(local) !== JSON.stringify(fetched)) {
+    throw new Error(`ABORT: on-chain ${name} PMP IDL does not match local IDL.`);
+  }
+
+  console.log(`    PASS ${name} PMP IDL`);
+})().catch((error) => {
+  console.error(error.message || error);
+  process.exit(1);
+});
+NODE
 }
 
 IDS="$(read_devnet_program_ids)"

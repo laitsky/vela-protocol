@@ -25,10 +25,10 @@
     "guard:deploy": "bash scripts/guard-anchor-deploy.sh"
   },
   "dependencies": {
-    "@coral-xyz/anchor": "0.32.1"
+    "@anchor-lang/core": "1.0.2"
   },
   "devDependencies": {
-    "@arcium-hq/client": "0.9.7",
+    "@arcium-hq/client": "0.11.0",
     "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1",
     "@types/bun": "^1.3.13",

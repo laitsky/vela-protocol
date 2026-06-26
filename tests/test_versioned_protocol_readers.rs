@@ -2,7 +2,7 @@
 mod helpers;
 
 use anchor_lang::{
-    prelude::{borsh, AccountInfo, Pubkey},
+    prelude::{AccountInfo, Pubkey},
     AnchorDeserialize, AnchorSerialize, Discriminator, InstructionData, ToAccountMetas,
 };
 use helpers::{convert_account_meta, to_address, to_anchor_pubkey, TestHarness};
@@ -133,7 +133,6 @@ fn protocol_config_info<'a>(bytes: &'a mut Vec<u8>, lamports: &'a mut u64) -> Ac
         bytes.as_mut_slice(),
         owner,
         false,
-        0,
     )
 }
 
@@ -148,7 +147,6 @@ fn keeper_config_info<'a>(bytes: &'a mut Vec<u8>, lamports: &'a mut u64) -> Acco
         bytes.as_mut_slice(),
         owner,
         false,
-        0,
     )
 }
 

@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-arcis = "0.9.7"
+arcis = "0.11.0"
 blake3 = "=1.8.2"
 
 [dev-dependencies]

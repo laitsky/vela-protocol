@@ -1,6 +1,6 @@
 use crate::instructions::arcium_accounts::derive_mxe_pubkey;
 use anchor_lang::prelude::*;
-use arcium_anchor::{comp_def_offset, init_comp_def, prelude::*, traits::InitCompDefAccs};
+use arcium_anchor::{comp_def_offset, init_computation_def, prelude::*, traits::InitCompDefAccs};
 use arcium_client::idl::arcium::types::{Output, Parameter};
 
 mod generated_circuit_metadata {
@@ -21,25 +21,25 @@ const RECORD_BILLING_EVENT_CIRCUIT: &str = "record_billing_event_v2";
 
 pub fn init_validate_mandate_comp_def(ctx: Context<InitValidateMandateCompDef>) -> Result<()> {
     validate_mxe_account(&ctx.accounts.mxe_account, &ctx.accounts.mxe_program.key())?;
-    init_comp_def(&*ctx.accounts, None, None)?;
+    init_computation_def(&*ctx.accounts, None)?;
     Ok(())
 }
 
 pub fn init_record_billing_comp_def(ctx: Context<InitRecordBillingCompDef>) -> Result<()> {
     validate_mxe_account(&ctx.accounts.mxe_account, &ctx.accounts.mxe_program.key())?;
-    init_comp_def(&*ctx.accounts, None, None)?;
+    init_computation_def(&*ctx.accounts, None)?;
     Ok(())
 }
 
 pub fn init_usage_charge_comp_def(ctx: Context<InitUsageChargeCompDef>) -> Result<()> {
     validate_mxe_account(&ctx.accounts.mxe_account, &ctx.accounts.mxe_program.key())?;
-    init_comp_def(&*ctx.accounts, None, None)?;
+    init_computation_def(&*ctx.accounts, None)?;
     Ok(())
 }
 
 pub fn init_tiered_pricing_comp_def(ctx: Context<InitTieredPricingCompDef>) -> Result<()> {
     validate_mxe_account(&ctx.accounts.mxe_account, &ctx.accounts.mxe_program.key())?;
-    init_comp_def(&*ctx.accounts, None, None)?;
+    init_computation_def(&*ctx.accounts, None)?;
     Ok(())
 }
 
@@ -141,8 +141,8 @@ pub struct InitTieredPricingCompDef<'info> {
 }
 
 impl<'info> InitCompDefAccs<'info> for InitValidateMandateCompDef<'info> {
-    fn arcium_program(&self) -> AccountInfo<'info> {
-        self.arcium_program.to_account_info()
+    fn arcium_program(&self) -> Pubkey {
+        self.arcium_program.key()
     }
 
     fn mxe_program(&self) -> Pubkey {
@@ -199,8 +199,8 @@ impl<'info> InitCompDefAccs<'info> for InitValidateMandateCompDef<'info> {
 }
 
 impl<'info> InitCompDefAccs<'info> for InitRecordBillingCompDef<'info> {
-    fn arcium_program(&self) -> AccountInfo<'info> {
-        self.arcium_program.to_account_info()
+    fn arcium_program(&self) -> Pubkey {
+        self.arcium_program.key()
     }
 
     fn mxe_program(&self) -> Pubkey {
@@ -257,8 +257,8 @@ impl<'info> InitCompDefAccs<'info> for InitRecordBillingCompDef<'info> {
 }
 
 impl<'info> InitCompDefAccs<'info> for InitUsageChargeCompDef<'info> {
-    fn arcium_program(&self) -> AccountInfo<'info> {
-        self.arcium_program.to_account_info()
+    fn arcium_program(&self) -> Pubkey {
+        self.arcium_program.key()
     }
 
     fn mxe_program(&self) -> Pubkey {
@@ -315,8 +315,8 @@ impl<'info> InitCompDefAccs<'info> for InitUsageChargeCompDef<'info> {
 }
 
 impl<'info> InitCompDefAccs<'info> for InitTieredPricingCompDef<'info> {
-    fn arcium_program(&self) -> AccountInfo<'info> {
-        self.arcium_program.to_account_info()
+    fn arcium_program(&self) -> Pubkey {
+        self.arcium_program.key()
     }
 
     fn mxe_program(&self) -> Pubkey {

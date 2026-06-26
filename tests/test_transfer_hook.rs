@@ -132,7 +132,7 @@ fn test_init_wrapped_mint_requires_protocol_config() {
             spl_associated_token_account::id().to_bytes(),
         ),
         system_program: anchor_lang::system_program::ID,
-        rent: anchor_lang::solana_program::sysvar::rent::ID,
+        rent: solana_sdk::sysvar::rent::ID,
     };
     let ix = solana_instruction::Instruction {
         program_id: harness.program_id,

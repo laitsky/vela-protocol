@@ -13,7 +13,7 @@ echo "==> Restoring persistent devnet program keypairs"
 bash scripts/prepare-program-keys.sh
 
 echo "==> Compiling Arcium circuits"
-bash scripts/run-checked-log.sh arcium-build arcium build
+bash scripts/run-checked-log.sh arcium-build env RUSTUP_TOOLCHAIN=1.89.0-aarch64-apple-darwin arcium build
 
 bash scripts/build-sbf-checked.sh \
   vela_protocol \

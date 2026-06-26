@@ -289,7 +289,7 @@ pub fn build_callback_instruction(
         is_writable: false,
     });
     accounts.push(CallbackAccount {
-        pubkey: ::anchor_lang::solana_program::sysvar::instructions::ID,
+        pubkey: arcium_anchor::solana_instructions_sysvar::ID,
         is_writable: false,
     });
     accounts.extend_from_slice(extra_accs);

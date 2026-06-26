@@ -163,9 +163,9 @@ pub struct UsageComputationCallback<'info> {
     pub computation_account: UncheckedAccount<'info>,
     /// CHECK: Deserialized manually for BLS output verification.
     pub cluster_account: UncheckedAccount<'info>,
-    #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
+    #[account(address = arcium_anchor::solana_instructions_sysvar::ID)]
     /// CHECK: The address constraint pins this to the instructions sysvar account.
-    pub instructions_sysvar: AccountInfo<'info>,
+    pub instructions_sysvar: UncheckedAccount<'info>,
 
     #[account(
         mut,

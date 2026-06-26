@@ -94,7 +94,7 @@ pub fn handler(ctx: Context<Wrap>, amount: u64) -> Result<()> {
 
     // Step 1: Transfer SPL USDC from subscriber to the protocol vault.
     let transfer_ctx = CpiContext::new(
-        ctx.accounts.spl_token_program.to_account_info(),
+        ctx.accounts.spl_token_program.key(),
         TransferChecked {
             from: ctx.accounts.subscriber_usdc_account.to_account_info(),
             mint: ctx.accounts.spl_usdc_mint.to_account_info(),
@@ -111,7 +111,7 @@ pub fn handler(ctx: Context<Wrap>, amount: u64) -> Result<()> {
     let signer_seed_groups = [signer_seeds];
 
     let mint_ctx = CpiContext::new_with_signer(
-        ctx.accounts.token_2022_program.to_account_info(),
+        ctx.accounts.token_2022_program.key(),
         MintTo {
             mint: ctx.accounts.wrapped_usdc_mint.to_account_info(),
             to: ctx.accounts.destination_wrapped_account.to_account_info(),

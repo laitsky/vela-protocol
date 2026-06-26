@@ -141,7 +141,7 @@ pub fn handler(ctx: Context<Subscribe>) -> Result<()> {
     // Subscribers must wrap SPL USDC before executing pulls (use SDK wrapAndSubscribe).
 
     let ata_ctx = CpiContext::new(
-        ctx.accounts.associated_token_program.to_account_info(),
+        ctx.accounts.associated_token_program.key(),
         associated_token::Create {
             payer: ctx.accounts.subscriber.to_account_info(),
             associated_token: ctx.accounts.subscriber_credential_account.to_account_info(),

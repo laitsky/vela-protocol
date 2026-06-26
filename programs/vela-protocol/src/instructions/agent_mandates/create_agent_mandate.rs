@@ -158,7 +158,7 @@ pub fn handler(
     )?;
 
     let transfer_ctx = CpiContext::new(
-        ctx.accounts.spl_token_program.to_account_info(),
+        ctx.accounts.spl_token_program.key(),
         TransferChecked {
             from: ctx.accounts.authority_usdc_account.to_account_info(),
             mint: ctx.accounts.spl_usdc_mint.to_account_info(),
@@ -172,7 +172,7 @@ pub fn handler(
     let signer_seeds: &[&[u8]] = &[MINT_AUTHORITY_SEED, &[mint_authority_bump]];
     let signer_seed_groups = [signer_seeds];
     let mint_ctx = CpiContext::new_with_signer(
-        ctx.accounts.token_2022_program.to_account_info(),
+        ctx.accounts.token_2022_program.key(),
         MintTo {
             mint: ctx.accounts.wrapped_usdc_mint.to_account_info(),
             to: ctx.accounts.mandate_wrapped_account.to_account_info(),

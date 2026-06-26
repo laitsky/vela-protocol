@@ -118,18 +118,10 @@ deploy_or_upgrade \
   "target/deploy/vela_protocol-keypair.json"
 
 echo "==> Refreshing on-chain vela_protocol IDL"
-anchor idl upgrade --provider.cluster "$CLUSTER" --filepath "target/idl/vela_protocol.json" "$PROTOCOL_PROGRAM_ID" || {
-  echo "IDL upgrade failed for vela_protocol (likely first deploy or size change). Re-initializing..."
-  anchor idl close --provider.cluster "$CLUSTER" "$PROTOCOL_PROGRAM_ID" || true
-  anchor idl init --provider.cluster "$CLUSTER" --filepath "target/idl/vela_protocol.json" "$PROTOCOL_PROGRAM_ID"
-}
+RPC_URL="$RPC_URL" node scripts/sync-pmp-idl.cjs "$PROTOCOL_PROGRAM_ID" "target/idl/vela_protocol.json"
 
 echo "==> Refreshing on-chain vela_transfer_hook IDL"
-anchor idl upgrade --provider.cluster "$CLUSTER" --filepath "target/idl/vela_transfer_hook.json" "$TRANSFER_HOOK_PROGRAM_ID" || {
-  echo "IDL upgrade failed for vela_transfer_hook (likely first deploy or size change). Re-initializing..."
-  anchor idl close --provider.cluster "$CLUSTER" "$TRANSFER_HOOK_PROGRAM_ID" || true
-  anchor idl init --provider.cluster "$CLUSTER" --filepath "target/idl/vela_transfer_hook.json" "$TRANSFER_HOOK_PROGRAM_ID"
-}
+RPC_URL="$RPC_URL" node scripts/sync-pmp-idl.cjs "$TRANSFER_HOOK_PROGRAM_ID" "target/idl/vela_transfer_hook.json"
 
 echo "==> Done. Verify:"
 solana program show "$TRANSFER_HOOK_PROGRAM_ID" --url "$RPC_URL"
